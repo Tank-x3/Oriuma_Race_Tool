@@ -77,52 +77,40 @@
     - [x] **Verification**: Ensure final phase subtraction works correctly.
 
 
-### Phase 3: UX Polish & Core Refinement (フィードバック反映と基盤強化)
-**Goal:** Closed Betaのフィードバックに基づき、コア体験（特に修正フロー）の完成度を高める。
+### Phase 3: Advanced Features Implementation (拡張機能実装)
+**Goal:** ユーザビリティの向上と、ハウスルール等の柔軟性確保。
 
-- [ ] **3.1. Robust Navigation (Modification & Persistence)**
-    - [ ] **Scene Backtracking:** Enable navigation Scene 3 -> Scene 2 -> Scene 1.
-    - [ ] **Data Persistence:** Ensure user input (names, strategies) is preserved during backtracking.
-    - [ ] **UX Polish:** "Next Phase" auto-scroll to top, Error feedback for missing analysis.
-
-- [ ] **3.2. Visual & Usability Tweaks**
-    - [ ] Scene 4 Result Image enhancement (High-res).
-    - [ ] UI text color adjustments (Light mode).
-
-### Phase 4: Advanced Features Implementation (拡張機能実装)
-**Goal:** ハウスルール等の柔軟性確保。
-
-- [ ] **4.1. Feedback Reflection**
+- [ ] **3.1. Feedback Reflection**
     - [ ] Fix critical bugs from MVP testing
     - [ ] Adjust UI based on user feedback
 
-- [ ] **4.2. House Rules System**
+- [ ] **3.2. House Rules System**
     - [ ] Rule Configuration Modal
     - [ ] Custom Dice Config implementation
     - [ ] JSON Import/Export for Rules
 
-- [ ] **4.3. Result Image Generation (Enhancement)**
+- [ ] **3.3. Result Image Generation (Enhancement)**
     - [ ] High-resolution export option
     - [ ] Theme customization
 
-- [ ] **4.4. Data Persistence Strategy**
+- [ ] **3.4. Data Persistence Strategy**
     - [ ] LocalStorage integration for Auto-save
     - [ ] Session recovery logic
 
-### Phase 5: Polish & Final Release (仕上げと正式リリース)
+### Phase 4: Polish & Final Release (仕上げと正式リリース)
 **Goal:** プロダクトとしての品質向上と完成。
 
-- [ ] **5.1. UX Polish**
+- [ ] **4.1. UX Polish**
     - [ ] Micro-animations (Framer Motion etc.)
     - [ ] Keyboard Navigation support
     - [ ] Mobile view optimization
 
-- [ ] **5.2. Final Check**
+- [ ] **4.2. Final Check**
     - [ ] Edge case testing
     - [ ] Cross-browser testing
     - [ ] Performance optimization
 
-- [ ] **5.3. Documentation**
+- [ ] **4.3. Documentation**
     - [ ] User Manual (Usage Guide)
     - [ ] Developer Documentation (Maintenance Guide)
 

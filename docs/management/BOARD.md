@@ -1,52 +1,42 @@
 # Whiteboard (PM)
 
-## User Issue / Request
-- Scene 1(エントリー登録）
-  - 中盤ダイス回数の設定がスライダーになっている
-  - 中盤回数を減らした際、固有発動位置の不整合時の挙動（自動リセット要望）
-- Scene 2(枠順抽選)
-  - エントリー内容確認の文言不一致
-  - ダイス出力の区切り文字（全角スペース）
-  - `88-ch` 形式 (`🎲`) への対応
-- Scene 3
-  - **[CRITICAL]** 全面的な作り直しが必要
-      - 作業混乱時の残骸（ダークテーマ、不適切なレイアウト）がそのまま残っている。
-      - ダイス出力機能など、必須機能が欠落している。
-      - 要件定義（ワイヤーフレーム）に忠実な再実装が必要。
-- **Scene 4 (New)**
-  - 未実装のためデプロイ不可。次回最優先。
-- **[CRITICAL] Logic Bug (Oonige)**
-  - **Issue**: 大逃げ終盤ダイス (`-1d27`) が減算されず待機または加算扱いになっている。
-  - **Requirement Update**: `dice-1d27` ではなく `-dice1d27` を出力し、Parserでマイナス記号を検出して減算処理を行う仕様へ変更済み。
+## Closed Beta Feedback (2026-01-25)
+**※ここにユーザーからのフィードバックを記載してください**
 
+### UI/UX Improvements
+- シーン/フェーズ進行時、結果取り込みエリアでの解析が未実行の場合、エラーメッセージを表示して進行を止める
+  - 「（場面名）の結果が集計されていません。ダイス結果を貼り付けて[解析実行]を押してください」等の具体的な内容にする
+  - 貼り付けエリアを強調表示する？
+- 「次のフェーズへ」で進行した際、自動的にスクロールを最上部に戻す
+  - 現状（移動なし）では、ユーザーが「次のダイスを出力するべきタイミングである」「フェーズが進行している（次のフェースに進んだ）」ことが分かりづらい
+- **優先度高**: `REQUIREMENTS.md` L91-108 「**途中修正とデータ保持 (Modification & Persistence)**」の全面的実装
+  - 現在はScene 3の中でのみ前に戻ることができるが、序盤フェーズからScene 2（枠順抽選）に戻ったり、更にScene 1（レース設定）に戻ったりできるようにする
+    - エントリー内容の入力ミスの修正が主目的と想定
+  - 要件定義通り、**「不整合のないデータの保持」を徹底**する
+  - 「やり直す」（レースリセット）を現在より控えめな見た目に（目立ちすぎないように）
+  - 前のフェーズ/シーンに戻るUIを強調し、`REQUIREMENTS.md` L229,288-289,314,455-466にあるように「前のフェーズ/シーンに戻って*修正*できる」ことを明確にする
 
-## PM Proposal
+### Bugs / Issues
+- 新たな不具合は発見されていない。
+
+### Feature Requests
+-
+-
+
+## Outstanding Issues (Remaining from MVP)
+- **Scene 4 (Result Image)**:
+    - リッチなデザイン対応（現在はシンプル版）
+    - 高解像度出力対応
+
+## Project Status
 ### Current Status
-- **Phase 2.6 (Deployment)**: **DONE**
-- **Phase 2.6.5 (Hotfix)**: **TODO** (Current Task - Oonige Bug)
+- **Phase 2.6.5 (Hotfix)**: ✅ **完了** (大逃げバグ修正完了)
+- **Phase 3.0 (Feedback & Polish)**: **準備中** (これよりフィードバック反映フェーズ)
 
 ### Action Plan
-1.  **Next Session (Engineer)**:
-    - **Fix Oonige Logic**: Implement negative dice syntax support (`-dice`).
-    - **Verify**: Unit test for negative dice parsing & subtraction.
-## User Feedback (2026-01-22)
-### Scene 3 Reconstruction Result
-- **UI/UX Consistency**: Good (Theme switching works).
-- **Issues Found**:
-    1.  **[UI]** Section Header text color (Light Mode legibility).
-    2.  **[UI]** Error Messages: Replace Toast with Persistent/Embedded Error Area. No truncation (`他 n 件`).
-    3.  **[CRITICAL] 88-ch Parser Failure**:
-        - **Resolved**: Parser v2.0 (EmojiParser) implemented & verified.
-
-### Project Status
-### Project Status
-- **Phase 2.6 (Deployment)**: ✅ **Completed**
-- **Phase 2.6.5 (Hotfix)**: ✅ **Completed** (Oonige Logic Fixed)
-- **Next Phase**: **Feedback Collection & Maintenance**
-
-### Proposed Workflow
-1.  **Step 1: PM Planning**
-    - Create `TASK_INSTRUCTION.md` for Deployment.
-2.  **Step 2: Engineer Session**
-    - Setup GitHub Actions.
-    - Configure Vite for deployment.
+1.  **Step 1: Feedback Organization**
+    - ユーザーからのフィードバックをこのボードに集約する。
+2.  **Step 2: Planning**
+    - 優先度を決定し、`ROADMAP.md` を更新する。
+3.  **Step 3: Implementation**
+    - UI/UX改善作業を開始する。
