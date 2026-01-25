@@ -15,16 +15,20 @@
       - 要件定義（ワイヤーフレーム）に忠実な再実装が必要。
 - **Scene 4 (New)**
   - 未実装のためデプロイ不可。次回最優先。
+- **[CRITICAL] Logic Bug (Oonige)**
+  - **Issue**: 大逃げ終盤ダイス (`-1d27`) が減算されず待機または加算扱いになっている。
+  - **Requirement Update**: `dice-1d27` ではなく `-dice1d27` を出力し、Parserでマイナス記号を検出して減算処理を行う仕様へ変更済み。
+
 
 ## PM Proposal
 ### Current Status
-- **Phase 2.5 (Scene 4 (Result & Judgment))**: **DONE**
-- **Phase 2.6 (Deployment)**: **TODO** (Current Task)
+- **Phase 2.6 (Deployment)**: **DONE**
+- **Phase 2.6.5 (Hotfix)**: **TODO** (Current Task - Oonige Bug)
 
 ### Action Plan
 1.  **Next Session (Engineer)**:
-    - **Deployment**: Setup GitHub Actions for GH Pages.
-    - **Verify**: Check build process locally.
+    - **Fix Oonige Logic**: Implement negative dice syntax support (`-dice`).
+    - **Verify**: Unit test for negative dice parsing & subtraction.
 ## User Feedback (2026-01-22)
 ### Scene 3 Reconstruction Result
 - **UI/UX Consistency**: Good (Theme switching works).
@@ -35,8 +39,9 @@
         - **Resolved**: Parser v2.0 (EmojiParser) implemented & verified.
 
 ### Project Status
-- **Phase 2.5 (Scene 4)**: ✅ **Completed**
-- **Next Phase**: **Phase 2.6: Deployment & Feedback**
+### Project Status
+- **Phase 2.6 (Deployment)**: ✅ **Completed**
+- **Next Phase**: **Phase 2.6.5: Hotfix (Oonige Logic)**
 
 ### Proposed Workflow
 1.  **Step 1: PM Planning**

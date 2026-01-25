@@ -67,15 +67,10 @@
     - [x] **Copy Function**: Generate final result text for BBS.
     - [x] **Image Export**: Implemented via off-screen rendering (fixed 800px).
 
-- [x] **2.6. Deployment & Feedback**
-    - [x] Setup GitHub Actions for GH Pages Deployment
-    - [x] **[MILESTONE] Release MVP for User Testing**
+- [ ] **2.6. Deployment & Feedback**
+    - [ ] Setup GitHub Actions for GH Pages Deployment
+    - [ ] **[MILESTONE] Release MVP for User Testing**
     - [ ] Collect feedback (Bug reports, UX issues)
-
-- [ ] **2.6.5. Hotfix (Oonige Critical Bug)**
-    - [ ] **Logic Fix**: Support `-diceXdY` syntax for negative dice (Oonige Strategy).
-    - [ ] **Verification**: Ensure final phase subtraction works correctly.
-
 
 ### Phase 3: Advanced Features Implementation (拡張機能実装)
 **Goal:** ユーザビリティの向上と、ハウスルール等の柔軟性確保。

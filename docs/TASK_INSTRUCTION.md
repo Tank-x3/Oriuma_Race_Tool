@@ -1,36 +1,27 @@
-# Task Instruction: Phase 2.6 Deployment
+# Task Instruction: Phase 2.6.5 Hotfix (Oonige Logic)
 
 **Target Role:** Engineer
-**Goal:** GitHub Pagesへのデプロイ環境を構築し、公開可能な状態にする。
+**Goal:** 大逃げ脚質の終盤ダイス (`-1d27`) が正しく減算処理されるようにParserおよびLogicを修正する。
 
 ## Context
-Phase 2.5 (MVP機能実装) が完了しました。
-ユーザーテストおよび一般公開に向けて、GitHub Pagesでのホスティングを開始します。
+ユーザー報告により、大逃げの終盤ダイスが減算されず、そのまま加算（または無視）されているバグが判明しました。
+`REQUIREMENTS.md` は既に修正済みであり、**「ツール側で `-dice` 表記を検出し、負の値として扱う」** 仕様となっています。
 
 ## Requirements (What to do)
 
-### 1. Build Verification
-*   ローカル環境で `npm run build` を実行し、エラーなくビルドが完了することを確認してください。
-*   生成された `dist/` ディレクトリの中身が正しそうか確認してください。
+### 1. Reproduction & Test Case (TDD)
+*   `src/core/parser/*.test.ts` に、大逃げのマイナスダイスケースを追加してください。
+    *   Input: `大逃げ -dice1d27=15 (15)` (掲示板の出力形式)
+    *   Expected: `value: -15` (負の値としてパースされること)
 
-### 2. GitHub Actions Setup
-*   `.github/workflows/deploy.yml` を作成してください。
-*   **Workflow仕様:**
-    *   Trigger: `main` (または `master`) ブランチへの Push
-    *   Jobs:
-        *   Checkout code
-        *   Setup Node.js
-        *   Install dependencies (`npm ci` or `npm install`)
-        *   Build (`npm run build`)
-        *   Deploy to GitHub Pages (推奨: `actions/deploy-pages` または `peaceiris/actions-gh-pages`)
-
-### 3. Vite Configuration
-*   `vite.config.ts` を確認し、GitHub Pages向けの `base` パス設定が必要か判断・適用してください。
-    *   *Note:* プロジェクトページ (`username.github.io/repo-name/`) の場合、`base: '/repo-name/'` の設定が必要です。
-    *   リポジトリ名が不明な場合は、一旦デフォルト(`/`)のままにするか、ユーザーに確認できるようなコメントを残してください。
-    *   必要な場合、`.nojekyll` ファイルの生成などがビルドプロセスに含まれているか（またはDeploy Actionが処理するか）も考慮してください。
+### 2. Logic Fix
+*   **Parser Logic (`StandardParser` / `EmojiParser`):**
+    *   正規表現または解析ロジックを修正し、`dice` の直前にある `-` (マイナス記号) を認識できるようにしてください。
+    *   掲示板によっては `dice-1d27=` や `-dice1d27=` のように表記揺れがある可能性がありますが、**`REQUIREMENTS.md` の定義通り `-dice` を正**として扱ってください。
+    *   解析した数値に `-1` を掛けて、正しく負の値として `DiceResult` を生成してください。
+*   **Validation:**
+    *   合計スコア計算において、単純な足し算 (`current + diceValue`) で減算が成立することを確認してください（`50 + (-15) = 35`）。
 
 ## Definition of Done
-*   [ ] ローカルビルドが成功する。
-*   [ ] `.github/workflows/deploy.yml` がコミットされている。
-*   [ ] (Optional) `vite.config.ts` が適切に設定されている。
+*   [ ] 追加したテストケース（Oonige Negative Dice）がPassする。
+*   [ ] 実際に `npm run dev` で起動し、Scene 3 で大逃げの終盤ダイスを入力してスコアが減ることを目視確認する。

@@ -1,69 +1,31 @@
-# Phase 2.6 Implementation Review
+# User Review Guide (Phase 2.6.5 Hotfix)
 
-## Launch Guide (起動・デプロイ手順)
-今回の実装により、**GitHubへのコード反映（Push）** をトリガーとして自動デプロイが行われるようになりました。
+大逃げ脚質の終盤ダイス（`-1d27`）が正しく減算されない不具合を修正しました。
 
-### 手順
-### 手順 (Step-by-Step)
-
-今回の変更を含め、これからの更新をGitHubに反映するための「具体的なコマンド手順」は以下の通りです。
-VS Codeの「ターミナル」を開き、順番にコピー＆ペーストして実行してください。
-
-#### 【重要】初めてGitを使う場合 (Step 0)
-もし画面に「`fatal: not a git repository`」などのエラーが出たり、これまでこのフォルダでGitを使ったことがない場合は、最初に以下のコマンドで「初期設定」を行ってください。
-※ `<Your-Repo-URL>` の部分は、あなたのGitHubリポジトリのURL（例: `https://github.com/user/repo.git`）に書き換えてください。
+## 起動手順
+通常通りアプリケーションを起動してください。
 
 ```bash
-git init
-git branch -M main
-git remote add origin <Your-Repo-URL>
+npm run dev
 ```
-*(既に設定済みの場合は「remote origin already exists」と出ますが、無視して進んでOKです)*
 
----
+## 確認項目 (UAC)
 
-#### 変更の反映手順 (Step 1〜3)
+### 1. 大逃げダイスの減算確認
+1.  **Scene 3 (Race)** に進みます。
+2.  以下の形式のテキストを掲示板からコピー＆ペーストし、正しく減算されるか確認してください。
+    
+    **ケースA: 標準形式**
+    *   入力: `サイレンススズカ -dice1d27=15 (15)`
+    *   期待値: ダイス値が **-15** となる。
 
-1.  **変更をステージングエリア（発送準備置き場）に追加する**
-    ```bash
-    git add .
-    ```
+    **ケースB: 88-ch形式（-dice）**
+    *   入力: `サイレンススズカ 15+🎲 -dice1d27=...`
+    *   期待値: ダイス値がマイナスとなる。
 
-2.  **変更をコミットする（メッセージ付きで保存する）**
-    ```bash
-    git commit -m "Update: デプロイ設定の追加"
-    ```
-    *   ※もし「who are you?」のようなエラーが出た場合は、画面の指示に従ってメールアドレスと名前を設定してください。
-
-3.  **GitHubへプッシュ（送信）する**
-    ```bash
-    git push origin main
-    ```
-    *   ※場合によっては `git push origin master` の可能性があります。エラーが出たら試してください。
-
-    **【トラブルシューティング】**
-    もし `! [rejected] ... (fetch first)` というエラーが出た場合、それは「GitHub上でREADMEなどを作成したため、履歴が食い違っている」ことが原因です。
-    その場合は、以下の「強制上書きコマンド」を実行して解決してください。
-    ```bash
-    git push -f origin main
-    ```
-    *(GitHub上の内容を、現在のパソコンの内容で上書きします)*
-
-4.  **デプロイ状況の確認**
-    GitHubのリポジトリページをブラウザで開き、「Actions」タブをクリックします。
-    `Deploy to GitHub Pages` という処理が動いていれば成功です。
-3.  **サイトの確認:**
-    ワークフローが緑色（Success）になったら、リポジトリの「Settings」>「Pages」に表示されているURLにアクセスし、最新版が反映されているか確認してください。
-    *   *Note:* 初回は `gh-pages` ブランチが作成されるまで少し時間がかかる場合があります。また、Settings > Pages の Source 設定が `Deploy from a branch` (Branch: `gh-pages`, Folder: `/`) になっていることを確認してください（通常は自動で提案されます）。
-
-## UAC Verification (動作確認結果)
-*   **Local Build:**
-    *   `npm run build` を実行し、エラーなく `dist/` ディレクトリが生成されることを確認しました。
-    *   `vite.config.ts` に `base: './'` を設定し、サブディレクトリ等でも動作するよう調整しました。
-*   **Workflow Configuration:**
-    *   `.github/workflows/deploy.yml` を作成しました。
-    *   構文チェック: 正常。
-    *   使用アクション: `peaceiris/actions-gh-pages@v3`
+    **ケースC: 88-ch形式（Fix-dice）**
+    *   入力: `③ ダイタクヘリオス　73-🎲 dice1d27= 23`
+    *   期待値: 73 - 23 = **50** となる（以前は96になっていた）。
 
 ## User Feedback
-(ユーザー記入欄: 何か問題や要望があればこちらに記入してください)
+(ここにフィードバックを記入してください)
