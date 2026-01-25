@@ -72,9 +72,9 @@
     - [x] **[MILESTONE] Release MVP for User Testing**
     - [ ] Collect feedback (Bug reports, UX issues)
 
-- [ ] **2.6.5. Hotfix (Oonige Critical Bug)**
-    - [ ] **Logic Fix**: Support `-diceXdY` syntax for negative dice (Oonige Strategy).
-    - [ ] **Verification**: Ensure final phase subtraction works correctly.
+- [x] **2.6.5. Hotfix (Oonige Critical Bug)**
+    - [x] **Logic Fix**: Support `-diceXdY` syntax for negative dice (Oonige Strategy).
+    - [x] **Verification**: Ensure final phase subtraction works correctly.
 
 
 ### Phase 3: Advanced Features Implementation (拡張機能実装)
