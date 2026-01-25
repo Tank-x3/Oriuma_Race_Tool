@@ -28,7 +28,17 @@ export const ResultScene = () => {
   };
 
   const handleBack = () => {
-    moveToJudgment();
+    // Check if we skipped Judgment Scene (No judgment needed)
+    // If so, go back to Race Scene directly to avoid loop.
+    const needsJudgment = RankingCalculator.detectJudgmentNeeds(participants).length > 0;
+
+    if (needsJudgment) {
+      moveToJudgment();
+    } else {
+      // Go to Race Scene (End Phase)
+      useRaceStore.getState().setCurrentPhase('End'); // Ensure phase is correct
+      useRaceStore.setState(s => ({ uiState: { ...s.uiState, scene: 'race' } }));
+    }
   };
 
   const handleReset = () => {

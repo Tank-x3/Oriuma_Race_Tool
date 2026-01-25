@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useRaceStore } from '../../store/useRaceStore';
-import { Dices, ClipboardCopy, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { Dices, ClipboardCopy, ArrowRight, CheckCircle2, ArrowLeft } from 'lucide-react';
 import { StandardParser } from '../../core/parser/standardParser';
 import { NotificationArea } from '../ui/NotificationArea';
 
@@ -13,11 +13,28 @@ const getCircleNumber = (num: number): string => {
 };
 
 export const GateScene: React.FC = () => {
-    const { participants, applyGateAssignments, startRace } = useRaceStore();
+    const { participants, applyGateAssignments, startRace, moveToSetup } = useRaceStore();
     const [inputText, setInputText] = useState('');
     const [parseErrors, setParseErrors] = useState<string[]>([]);
-    const [assignments, setAssignments] = useState<{ id: string; name: string; roll: number; gate: number }[] | null>(null);
     const [copiedSection, setCopiedSection] = useState<string | null>(null);
+
+    // Initialize assignments from store if available (Persistence)
+    const [assignments, setAssignments] = useState<{ id: string; name: string; roll: number; gate: number }[] | null>(() => {
+        // If at least one participant has a gate assigned, reconstruct the view
+        const hasGate = participants.some(p => p.gate !== null);
+        if (hasGate) {
+            return participants
+                .filter(p => p.gate !== null)
+                .map(p => ({
+                    id: p.id,
+                    name: p.name,
+                    roll: 0, // Roll is not persisted, set dummy
+                    gate: p.gate!
+                }))
+                .sort((a, b) => a.gate - b.gate);
+        }
+        return null;
+    });
 
     // [1] Entry Confirmation List
     const entryListText = useMemo(() => {
@@ -144,10 +161,20 @@ export const GateScene: React.FC = () => {
 
             {/* Header / Nav */}
             <div className="flex items-center justify-between">
+                <button
+                    onClick={moveToSetup}
+                    className="p-2 -ml-2 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 transition-colors flex items-center gap-1"
+                    title="設定画面に戻る"
+                >
+                    <ArrowLeft className="w-5 h-5" />
+                    <span className="text-sm font-medium">戻る</span>
+                </button>
+
                 <div className="bg-white/80 dark:bg-slate-800/50 backdrop-blur-sm border border-slate-200 dark:border-slate-700/50 rounded-full px-4 py-2 shadow-sm">
                     <span className="text-sm font-bold text-slate-500 dark:text-slate-400">現在フェーズ: </span>
                     <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400 ml-2">【 枠順抽選 】</span>
                 </div>
+                <div className="w-16"></div> {/* Spacer for center alignment */}
             </div>
 
             {/* [1] Confirm Entry */}
@@ -261,7 +288,7 @@ export const GateScene: React.FC = () => {
                                                 {a.name}
                                             </td>
                                             <td className="px-4 py-2 text-right font-mono text-slate-500 dark:text-slate-500">
-                                                {a.roll}
+                                                {a.roll === 0 ? '---' : a.roll}
                                             </td>
                                         </tr>
                                     ))}
@@ -272,7 +299,7 @@ export const GateScene: React.FC = () => {
                         <div className="flex gap-4">
                             <button
                                 onClick={() => {
-                                    const text = assignments.map(a => `${getCircleNumber(a.gate)} ${a.name} (出目: ${a.roll})`).join('\n');
+                                    const text = assignments.map(a => `${getCircleNumber(a.gate)} ${a.name} (出目: ${a.roll === 0 ? '---' : a.roll})`).join('\n');
                                     handleCopy(text, 'result');
                                 }}
                                 className={`flex-1 flex items-center justify-center gap-2 py-3 border rounded-lg font-bold transition-colors ${copiedSection === 'result'

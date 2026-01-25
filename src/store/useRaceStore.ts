@@ -22,6 +22,7 @@ interface RaceStoreState extends RaceState {
     setPaceResult: (face: number, label: string) => void;
     moveToJudgment: () => void;
     moveToResult: () => void;
+    moveToSetup: () => void;
     resetRace: () => void;
 }
 
@@ -151,6 +152,12 @@ export const useRaceStore = create<RaceStoreState>((set) => ({
         set((state) => ({
             uiState: { ...state.uiState, scene: 'result' },
             currentPhaseId: 'result_phase',
+        })),
+
+    moveToSetup: () =>
+        set((state) => ({
+            uiState: { ...state.uiState, scene: 'setup' },
+            currentPhaseId: 'setup',
         })),
 
     resetRace: () =>

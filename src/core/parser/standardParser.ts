@@ -157,9 +157,39 @@ export class StandardParser implements ParserStrategy {
 
             const fixValue = fixRaw ? parseInt(fixRaw, 10) : 0;
             let diceResult = 0;
+            let total = 0;
 
             if (parensRaw) {
-                diceResult = parseInt(parensRaw, 10);
+                // Checksum Validation Logic
+                const checkVal = parseInt(parensRaw, 10);
+
+                // Primary Source of Truth is rollRaw
+                let val = parseInt(rollRaw.trim(), 10);
+                if (isNaN(val)) {
+                    errors.push(`ダイス値を読み取れませんでした: "${rollRaw}"`);
+                    continue;
+                }
+
+                if (negativeSign) {
+                    val = -Math.abs(val);
+                }
+
+                diceResult = val;
+                const calculatedTotal = fixValue + diceResult;
+
+                // Checksum logic: Exact match OR (if negative dice) Absolute match
+                // Oonige: -15 vs (15) -> Allow
+                if (calculatedTotal !== checkVal) {
+                    if (negativeSign && Math.abs(calculatedTotal) === checkVal) {
+                        // Allowed: Absolute value notation for negative result
+                    } else {
+                        errors.push(`ダイス合計値が不正です (計算値: ${calculatedTotal}, 記載値: ${checkVal})`);
+                        // Still use calculated value? Or fail?
+                        // Requirement says "Error".
+                    }
+                }
+                total = calculatedTotal;
+
             } else {
                 const val = parseInt(rollRaw.trim(), 10);
                 if (!isNaN(val)) {
@@ -168,16 +198,12 @@ export class StandardParser implements ParserStrategy {
                     errors.push(`ダイス値を読み取れませんでした: "${rollRaw}"`);
                     continue;
                 }
-            }
 
-            // If negative sign was present (e.g. "-dice"), the diceResult should be subtracted.
-            // The diceResult parsed from text is usually positive (the roll value).
-            // Logic: if negativeSign is present, negate the result.
-            if (negativeSign) {
-                diceResult = -Math.abs(diceResult);
+                if (negativeSign) {
+                    diceResult = -Math.abs(diceResult);
+                }
+                total = fixValue + diceResult;
             }
-
-            const total = fixValue + diceResult;
 
             // Clean name: Remove "①", "②" etc.
             const cleanedName = nameRaw.replace(/^[①-⑳0-9\.]+\s*/, '').trim();
@@ -198,8 +224,9 @@ export class StandardParser implements ParserStrategy {
                 diceResult,
                 total,
                 fixValue,
-                validChecksum: true
+                validChecksum: true // We already pushed error if checksum failed
             });
+
         }
 
         return { results, errors };

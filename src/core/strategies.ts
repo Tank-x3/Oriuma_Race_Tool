@@ -67,3 +67,10 @@ export function getPaceLabel(face: number): string {
     if (face === 9) return '超ハイ';
     return '不明';
 }
+
+export function getStrategyDice(strategy: Strategy, phaseId: string): string {
+    if (phaseId === 'Start') return strategy.dice.start;
+    if (phaseId.startsWith('Mid')) return strategy.dice.mid;
+    if (phaseId === 'End') return strategy.dice.end;
+    return 'dice0d0'; // Fallback
+}

@@ -28,7 +28,8 @@ export const RaceScene: React.FC = () => {
         updateParticipant,
         resetRace,
         moveToJudgment,
-        moveToResult
+        moveToResult,
+        moveToGate // Added
     } = useRaceStore();
 
     // const [showHouseRule, setShowHouseRule] = useState(false);
@@ -36,12 +37,81 @@ export const RaceScene: React.FC = () => {
     // State for embedded error display
     const [phaseErrors, setPhaseErrors] = useState<string[]>([]);
 
+    // Scroll to top on phase change
+    React.useEffect(() => {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }, [currentPhaseId]);
+
+    // Scroll to top when errors occur (Auto-scroll to error message)
+    React.useEffect(() => {
+        if (phaseErrors.length > 0) {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+    }, [phaseErrors]);
+
     // Navigation Handlers
     const handleNext = () => {
         // Validation: Cannot proceed from Pace if not determined
         if (currentPhaseId === 'Pace' && !paceResult.face) {
             setPhaseErrors(['ペース判定が完了していません。ダイス結果を貼り付けて解析してください。']);
             return;
+        }
+
+        // Validation: Cannot proceed from Race Phases (Start/Mid/End) if not analyzed
+        if (currentPhaseId !== 'Pace') {
+            // 1. Consistency Check (Config Changes vs History)
+            const hasMismatch = participants.some(p => {
+                const history = p.history[currentPhaseId];
+                if (!history) return false; // Missing handled below
+
+                // Base Dice Check
+                const strategy = strategies.find(s => s.name === p.strategy);
+                if (strategy) {
+                    // Normalize: expected "-1d27" -> "1d27"
+                    // History diceStr usually stores the "XdY" part (without sign)
+                    let rawExp = '';
+                    if (currentPhaseId === 'Start') rawExp = strategy.dice.start;
+                    else if (currentPhaseId.startsWith('Mid')) rawExp = strategy.dice.mid;
+                    else if (currentPhaseId === 'End') rawExp = strategy.dice.end;
+
+                    if (rawExp) {
+                        const expClean = rawExp.replace('-', '');
+                        if (history.baseDice?.diceStr !== expClean) return true;
+                    }
+                }
+
+                // Unique Dice Check
+                const pPhases = p.uniqueSkill.phases;
+                let shouldHave = false;
+                if (pPhases.includes(currentPhaseId)) shouldHave = true;
+                else if (pPhases.includes(getPhaseLabel(currentPhaseId))) shouldHave = true;
+                else if (currentPhaseId.startsWith('Mid') && (pPhases.includes('Mid') || pPhases.includes('中盤'))) shouldHave = true;
+
+                const hasUnique = !!history.uniqueDice;
+                if (shouldHave !== hasUnique) return true;
+                if (shouldHave && hasUnique) {
+                    let expU = "";
+                    if (p.uniqueSkill.type === 'Stability') expU = "1d10";
+                    if (p.uniqueSkill.type === 'Gamble') expU = "1d20";
+                    if (p.uniqueSkill.type === 'Persistent') expU = "1d10";
+                    if (history.uniqueDice?.diceStr !== expU) return true;
+                }
+
+                return false;
+            });
+
+            if (hasMismatch) {
+                setPhaseErrors(['設定変更によりダイス形式が不一致となっている参加者がいます。修正分のみ再出力して振り直してください。']);
+                return;
+            }
+
+            // Check if at least one participant has history for this phase
+            // (Assuming batch analysis updates everyone or most)
+            const hasResult = participants.some(p => p.history[currentPhaseId]);
+            if (!hasResult) {
+                setPhaseErrors([`${getPhaseLabel(currentPhaseId)}の結果が集計されていません。ダイス結果を貼り付けて[解析実行]を押してください。`]);
+                return;
+            }
         }
 
         // Clear previous errors if proceeding
@@ -80,8 +150,12 @@ export const RaceScene: React.FC = () => {
     };
 
     const handleBack = () => {
-        // Warning if data might be lost? Or logic handles restore.
-        prevPhase();
+        if (isFirstPhase) {
+            // Back to Gate Scene
+            moveToGate();
+        } else {
+            prevPhase();
+        }
     };
 
     const handleReset = () => {
@@ -98,11 +172,11 @@ export const RaceScene: React.FC = () => {
                 <div className="flex items-center gap-4">
                     <button
                         onClick={handleBack}
-                        disabled={isFirstPhase}
-                        className="p-2 text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                        title="戻る"
+                        className="flex items-center gap-1 px-3 py-2 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition-colors rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
+                        title="前のフェーズ/シーンに戻って修正する"
                     >
-                        <ChevronLeft className="w-6 h-6" />
+                        <ChevronLeft className="w-5 h-5" />
+                        <span className="text-sm font-medium hidden sm:inline">内容修正へ</span>
                     </button>
 
                     <div>
@@ -123,10 +197,11 @@ export const RaceScene: React.FC = () => {
                 <div className="flex gap-2">
                     <button
                         onClick={handleReset}
-                        className="px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg flex items-center gap-2 transition-colors"
+                        className="px-3 py-2 text-xs text-slate-400 hover:text-red-600 dark:text-slate-500 dark:hover:text-red-400 transition-colors flex items-center gap-1 opacity-60 hover:opacity-100"
+                        title="最初からやり直す"
                     >
-                        <RotateCcw className="w-4 h-4" />
-                        やり直す
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">やり直す</span>
                     </button>
                 </div>
             </div>

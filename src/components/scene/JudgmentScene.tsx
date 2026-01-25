@@ -213,7 +213,7 @@ export const JudgmentScene = () => {
   };
 
   const handleBack = () => {
-    setCurrentPhase('phase_end');
+    setCurrentPhase('End');
     useRaceStore.setState(s => ({ uiState: { ...s.uiState, scene: 'race' } }));
   };
 

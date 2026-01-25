@@ -60,17 +60,77 @@ export const PhaseOutput: React.FC = () => {
         return `(${gate})`;
     };
 
+    // History/Validation Logic
+    const getCorrectionStatus = (p: typeof participants[0]) => {
+        const history = p.history[currentPhaseId];
+
+        // If missing completely, everything needs output
+        if (!history) return { base: true, unique: true, missing: true };
+
+        let needsBase = false;
+        let needsUnique = false;
+
+        // Base Dice Check
+        const expectedBaseStr = getDiceFormula(p.strategy);
+        const actualBaseStr = history.baseDice?.diceStr;
+
+        // Normalize: remove leading '-' (Oonige fix)
+        const expectedClean = expectedBaseStr.startsWith('-') ? expectedBaseStr.substring(1) : expectedBaseStr;
+
+        if (actualBaseStr !== expectedClean) {
+            needsBase = true;
+        }
+
+        // Check Unique Dice
+        const pPhases = p.uniqueSkill.phases;
+        let shouldHaveUnique = false;
+        if (pPhases.includes(currentPhaseId)) shouldHaveUnique = true;
+        else if (pPhases.includes(getPhaseLabel(currentPhaseId))) shouldHaveUnique = true;
+        else if (currentPhaseId.startsWith('Mid') && (pPhases.includes('Mid') || pPhases.includes('中盤'))) shouldHaveUnique = true;
+
+        const hasUnique = !!history.uniqueDice;
+
+        if (shouldHaveUnique !== hasUnique) {
+            needsUnique = true;
+        } else if (shouldHaveUnique && hasUnique) {
+            let expectedUnique = "";
+            if (p.uniqueSkill.type === 'Stability') expectedUnique = "1d10";
+            if (p.uniqueSkill.type === 'Gamble') expectedUnique = "1d20";
+            if (p.uniqueSkill.type === 'Persistent') expectedUnique = "1d10";
+
+            if (history.uniqueDice?.diceStr !== expectedUnique) {
+                needsUnique = true;
+            }
+        }
+
+        return { base: needsBase, unique: needsUnique, missing: false };
+    };
+
+    const needsCorrection = (p: typeof participants[0]) => {
+        const status = getCorrectionStatus(p);
+        return status.base || status.unique;
+    };
+
+    // Calculate count of items needing output/correction
+    // If everyone needs it (start of phase), count is max.
+    // We visually highlight this only if some are done but some need correction.
+    const correctionCount = sortedParticipants.filter(needsCorrection).length;
+
+    // Auto-toggle logic could be in useEffect, but simple default state is safer. just loading.
+    // User manual control is better.
+    const [filterCorrection, setFilterCorrection] = useState(false);
+
     // Re-generate text with correct symbols
     const displayText = (() => {
         if (currentPhaseId === 'Pace') {
+            // ... (Pace logic unchanged for now, usually single shot)
             if (paceResult.face !== null) {
                 return `【ペース判定】\nペース確定済み: ${paceResult.face} (${paceResult.label})`;
             }
 
             let paceText = `【ペース判定】\ndice1d9=\n`;
 
-            // Dynamic generation of pace table
-            // Groupings: 1, 2-3, 4-6, 7-8, 9
+            // Re-use logic from original file for groups generation
             const groups = [
                 { rolls: [1], label: 'ドスロー' },
                 { rolls: [2, 3], label: 'スロー' },
@@ -79,74 +139,28 @@ export const PhaseOutput: React.FC = () => {
                 { rolls: [9], label: '超ハイペース' }
             ];
 
-            // Helper to get modifier map for a roll using getPaceModifier
-            // We need to import getPaceModifier or replicate it. 
-            // PhaseOutput doesn't import it, let's assume standard logic or use strategy methods if available.
-            // Since strategies.ts handles it essentially via map, let's look at `strategies` prop.
-            // `strategies` contains custom strategies too.
-            // But `getPaceModifier` uses `PACE_MODIFIERS` constant which is imported in calculator?
-            // PhaseOutput imports useRaceStore, but `strategies` state has the array.
-
-            // IMPORTANT: "Each roll... scan strategy modifiers".
-            // Since we don't have easy access to `getPaceModifier` function here without importing:
-            // Let's import `PACE_MODIFIERS` from core or replicate map? 
-            // Better to rely on what's available. `PACE_MODIFIERS` is exported in core/strategies.
-            // We should modify the imports.
-
+            // (Standard Logic Reuse)
             groups.forEach(group => {
-                const sampleRoll = group.rolls[0]; // Logic is same for all in group usually
-
-                // Collect modifications
-
-
-                // We need to check modifier for each strategy
-                // Since `PACE_MODIFIERS` is static, how do we handle custom strategies?
-                // Custom strategies need to define their pace modifiers.
-                // Currently `strategies` in store has `paceModifiers: Record<number, number>`.
-                // So we check `s.paceModifiers[sampleRoll]`.
-
-                // Group by modifier value: "+5": ["Run", "Ahead"]
+                const sampleRoll = group.rolls[0];
                 const valMap = new Map<number, string[]>();
-
                 strategies.forEach(s => {
-                    // Check static map or strategy property
-                    // Standard strategies rely on the static map `PACE_MODIFIERS`.
-                    // Custom strategies rely on `s.paceModifiers`.
-
                     let val = 0;
-                    // Try s.paceModifiers first (Custom)
                     if (s.paceModifiers && s.paceModifiers[sampleRoll] !== undefined) {
                         val = s.paceModifiers[sampleRoll];
                     } else {
-                        // Try static map for standard names
-                        // We need the Look-up table.
-                        // Ideally we should import `getPaceModifier` or `PACE_MODIFIERS`.
-                        // For now, let's assume we can fetch it or hardcode the standard map here for display if import is hard?
-                        // Actually, let's just hardcode the standard table logic for now to meet immediate requirement,
-                        // merging with custom if possible.
-                        // Wait, previous file view showed `PACE_MODIFIERS` export.
-                        // I should update imports first? No, I can try to access if I update valid code.
-                        // I will add the imports in a separate 'replace' if needed, or simple add it to this block if I can reuse `strategies`.
-
-                        // Let's use the hardcoded standard logic for now to ensure we match the user requirement exactly,
-                        // since imports are not shown in this specific block view (imports are at top).
-
-                        // Standard Table Logic (Replicated for View)
-                        // 1: BigEscape+12, Escape+10, Ahead+5, Mid 0, Behind -5
-                        // ...
                         if (sampleRoll === 1) {
                             if (s.name === '大逃げ') val = 12;
                             else if (s.name === '逃げ') val = 10;
                             else if (s.name === '先行') val = 5;
                             else if (s.name === '差し') val = 0;
                             else if (s.name === '追込') val = -5;
-                        } else if (sampleRoll <= 3) { // 2,3
+                        } else if (sampleRoll <= 3) {
                             if (['大逃げ', '逃げ', '先行'].includes(s.name)) val = 5;
-                        } else if (sampleRoll <= 6) { // 4,5,6
+                        } else if (sampleRoll <= 6) {
                             val = 0;
-                        } else if (sampleRoll <= 8) { // 7,8
+                        } else if (sampleRoll <= 8) {
                             if (['差し', '追込'].includes(s.name)) val = 5;
-                        } else { // 9
+                        } else {
                             if (s.name === '大逃げ') val = -7;
                             else if (s.name === '逃げ') val = -5;
                             else if (s.name === '先行') val = 0;
@@ -154,7 +168,6 @@ export const PhaseOutput: React.FC = () => {
                             else if (s.name === '追込') val = 10;
                         }
                     }
-
                     if (val !== 0) {
                         const list = valMap.get(val) || [];
                         list.push(s.name);
@@ -162,11 +175,8 @@ export const PhaseOutput: React.FC = () => {
                     }
                 });
 
-                // Build string
                 const lineParts: string[] = [];
-                // Sort by value desc? Usually "+12, +10..."
                 const sortedVals = Array.from(valMap.keys()).sort((a, b) => b - a);
-
                 sortedVals.forEach(val => {
                     const names = valMap.get(val)?.join('・');
                     const sign = val > 0 ? '+' : '';
@@ -180,59 +190,62 @@ export const PhaseOutput: React.FC = () => {
                     paceText += `${rollStr},${group.label}\n${lineParts.join('、')}\n`;
                 }
             });
-
             return paceText;
         }
 
         let text = `【${getPhaseLabel(currentPhaseId)}ダイス】\n`;
+        if (filterCorrection) {
+            text += `※変更・修正が必要な対象のみ出力\n`;
+        }
+
         const uniqueTextLines: string[] = [];
 
-        // Map Japanese Phase names if stored as Japanese in Scene 1
-        // Or English. Assuming standard keys 'Start','Mid','End' used in logic
-        /* 
-           Ref: Scene 1 saves p.uniqueSkill.phases (Array check).
-        */
-
-
         sortedParticipants.forEach(p => {
+            const status = getCorrectionStatus(p);
+
+            // FILTER logic
+            // If filtering is ON, and this participant doesn't need correction, skip completely.
+            if (filterCorrection && !status.base && !status.unique) return;
+
             const gateSym = getGateSymbol(p.gate ?? 0);
             const base = getBaseValue(p);
             const dice = getDiceFormula(p.strategy);
 
-            let formula = "";
-            if (dice.startsWith('-')) {
-                const positiveDice = dice.substring(1);
-                formula = `${base}-dice${positiveDice}=`;
-            } else {
-                formula = `${base}+dice${dice}=`;
+            // Output Base Dice ONLY if:
+            // 1. Not filtering (Show All)
+            // 2. OR Filtering AND Base needs cleaning (Missing or Mismatch)
+            // Note: If "Missing" (new entry), status.missing is true, causing status.base=true usually.
+            if (!filterCorrection || status.base) {
+                let formula = "";
+                if (dice.startsWith('-')) {
+                    const positiveDice = dice.substring(1);
+                    formula = `${base}-dice${positiveDice}=`;
+                } else {
+                    formula = `${base}+dice${dice}=`;
+                }
+                text += `${gateSym} ${p.name}　${formula}\n`;
             }
-            text += `${gateSym} ${p.name}　${formula}\n`;
 
-            // Unique Check
-            // Current phase check
-            let isMatch = false;
+            // Output Unique Dice logic
+            // Check if Unique Logic applies (regardless of validation)
             const pPhases = p.uniqueSkill.phases;
-
-            // Check if current phase is in pPhases array.
-            // We need to handle potential translation mismatch.
-            // Try to match currentPhaseId OR logic mapped.
-
+            let isMatch = false;
             if (pPhases.includes(currentPhaseId)) isMatch = true;
             else if (pPhases.includes(getPhaseLabel(currentPhaseId))) isMatch = true;
-            // Specific Mid1/Mid2 check: if user selected 'Mid' (中盤), it applies to all Mid phases.
             else if (currentPhaseId.startsWith('Mid') && (pPhases.includes('Mid') || pPhases.includes('中盤'))) isMatch = true;
 
             if (isMatch) {
-                let uDice = "";
-                const uType = p.uniqueSkill.type;
-                // Map Type to Formula
-                // Types: 'Stability','Gamble','Persistent'
-                if (uType === 'Stability') uDice = `5+dice1d10=`;
-                if (uType === 'Gamble') uDice = `dice1d20=`;
-                if (uType === 'Persistent') uDice = `dice1d10=`;
+                // If filter is ON, only show if unique needs correction
+                if (!filterCorrection || status.unique) {
+                    let uDice = "";
+                    const uType = p.uniqueSkill.type;
+                    if (uType === 'Stability') uDice = `5+dice1d10=`;
+                    if (uType === 'Gamble') uDice = `dice1d20=`;
+                    if (uType === 'Persistent') uDice = `dice1d10=`;
 
-                if (uDice) {
-                    uniqueTextLines.push(`${gateSym} ${p.name}　${uDice}`);
+                    if (uDice) {
+                        uniqueTextLines.push(`${gateSym} ${p.name}　${uDice}`);
+                    }
                 }
             }
         });
@@ -258,19 +271,40 @@ export const PhaseOutput: React.FC = () => {
                 <div className="flex items-center gap-2 text-gray-900 dark:text-gray-100 font-bold">
                     <Dices className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
                     <h3>[1] 投稿用ダイス出力</h3>
-                </div>
-                <button
-                    onClick={handleCopy}
-                    className={clsx(
-                        "flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all",
-                        copied
-                            ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
-                            : "bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 border border-gray-200 dark:border-gray-600"
+                    {correctionCount > 0 && correctionCount < participants.length && (
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400 border border-orange-200 dark:border-orange-800">
+                            未完了/要修正: {correctionCount}
+                        </span>
                     )}
-                >
-                    {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                    {copied ? 'コピー完了' : 'クリップボードにコピー'}
-                </button>
+                </div>
+                <div className="flex items-center gap-2">
+                    {/* Toggle Correction Mode */}
+                    <button
+                        onClick={() => setFilterCorrection(!filterCorrection)}
+                        className={clsx(
+                            "px-3 py-1.5 rounded-lg text-xs font-bold transition-all border",
+                            filterCorrection
+                                ? "bg-orange-50 text-orange-600 border-orange-200 dark:bg-orange-900/20 dark:text-orange-400 dark:border-orange-800"
+                                : "bg-white text-gray-500 border-gray-200 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-600"
+                        )}
+                        title="未実施または設定変更により修正が必要なダイスのみを表示します"
+                    >
+                        {filterCorrection ? '修正分のみ表示中' : '修正分のみ表示'}
+                    </button>
+
+                    <button
+                        onClick={handleCopy}
+                        className={clsx(
+                            "flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all",
+                            copied
+                                ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                                : "bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 border border-gray-200 dark:border-gray-600"
+                        )}
+                    >
+                        {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                        {copied ? 'コピー完了' : 'クリップボードにコピー'}
+                    </button>
+                </div>
             </div>
 
             <div className="p-0">
