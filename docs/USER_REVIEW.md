@@ -41,6 +41,14 @@ git remote add origin <Your-Repo-URL>
     ```
     *   ※場合によっては `git push origin master` の可能性があります。エラーが出たら試してください。
 
+    **【トラブルシューティング】**
+    もし `! [rejected] ... (fetch first)` というエラーが出た場合、それは「GitHub上でREADMEなどを作成したため、履歴が食い違っている」ことが原因です。
+    その場合は、以下の「強制上書きコマンド」を実行して解決してください。
+    ```bash
+    git push -f origin main
+    ```
+    *(GitHub上の内容を、現在のパソコンの内容で上書きします)*
+
 4.  **デプロイ状況の確認**
     GitHubのリポジトリページをブラウザで開き、「Actions」タブをクリックします。
     `Deploy to GitHub Pages` という処理が動いていれば成功です。
