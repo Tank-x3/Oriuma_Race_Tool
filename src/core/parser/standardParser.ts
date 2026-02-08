@@ -83,9 +83,10 @@ export class StandardParser implements ParserStrategy {
             if (parensRaw) {
                 diceResult = parseInt(parensRaw, 10);
             } else {
-                const val = parseInt(rollRaw.trim(), 10);
-                if (!isNaN(val)) {
-                    diceResult = val;
+                // スペース区切りの複数ダイス出目に対応
+                const diceValues = rollRaw.trim().split(/\s+/).map(s => parseInt(s, 10)).filter(n => !isNaN(n));
+                if (diceValues.length > 0) {
+                    diceResult = diceValues.reduce((acc, cur) => acc + cur, 0);
                 } else {
                     // Fallback
                 }
@@ -161,13 +162,41 @@ export class StandardParser implements ParserStrategy {
 
             if (parensRaw) {
                 // Checksum Validation Logic
+                // (N) はダイス出目の総和を表す（fix + diceResult ではない）
                 const checkVal = parseInt(parensRaw, 10);
 
+                // diceStr から X (個数) と Y (面数) を抽出
+                const diceMatch = diceStr.match(/(\d*)d(\d+)/i);
+                const diceCount = diceMatch && diceMatch[1] ? parseInt(diceMatch[1], 10) : 1;
+                const diceFaces = diceMatch ? parseInt(diceMatch[2], 10) : 0;
+
                 // Primary Source of Truth is rollRaw
-                let val = parseInt(rollRaw.trim(), 10);
-                if (isNaN(val)) {
+                // スペース区切りの複数ダイス出目に対応 (例: "3 1 4" → 8)
+                const diceValues = rollRaw.trim().split(/\s+/).map(s => parseInt(s, 10)).filter(n => !isNaN(n));
+                if (diceValues.length === 0) {
                     errors.push(`ダイス値を読み取れませんでした: "${rollRaw}"`);
                     continue;
+                }
+
+                // 検証1: 出目の数がダイス個数(X)と一致するか
+                if (diceValues.length !== diceCount) {
+                    errors.push(`ダイスの個数が一致しません (期待: ${diceCount}個, 検出: ${diceValues.length}個)`);
+                }
+
+                // 検証2: 各出目がダイス面数(Y)を超えていないか
+                const invalidDice = diceValues.filter(v => v < 1 || v > diceFaces);
+                if (invalidDice.length > 0) {
+                    errors.push(`不正なダイス値があります (1~${diceFaces}の範囲外: ${invalidDice.join(', ')})`);
+                }
+
+                let val = diceValues.reduce((acc, cur) => acc + cur, 0);
+
+                // 検証3: ダイス出目の総和と(N)の値が一致するか
+                // 負のダイスの場合、(N)は絶対値で表記される
+                const absVal = Math.abs(val);
+                const absCheckVal = Math.abs(checkVal);
+                if (absVal !== absCheckVal) {
+                    errors.push(`ダイス合計値が不正です (計算値: ${val}, 記載値: ${checkVal})`);
                 }
 
                 if (negativeSign) {
@@ -175,29 +204,18 @@ export class StandardParser implements ParserStrategy {
                 }
 
                 diceResult = val;
-                const calculatedTotal = fixValue + diceResult;
+                total = fixValue + diceResult;
 
-                // Checksum logic: Exact match OR (if negative dice) Absolute match
-                // Oonige: -15 vs (15) -> Allow
-                if (calculatedTotal !== checkVal) {
-                    if (negativeSign && Math.abs(calculatedTotal) === checkVal) {
-                        // Allowed: Absolute value notation for negative result
-                    } else {
-                        errors.push(`ダイス合計値が不正です (計算値: ${calculatedTotal}, 記載値: ${checkVal})`);
-                        // Still use calculated value? Or fail?
-                        // Requirement says "Error".
-                    }
-                }
-                total = calculatedTotal;
 
             } else {
-                const val = parseInt(rollRaw.trim(), 10);
-                if (!isNaN(val)) {
-                    diceResult = val;
-                } else {
+                // スペース区切りの複数ダイス出目に対応
+                const diceValues = rollRaw.trim().split(/\s+/).map(s => parseInt(s, 10)).filter(n => !isNaN(n));
+                if (diceValues.length === 0) {
                     errors.push(`ダイス値を読み取れませんでした: "${rollRaw}"`);
                     continue;
                 }
+                const val = diceValues.reduce((acc, cur) => acc + cur, 0);
+                diceResult = val;
 
                 if (negativeSign) {
                     diceResult = -Math.abs(diceResult);

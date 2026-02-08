@@ -1,129 +1,134 @@
-# Project Roadmap: Ori-Uma Race Aggregation Tool
+# プロジェクトロードマップ: オリウマレース集計ツール
 
-## Overview
+## 概要
 本ロードマップは、オリウマレース集計ツールの開発フェーズとマイルストーンを定義する。
 開発は「Core Logic First」および「MVP Prototype Verification」のアプローチを採用し、早期に実戦投入可能な状態を作ることを優先する。
 
-## Phases
+## フェーズ
 
-### Phase 1: Project Setup & Core Logic (基盤構築とロジック実装)
-**Goal:** 計算ロジックの完全性とテスト環境の確立。
+### Phase 1: プロジェクトセットアップ & コアロジック
+**ゴール:** 計算ロジックの完全性とテスト環境の確立。
 
-- [x] **1.1. Environment Setup**
-    - [x] Initialize Vite + React + TypeScript project
-    - [x] Configure Tailwind CSS
-    - [x] Setup Vitest (Unit Testing)
-    - [x] Directory Structure creation (`src/core`, `src/components`, etc.)
+- [x] **1.1. 環境構築**
+    - [x] Vite + React + TypeScript プロジェクト初期化
+    - [x] Tailwind CSS 設定
+    - [x] Vitest セットアップ（ユニットテスト）
+    - [x] ディレクトリ構成作成（`src/core`, `src/components` 等）
 
-- [x] **1.2. Domain Logic Implementation (TDD)**
-    - [x] `Dice` module (Random number generation & formatting)
-    - [x] `Calculator` module (Score calculation logic)
-    - [x] `Types` definition (Race, Umamusume, Skill, etc.)
-    - [x] `Validator` module (Input integrity check)
+- [x] **1.2. ドメインロジック実装 (TDD)**
+    - [x] `Dice` モジュール（乱数生成・フォーマット）
+    - [x] `Calculator` モジュール（スコア計算ロジック）
+    - [x] `Types` 定義（Race, Umamusume, Skill 等）
+    - [x] `Validator` モジュール（入力整合性チェック）
 
-- [x] **1.3. Parser Implementation**
-    - [x] Implement `ParserInterface`
-    - [x] Implement `StandardParser` (Basic rule text parsing)
-    - [x] Unit tests for Parser with real sample data
+- [x] **1.3. パーサー実装**
+    - [x] `ParserInterface` 実装
+    - [x] `StandardParser` 実装（基本ルールテキスト解析）
+    - [x] 実データを用いたパーサー単体テスト
 
-### Phase 2: MVP Prototype & Verification (MVPプロトタイプと実戦検証)
-**Goal:** 実際の掲示板入出力が動作し、デプロイしてユーザー検証を行える状態にする。
+### Phase 2: MVPプロトタイプ & 実戦検証
+**ゴール:** 実際の掲示板入出力が動作し、デプロイしてユーザー検証を行える状態にする。
 
-- [x] **2.1. UI Foundation**
-    - [x] Theme setup (Font, Color palette based on modern design)
-    - [x] Basic Layout (Responsive container)
-    - [x] Notification Area component (Strict adherence to Requirements)
+- [x] **2.1. UI基盤**
+    - [x] テーマ設定（フォント、モダンデザインに基づくカラーパレット）
+    - [x] 基本レイアウト（レスポンシブコンテナ）
+    - [x] 通知エリアコンポーネント（要件定義に厳密準拠）
 
-- [x] **2.2. Scene 1: Setup & Entry**
-    - [x] Race Config Form (Phase counts, Gate size)
-    - [x] Entry Form (Table Layout, Batch Input Generation)
-    - [x] Validation feedback integration
-    - [x] UX Improvements (Validation timing, scroll prevention, confirm dialogs)
+- [x] **2.2. Scene 1: レース設定 & エントリー**
+    - [x] レース設定フォーム（フェーズ数、枠数）
+    - [x] エントリーフォーム（テーブルレイアウト、一括入力生成）
+    - [x] バリデーションフィードバック統合
+    - [x] UX改善（バリデーションタイミング、スクロール抑制、確認ダイアログ）
 
-- [x] **2.3. Scene 2: Gate Lottery (枠順抽選)**
-    - [x] **[CRITICAL]** Gate Determination Logic (Die roll -> Sort by Value & Entry Order)
-    - [x] UI Refactor: Match strict Requirements (4 sections layout)
-    - [x] Entry List Display (Confirmation view)
-    - [x] Dice Output & Result Parsing (Gate determining phase)
-    - [x] Result List (Gate Number assignment)
+- [x] **2.3. Scene 2: 枠順抽選**
+    - [x] **[重要]** 枠順決定ロジック（ダイス振り → 値・エントリー順でソート）
+    - [x] UIリファクタ: 要件定義に厳密準拠（4セクションレイアウト）
+    - [x] エントリーリスト表示（確認ビュー）
+    - [x] ダイス出力 & 結果解析（枠順決定フェーズ）
+    - [x] 結果リスト（枠番割り当て）
 
-- [x] **2.3.5. Corrections & Polish (修正と改善)**
-    - [x] **Scene 1:** Fix mid-phase reduction logic (Force reset to null)
-    - [x] **Scene 2:** Fix UI text & Dice format (Full-width space)
-    - [x] **Parser:** Add 88-ch support
+- [x] **2.3.5. 修正と改善**
+    - [x] **Scene 1:** 中盤フェーズ削減ロジック修正（nullへの強制リセット）
+    - [x] **Scene 2:** UIテキスト & ダイスフォーマット修正（全角スペース）
+    - [x] **パーサー:** 88-ch対応追加
 
-- [x] **2.4. Scene 3: Race Execution (レース進行)**
-    - [x] **UI Structure & Theme**: ✅ Rebuilt with consistency.
-    - [x] **Core Logic**: ✅ Phase progression implemented.
-    - [x] **[CRITICAL] Parser Logic Update (v2.0)**:
-        - [x] **EmojiParser**: Implement stateful parser for 88-ch (Multi-line).
-        - [x] **Factory Update**: Switch parser based on `🎲` emoji.
-    - [x] **UI Polish**: Fix Error display (Embedded) & Text colors.
-    - [x] **[Verification]** Verify with 88-ch real data.
+- [x] **2.4. Scene 3: レース進行**
+    - [x] **UI構造 & テーマ**: ✅ 一貫性を持って再構築済み
+    - [x] **コアロジック**: ✅ フェーズ進行実装済み
+    - [x] **[重要] パーサーロジック更新 (v2.0)**:
+        - [x] **EmojiParser**: 88-ch用ステートフルパーサー実装（複数行対応）
+        - [x] **ファクトリ更新**: `🎲` 絵文字に基づくパーサー切り替え
+    - [x] **UIポリッシュ**: エラー表示修正（埋め込み式）& テキスト色
+    - [x] **[検証]** 88-ch実データでの検証
 
-- [x] **2.5. Scene 4: Race Result & Judgment (結果判定)**
-    - [x] **Core Logic**: Implement `RankingCalculator` (Score sorting & Tie-breaking).
-    - [x] **UI Implementation**: Result Table with highlighting (1st/2nd/3rd).
-    - [x] **Copy Function**: Generate final result text for BBS.
-    - [x] **Image Export**: Implemented via off-screen rendering (fixed 800px).
+- [x] **2.5. Scene 4: 結果判定**
+    - [x] **コアロジック**: `RankingCalculator` 実装（スコアソート & 同着処理）
+    - [x] **UI実装**: 結果テーブル（1/2/3位ハイライト）
+    - [x] **コピー機能**: 掲示板用最終結果テキスト生成
+    - [x] **画像出力**: オフスクリーンレンダリングによる実装（固定800px幅）
 
-- [x] **2.6. Deployment & Feedback**
-    - [x] Setup GitHub Actions for GH Pages Deployment
-    - [x] **[MILESTONE] Release MVP for User Testing**
-    - [ ] Collect feedback (Bug reports, UX issues)
+- [x] **2.6. デプロイ & フィードバック**
+    - [x] GitHub Actions によるGH Pagesデプロイ設定
+    - [x] **[マイルストーン] MVP ユーザーテスト用リリース**
+    - [ ] フィードバック収集（バグ報告、UXの問題）
 
-- [x] **2.6.5. Hotfix (Oonige Critical Bug)**
-    - [x] **Logic Fix**: Support `-diceXdY` syntax for negative dice (Oonige Strategy).
-    - [x] **Verification**: Ensure final phase subtraction works correctly.
+- [x] **2.6.5. Hotfix: 大逃げ重大バグ**
+    - [x] **ロジック修正**: 負のダイス構文 `-diceXdY` 対応（大逃げ脚質）
+    - [x] **検証**: 終盤フェーズの減算処理が正しく動作することを確認
 
+- [x] **2.6.6. Hotfix: チェックサムロジックバグ (2026-02-08)**
+    - [x] **ロジック修正**: 複数ダイスのスペース区切り解析修正（`3 1 4` → 正しく合計）
+    - [x] **検証強化**: ダイス個数/範囲バリデーション追加
+    - [x] **検証**: 全49テストPass
+    - [x] **ドキュメント更新**: `REQUIREMENTS.md` 仕様明確化（Architect対応完了）
 
-### Phase 3: UX Polish & Core Refinement (フィードバック反映と基盤強化)
-**Goal:** Closed Betaのフィードバックに基づき、コア体験（特に修正フロー）の完成度を高める。
+### Phase 3: UXポリッシュ & コア改善
+**ゴール:** Closed Betaのフィードバックに基づき、コア体験（特に修正フロー）の完成度を高める。
 
-- [ ] **3.1. Robust Navigation (Modification & Persistence)**
-    - [ ] **Scene Backtracking:** Enable navigation Scene 3 -> Scene 2 -> Scene 1.
-    - [ ] **Data Persistence:** Ensure user input (names, strategies) is preserved during backtracking.
-    - [ ] **UX Polish:** "Next Phase" auto-scroll to top, Error feedback for missing analysis.
+- [x] **3.1. 堅牢なナビゲーション（修正 & データ永続化）**
+    - [x] **Scene間遷移**: Scene 3 → Scene 2 → Scene 1 のナビゲーション有効化
+    - [x] **データ永続化**: 遷移時のユーザー入力（名前、脚質）保持
+    - [x] **UXポリッシュ**: 「次のフェーズへ」で自動スクロール、解析未実行時のエラーフィードバック
 
-- [ ] **3.2. Visual & Usability Tweaks**
-    - [ ] Scene 4 Result Image enhancement (High-res).
-    - [ ] UI text color adjustments (Light mode).
+<!-- 3.2 Visual Tweaks は Phase 5 へ延期 -->
 
-### Phase 4: Advanced Features Implementation (拡張機能実装)
-**Goal:** ハウスルール等の柔軟性確保。
+### Phase 4: 拡張機能実装
+**ゴール:** ハウスルール等の柔軟性確保。
 
-- [ ] **4.1. Feedback Reflection**
-    - [ ] Fix critical bugs from MVP testing
-    - [ ] Adjust UI based on user feedback
+- [ ] **4.1. フィードバック反映**
+    - [ ] MVPテストからの重大バグ修正
+    - [ ] ユーザーフィードバックに基づくUI調整
 
-- [ ] **4.2. House Rules System**
-    - [ ] Rule Configuration Modal
-    - [ ] Custom Dice Config implementation
-    - [ ] JSON Import/Export for Rules
+- [ ] **4.2. ハウスルールシステム**
+    - [ ] ルール設定モーダル
+    - [ ] カスタムダイス設定実装
+    - [ ] ルールのJSON Import/Export
 
-- [ ] **4.3. Result Image Generation (Enhancement)**
-    - [ ] High-resolution export option
-    - [ ] Theme customization
+- [ ] **4.3. 結果画像生成（機能拡張）**
+    - [ ] 高解像度出力オプション
+    - [ ] テーマカスタマイズ
 
-- [ ] **4.4. Data Persistence Strategy**
-    - [ ] LocalStorage integration for Auto-save
-    - [ ] Session recovery logic
+- [ ] **4.4. データ永続化戦略**
+    - [ ] LocalStorage統合による自動保存
+    - [ ] セッション復元ロジック
 
-### Phase 5: Polish & Final Release (仕上げと正式リリース)
-**Goal:** プロダクトとしての品質向上と完成。
+### Phase 5: 仕上げ & 正式リリース
+**ゴール:** プロダクトとしての品質向上と完成。
 
-- [ ] **5.1. UX Polish**
-    - [ ] Micro-animations (Framer Motion etc.)
-    - [ ] Keyboard Navigation support
-    - [ ] Mobile view optimization
+- [ ] **5.1. UXポリッシュ**
+    - [ ] Scene 4 結果画像強化（高解像度）（Ph3から延期）
+    - [ ] UIテキスト色調整（ライトモード）（Ph3から延期）
+    - [ ] マイクロアニメーション（Framer Motion等）
+    - [ ] キーボードナビゲーション対応
+    - [ ] モバイルビュー最適化
 
-- [ ] **5.2. Final Check**
-    - [ ] Edge case testing
-    - [ ] Cross-browser testing
-    - [ ] Performance optimization
+- [ ] **5.2. 最終チェック**
+    - [ ] エッジケーステスト
+    - [ ] クロスブラウザテスト
+    - [ ] パフォーマンス最適化
 
-- [ ] **5.3. Documentation**
-    - [ ] User Manual (Usage Guide)
-    - [ ] Developer Documentation (Maintenance Guide)
+- [ ] **5.3. ドキュメント整備**
+    - [ ] ユーザーマニュアル（使い方ガイド）
+    - [ ] 開発者ドキュメント（保守ガイド）
 
-- [ ] **[MILESTONE] Final Release v1.0**
+- [ ] **[マイルストーン] 正式リリース v1.0**

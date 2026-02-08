@@ -1,0 +1,82 @@
+﻿
+[1m[46m RUN [49m[22m [36mv4.0.17 [39m[90mC:/u_temp/race[39m
+
+ [32m笨・[39m src/core/validator.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m笨・[39m tests/core/logic/RankingCalculator.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m笨・[39m src/core/dice.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 13[2mms[22m[39m
+ [32m笨・[39m src/core/parser/parserFactory.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m笨・[39m src/core/parser/oonige.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m笨・[39m src/core/calculator.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m笨・[39m src/core/parser/emojiParser.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [31m笶ｯ[39m src/core/parser/standardParser.test.ts [2m([22m[2m9 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 19[2mms[22m[39m
+     [32m笨・[39m parses standard format with fix value[32m 5[2mms[22m[39m
+     [32m笨・[39m parses format without fix value (Start/Unique)[32m 1[2mms[22m[39m
+     [32m笨・[39m detects checksum error[32m 0[2mms[22m[39m
+     [32m笨・[39m detects unknown participant[32m 0[2mms[22m[39m
+     [32m笨・[39m ignores invalid lines but reports explicit dice errors[32m 0[2mms[22m[39m
+     [32m笨・[39m parses with full-width space separator[32m 1[2mms[22m[39m
+[31m       [31mﾃ・[31m parses space-separated dice values with parens (dice3d5=3 1 4 (8))[39m[32m 8[2mms[22m[39m
+       [32m笨・[39m parses space-separated dice values without parens (dice3d6=5 3 2)[32m 1[2mms[22m[39m
+       [32m笨・[39m parses negative dice with space-separated values (-dice3d5=3 1 4 (8))[32m 0[2mms[22m[39m
+node.exe : 
+発生場所 行:1 文字:1
++ & "C:\Program Files\nodejs/node.exe" "
+C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecif 
+   ied: (:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCom 
+   mandError
+ 
+[31m竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ[39m[1m[41m Failed
+ Tests 1 [49m[22m[31m竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ[
+39m
+
+[41m[1m FAIL [22m[49m src/core/parse
+r/standardParser.test.ts[2m > [22mStan
+dardParser[2m > [22m隍・焚繝繧､繧ｹ縺ｮ繧ｹ繝壹・繧ｹ
+蛹ｺ蛻・ｊ蠖｢蠑・[2m > [22mparses space-separat
+ed dice values with parens (dice3d5=3 1 
+4 (8))
+[31m[1mAssertionError[22m: expected [
+ '繝繧､繧ｹ蜷郁ｨ亥､縺御ｸ肴ｭ｣縺ｧ縺・(險育ｮ怜､: 18, 險倩ｼ
+牙､: 8)' ] to have a length of +0 but go
+t 1[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 0[39m
+[31m+ 1[39m
+
+[36m [2m笶ｯ[22m src/core/parser/standa
+rdParser.test.ts:[2m87:35[22m[39m
+    [90m 85| [39m            const res
+ult = StandardParser.parse(text, multiDi
+cePartici窶ｦ
+    [90m 86| [39m
+    [90m 87| [39m            [34mexpe
+ct[39m(result[33m.[39merrors)[33m.[
+39m[34mtoHaveLength[39m([34m0[39m)[
+33m;[39m
+    [90m   | [39m                     
+             [31m^[39m
+    [90m 88| [39m            [34mexpe
+ct[39m(result[33m.[39mresults)[33m.
+[39m[34mtoHaveLength[39m([34m1[39m)
+[33m;[39m
+    [90m 89| [39m            [34mexpe
+ct[39m(result[33m.[39mresults[[34m0
+[39m])[33m.[39m[34mtoMatchObject[39m
+({
+
+[31m[2m竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡
+ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ[1/1]竡ｯ[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m7 passed[39m[22m[90m (8)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m48 passed[39m[22m[90m (49)[39m
+[2m   Start at [22m 15:17:02
+[2m   Duration [22m 528ms[2m (transform 593ms, setup 0ms, import 798ms, tests 71ms, environment 1ms)[22m
+

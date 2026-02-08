@@ -9,7 +9,9 @@ describe('StandardParser', () => {
     ];
 
     it('parses standard format with fix value', () => {
-        const text = '①Silence Suzuka 30+dice3d8=15 (45)';
+        // (N) はダイス出目の総和を表す（totalではない）
+        // dice3d8 = 3個の8面ダイス、出目: 5 5 5 = 15
+        const text = '①Silence Suzuka 30+dice3d8=5 5 5 (15)';
         const result = StandardParser.parse(text, participants);
 
         expect(result.errors).toHaveLength(0);
@@ -66,9 +68,63 @@ describe('StandardParser', () => {
     });
 
     it('parses with full-width space separator', () => {
-        const text = 'Silence Suzuka　30+dice3d8=15 (45)';
+        // (N) はダイス出目の総和を表す
+        // dice3d8 = 3個の8面ダイス、出目: 5 5 5 = 15
+        const text = 'Silence Suzuka　30+dice3d8=5 5 5 (15)';
         const result = StandardParser.parse(text, participants);
         expect(result.results).toHaveLength(1);
         expect(result.results[0].name).toBe('Silence Suzuka');
+    });
+
+    // 新規テストケース: 複数ダイスのスペース区切り形式
+    describe('複数ダイスのスペース区切り形式', () => {
+        const multiDiceParticipants: Umamusume[] = [
+            { id: '1', name: 'カンパネラ', strategy: '先行', entryIndex: 1, uniqueSkill: { type: 'Stability', phases: [] }, gate: 1, score: 0, history: {} },
+            { id: '2', name: 'ウマ娘A', strategy: '差し', entryIndex: 2, uniqueSkill: { type: 'Stability', phases: [] }, gate: 2, score: 0, history: {} },
+            { id: '3', name: 'Silence Suzuka', strategy: '大逃げ', entryIndex: 3, uniqueSkill: { type: 'Gamble', phases: [] }, gate: 3, score: 0, history: {} }
+        ];
+
+        it('parses space-separated dice values with parens (dice3d5=3 1 4 (8))', () => {
+            // (8) はダイス出目の総和 (3+1+4=8)
+            const text = '① カンパネラ　10+dice3d5=3 1 4 (8)';
+            const result = StandardParser.parse(text, multiDiceParticipants);
+
+            expect(result.errors).toHaveLength(0);
+            expect(result.results).toHaveLength(1);
+            expect(result.results[0]).toMatchObject({
+                name: 'カンパネラ',
+                fixValue: 10,
+                diceResult: 8,
+                total: 18
+            });
+        });
+
+        it('parses space-separated dice values without parens (dice3d6=5 3 2)', () => {
+            const text = 'ウマ娘A 20+dice3d6=5 3 2';
+            const result = StandardParser.parse(text, multiDiceParticipants);
+
+            expect(result.errors).toHaveLength(0);
+            expect(result.results).toHaveLength(1);
+            expect(result.results[0]).toMatchObject({
+                name: 'ウマ娘A',
+                fixValue: 20,
+                diceResult: 10,
+                total: 30
+            });
+        });
+
+        it('parses negative dice with space-separated values (-dice3d5=3 1 4)', () => {
+            // 負のダイスの場合、(8)は-8のダイス結果の絶対値を表す
+            const text = 'Silence Suzuka -dice3d5=3 1 4 (8)';
+            const result = StandardParser.parse(text, multiDiceParticipants);
+
+            expect(result.errors).toHaveLength(0);
+            expect(result.results).toHaveLength(1);
+            expect(result.results[0]).toMatchObject({
+                name: 'Silence Suzuka',
+                diceResult: -8,
+                total: -8
+            });
+        });
     });
 });

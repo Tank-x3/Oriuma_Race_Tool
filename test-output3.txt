@@ -1,0 +1,79 @@
+﻿
+[1m[46m RUN [49m[22m [36mv4.0.17 [39m[90mC:/u_temp/race[39m
+
+ [32m笨・[39m src/core/validator.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m笨・[39m tests/core/logic/RankingCalculator.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m笨・[39m src/core/parser/parserFactory.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m笨・[39m src/core/parser/oonige.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m笨・[39m src/core/dice.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 15[2mms[22m[39m
+ [32m笨・[39m src/core/parser/emojiParser.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m笨・[39m src/core/calculator.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [31m笶ｯ[39m src/core/parser/standardParser.test.ts [2m([22m[2m9 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 20[2mms[22m[39m
+[31m     [31mﾃ・[31m parses standard format with fix value[39m[32m 11[2mms[22m[39m
+     [32m笨・[39m parses format without fix value (Start/Unique)[32m 3[2mms[22m[39m
+     [32m笨・[39m detects checksum error[32m 1[2mms[22m[39m
+     [32m笨・[39m detects unknown participant[32m 0[2mms[22m[39m
+     [32m笨・[39m ignores invalid lines but reports explicit dice errors[32m 0[2mms[22m[39m
+     [32m笨・[39m parses with full-width space separator[32m 1[2mms[22m[39m
+       [32m笨・[39m parses space-separated dice values with parens (dice3d5=3 1 4 (8))[32m 1[2mms[22m[39m
+       [32m笨・[39m parses space-separated dice values without parens (dice3d6=5 3 2)[32m 1[2mms[22m[39m
+       [32m笨・[39m parses negative dice with space-separated values (-dice3d5=3 1 4)[32m 1[2mms[22m[39m
+node.exe : 
+発生場所 行:1 文字:1
++ & "C:\Program Files\nodejs/node.exe" "
+C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecif 
+   ied: (:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCom 
+   mandError
+ 
+[31m竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ[39m[1m[41m Failed
+ Tests 1 [49m[22m[31m竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ[
+39m
+
+[41m[1m FAIL [22m[49m src/core/parse
+r/standardParser.test.ts[2m > [22mStan
+dardParser[2m > [22mparses standard fo
+rmat with fix value
+[31m[1mAssertionError[22m: expected [
+ 窶ｦ(2) ] to have a length of +0 but got 
+2[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 0[39m
+[31m+ 2[39m
+
+[36m [2m笶ｯ[22m src/core/parser/standa
+rdParser.test.ts:[2m16:31[22m[39m
+    [90m 14| [39m        [35mconst[3
+9m result [33m=[39m [33mStandardParse
+r[39m[33m.[39m[34mparse[39m(text[3
+3m,[39m participants)[33m;[39m
+    [90m 15| [39m
+    [90m 16| [39m        [34mexpect[
+39m(result[33m.[39merrors)[33m.[39m
+[34mtoHaveLength[39m([34m0[39m)[33m;
+[39m
+    [90m   | [39m                     
+         [31m^[39m
+    [90m 17| [39m        [34mexpect[
+39m(result[33m.[39mresults)[33m.[39m
+[34mtoHaveLength[39m([34m1[39m)[33m
+;[39m
+    [90m 18| [39m        [34mexpect[
+39m(result[33m.[39mresults[[34m0[39m
+])[33m.[39m[34mtoMatchObject[39m({
+
+[31m[2m竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡
+ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ[1/1]竡ｯ[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m7 passed[39m[22m[90m (8)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m48 passed[39m[22m[90m (49)[39m
+[2m   Start at [22m 16:00:34
+[2m   Duration [22m 574ms[2m (transform 635ms, setup 0ms, import 859ms, tests 75ms, environment 2ms)[22m
+
