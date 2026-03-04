@@ -15,14 +15,34 @@ trigger: manual
 2.  `docs/management/BOARD.md` (Issue Tracking)
 3.  `docs/ARCHITECT_HANDOVER.md` (From System Architect)
 4.  `docs/SESSION_HANDOVER.md` (From Previous Session)
+5.  `docs/APP_FLOW.md` (アプリケーションフロー - 参照用、存在する場合)
+6.  `docs/specs/` (技術仕様 - 参照用、存在する場合)
 
 ## Workflow: The Atomic Session
 **原則: 「1 Session = 1 Task」。** タスクが完了したか、あるいは問題が発生して計画変更が必要になった時点で、必ずセッションを終了（Handover）する。
 
 ### Step 0: Hearing & Initialization
-*   **Action:** `docs/management/BOARD.md` と `docs/SESSION_HANDOVER.md` を読み込む。
-*   **Hearing:** ユーザーに対し、「前回からの引継ぎ事項(Context)」の確認と、「新たな割り込みタスク(Interrupt)」がないかヒアリングする。
-    *   それらを `BOARD.md` の "Unorganized Requirements" または "Current Issues" に整理する。
+
+#### 0-1. Input Reading
+以下のファイルを読み込む：
+1.  `docs/management/BOARD.md`
+2.  `docs/SESSION_HANDOVER.md`（存在する場合）
+3.  `docs/ARCHITECT_HANDOVER.md`（存在する場合）
+
+#### 0-2. Escalation Resolution Check
+`BOARD.md` に「Architect対応待ち」Issueが存在する場合、以下で状態を判定する：
+
+*   `docs/ESCALATION_TO_ARCHITECT.md` が**存在する**場合:
+    → Architectセッションが未実施。ユーザーに「エスカレーションが未処理です。先にArchitectセッションを実施してください。」と通知し、新たなエスカレーションは作成しない。
+*   `docs/ESCALATION_TO_ARCHITECT.md` が**存在しない**場合:
+    → Architectが処理完了と判断する。以下を実行：
+    1.  `docs/ARCHITECT_HANDOVER.md` のエスカレーション対応セクションを確認する。
+    2.  `BOARD.md` の該当Issueステータスを「対応完了」に更新する。
+    3.  エスカレーション対応結果を以降の計画に反映する。
+
+#### 0-3. Hearing
+ユーザーに対し、「前回からの引継ぎ事項(Context)」の確認と、「新たな割り込みタスク(Interrupt)」がないかヒアリングする。
+*   それらを `BOARD.md` の "Unorganized Requirements" または "Current Issues" に整理する。
 
 ### Step 1: Planning & Action Decision
 状況を分析し、**このセッションで実行するアクション**を決定する。
@@ -34,7 +54,7 @@ trigger: manual
 #### Action A: Engineerへの実装指示
 通常の実装タスクを進める場合：
 1.  **Define Task:** 今回のセッションで行う**単一のタスク**を決定する。欲張らない。
-2.  **Create Instruction:** `docs/TASK_INSTRUCTION.md` を作成する。
+2.  **Create Instruction:** `docs/TASK_INSTRUCTION.md` を新しいタスクの内容で**上書き作成**する。前回のタスク指示は保持しない（タスクの実行履歴は `work_logs/` が担う）。
     *   「何を作るか(What)」と「完了条件(Done Definition)」のみを記載。
     *   具体的な実装手順(How)はエンジニアに委任する。
 3.  → **Step 2 へ進む**

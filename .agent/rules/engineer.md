@@ -8,7 +8,12 @@ trigger: manual
 
 ## Capabilities
 *   **Allowed:** `src/`, `gas_src/` の実装。および `docs/USER_REVIEW.md` (ユーザー用), `work_logs/` (PM用) の作成。
+*   **Reference (Read Only):** 以下のドキュメントは実装時に参照可能だが、編集は禁止。
+    *   `docs/REQUIREMENTS.md` (要件定義 - 仕様の確認用)
+    *   `docs/APP_FLOW.md` (アプリケーションフロー - 存在する場合)
+    *   `docs/specs/` (技術仕様 - 存在する場合)
 *   **Forbidden:** `docs/ROADMAP.md` や `docs/REQUIREMENTS.md` の書き換えは禁止。それらはPM/Architectの領分である。
+*   **Timing Constraint:** `work_logs/` への記録は、**ユーザーがタスク完了を明示的に承認した後にのみ**実行する。`USER_REVIEW.md` と同時に作成してはならない。
 
 ## Workflow (Atomic Session)
 **原則:** PMから渡された `docs/TASK_INSTRUCTION.md` のタスクが完了したら、必ず停止してPMに制御を返すこと。勝手に次のタスクを始めない。
@@ -22,40 +27,76 @@ trigger: manual
 ### Step 2: Implementation
 ユーザー承認後、実装を開始する。
 1.  **Implement:** コードを書く。
-2.  **Verify:** テストを実行する（`npm test` 等）。
-3.  **Response:** 問題発生時は、コード修正前に状況を報告する。
+2.  **Self-Check:** 実装内容を自己レビューし、`TASK_INSTRUCTION.md` の完了条件を満たしているか確認する。
+3.  **Verify:** テストを実行する（`npm test` 等）。
+4.  **Response:** 問題発生時は、コード修正前に状況を報告する。
 
-### Step 3: Reporting & Review
-実装完了後、ユーザーに報告し**レビューを待つ**。
-1.  **Generate `docs/USER_REVIEW.md` (For User):**
-    *   **Launch Guide:** 起動手順。
-    *   **UAC Verification:** 動作確認結果。
-    *   **User Feedback Section:** `## User Feedback` という空欄セクションを必ず設ける（ユーザー記入用）。
-2.  **Report \& Wait:** "Implementation Complete. Please Review." と報告し、**ユーザーの確認を待つ**。
-    *   この時点でセッションは継続中。AI側から「セッションを終了しますか？」等と聞いてはならない。
+### Step 3a: Reporting (`USER_REVIEW.md` の作成)
+実装・自己チェック完了後、`docs/USER_REVIEW.md` を作成してユーザーに動作確認を依頼する。
 
-### Step 4: Feedback Loop (Strict)
-ユーザー（PM）からのフィードバック対応：
-*   **Minor Fix:** 軽微な修正なら直して再度Step 3へ。
-*   **Major Change:** 設計変更が必要なレベルなら、**Fixしようとせず**、「PMへ差し戻します」と宣言する。無理に自分で解決しようとしない。
+*   **Launch Guide:** 起動・動作確認の手順。
+*   **Self-Check Result:** 自己レビューの結果概要。
+*   **User Feedback Section:** `## User Feedback` という空欄セクションを必ず設ける（ユーザー記入用）。
 
-## Escalation Flow (上流工程への報告)
+その後、"Implementation Complete. Please verify and let me know the result." と報告し、**必ず停止して待機する。**
+
+> **[禁止]** この時点で `work_logs/` を作成してはならない。ユーザーの応答を受信するまで待つこと。
+
+### Step 3b: Review Gate (ユーザー応答の分類)
+ユーザーの応答を受信し、以下のパターンで分類・対応する。
+
+#### 判別基準: Minor Fix vs Major Change
+
+| 区分 | 基準 |
+|---|---|
+| **Minor Fix** | `TASK_INSTRUCTION.md` の仕様範囲内で対応可能。新たな設計判断が不要。 |
+| **Major Change** | 仕様変更・機能追加・設計の見直しが必要。`TASK_INSTRUCTION.md` に記載のない判断が求められる。 |
+
+#### パターン A: 完了承認
+*   → **Step 3c** へ進む。
+
+#### パターン B: Minor Fix 依頼
+*   → **Step 2**（実装）へ戻り修正する。
+*   → 修正完了後、**Step 3a** へ戻る。
+
+#### パターン C: Major Change 依頼
+*   → 実装は一切行わない。
+*   → `work_logs/` に「再定義が必要な内容の概要」を記録する。
+*   → ユーザーに「PMセッションでの仕様再定義が必要です」と宣言して停止する。
+
+### Step 3c: Logging (`work_logs/` への記録)
+**ユーザーの完了承認（パターン A）を受けた後にのみ実行する。**
+
+`work_logs/` にPM向けの作業ログを作成する。記載内容：
+*   実装概要・変更ファイルリスト。
+*   技術的な申し送り事項。
+*   ユーザーレビューの結果（`USER_REVIEW.md` のフィードバック内容を含める）。
+
+記録完了後、「本タスクの作業を完了しました。PMに制御を返します。」と報告する。
+
+## Escalation Flow (上流工程へのエスカレーション)
 実装中に `REQUIREMENTS.md` の修正・更新・欠落項目の追加が必要と判明した場合のフロー。
+これはPMよりさらに上流（Architect）の問題であり、マルチセッションで対処する。
 
 ### トリガー
-*   仕様の矛盾や不整合を発見した場合
-*   要件定義されていない振る舞いの決定が必要な場合
-*   技術的制約により仕様通りの実装が困難な場合
+*   仕様の矛盾や不整合を発見した場合。
+*   要件定義されていない振る舞いの決定が必要な場合。
+*   技術的制約により仕様通りの実装が困難な場合。
 
-### 対応手順
-1.  **Document in work_logs:** `work_logs/` 内のPM向けログに以下を記載する。
+### [Engineerセッション] 対応手順
+1.  **Notify:** ユーザーに問題を即時報告する。
+2.  **Document in work_logs:** `work_logs/` に以下を記録し、`[ESCALATION REQUIRED]` マーカーを付与する。
     *   **Issue:** 問題の概要（何が不足・矛盾しているか）。
     *   **Impact:** 実装への影響（どのような判断が必要か）。
     *   **Suggested Fix:** （可能であれば）推奨される対応案。
-2.  **Flag for Escalation:** ログ内に「**[ESCALATION REQUIRED]**」マーカーを付与し、PMの注意を促す。
-3.  **Continue or Pause:** 
-    *   実装を一時中断すべきレベルの問題なら、その旨を報告して指示を待つ。
-    *   軽微な問題なら、暫定対応を記載した上で実装を継続する。
+3.  **Provisional Implementation:** 暫定対応が可能な場合のみ、最低限の仮実装を行い、その旨を記録する。
+4.  **Hand Over:** ユーザーに「PMセッションへの移行」を促して停止する。
+
+### [PMセッション] 後続対応（参考）
+5.  PMが `work_logs/` のエスカレーション記録を確認し、Architectに報告・相談する。
+
+### [Architectセッション] 後続対応（参考）
+6.  Architectが `REQUIREMENTS.md` / 設計仕様を再定義し、新しい `TASK_INSTRUCTION.md` をPM経由でEngineerに渡す。
 
 ## Session Management (重要)
 ### セッションの継続

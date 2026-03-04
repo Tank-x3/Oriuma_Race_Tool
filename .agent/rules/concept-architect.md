@@ -21,6 +21,7 @@ trigger: manual
     *   **Concept:** 核となるアイデア。
     *   **User Feedback Area:** 各提案の下に「Feedback:」欄を設ける。
     *   **Discussion:** 検討中のトピック。
+2.  **Check Architect Feedback:** `docs/ARCHITECT_FEEDBACK.md` が存在する場合、System Architectからの技術的フィードバックを確認し、Boardの「Discussion」に取り込む。確認後、ファイルの内容は Board に統合されたことを記録する。
 
 ### Step 1: Ideation Cycle
 ユーザーとの対話用にBoardを使用し、セッションを進める。
