@@ -51,6 +51,18 @@ git push origin main --force
 
 ---
 
+## 仕組み（内部動作）
+
+pushすると `.github/workflows/deploy.yml` が自動実行され、以下の処理が行われます:
+
+1. GitHub上の仮想環境で `npm run build` を実行し、公開用ファイル（`dist/`）を生成
+2. 生成されたファイルを `gh-pages` ブランチにアップロード
+3. GitHub Pages が `gh-pages` ブランチの内容をWebサイトとして公開
+
+`main` ブランチは「ソースコード」、`gh-pages` ブランチは「公開用ファイル」として分離されています。
+
+---
+
 ## 公開URL
 デプロイ完了後、以下のURLでアクセス可能：
 - `https://[ユーザー名].github.io/[リポジトリ名]/`

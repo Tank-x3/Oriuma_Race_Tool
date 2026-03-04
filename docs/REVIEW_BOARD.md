@@ -195,8 +195,8 @@ docs/
 - [x] B14. `REQUIREMENTS.md` をスリム化 — インデックス+横断的制約のみに再構成（目標100-150行）
 
 ### Phase C: 新規ドキュメント作成
-- [ ] C1. `docs/APP_FLOW.md` 作成 — Scene間遷移・データ保持・修正フローの図解
-- [ ] C2. `management/DEPLOY_GUIDE.md` 更新 — DEPLOYMENT_GUIDE.mdの解説セクションを統合
+- [x] C1. `docs/APP_FLOW.md` 作成 — Scene間遷移・データ保持・修正フローの図解
+- [x] C2. `management/DEPLOY_GUIDE.md` 更新 — DEPLOYMENT_GUIDE.mdの解説セクションを統合
 
 ### Phase D: 整合性検証
 - [ ] D1. REQUIREMENTS.md のインデックスリンクが全て正しいことを確認
@@ -234,6 +234,14 @@ docs/
 - **完了タスク:** B14 完了。REQUIREMENTS.md を1067行→112行に再構成。ヘッダー+横断的制約(CC-1〜CC-6)+仕様インデックス(13 specファイル)+変更履歴の4セクション構成。**Phase B 全完了。**
 - **残タスク:** Phase C（C1: APP_FLOW.md作成、C2: DEPLOY_GUIDE.md統合）→ Phase D（整合性検証）
 - **次回アクション:** Phase C から着手
+
+### Session 4 (2026-03-04)
+- **実施内容:** Phase C（新規ドキュメント作成）C1, C2
+- **完了タスク:** Phase C 全完了。
+    - C1: `docs/APP_FLOW.md` 新規作成（約180行）。Scene遷移フロー図・データモデル概要・Scene別データフロー・Parserコンテキスト対応表・修正フロー（戻り操作）を含む。
+    - C2: `management/DEPLOY_GUIDE.md` 更新。「仕組み（内部動作）」セクションを追加（+10行）。deploy.yml の処理フロー・gh-pagesブランチの役割を簡潔に記載。既存セクションは変更なし。
+- **残タスク:** Phase D（整合性検証: D1-D3）
+- **次回アクション:** Phase D から着手
 
 ---
 
