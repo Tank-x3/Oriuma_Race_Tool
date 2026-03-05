@@ -47,12 +47,14 @@ App.tsx
        │                            moveToResult()                ┌──────────────┐    │
        │                          ┌────────────────────────────── │  Scene 4-A   │    │
        │                          │                               │  JUDGMENT    │    │
-       │                          │                               │  判定割込    │    │
-       │                          ▼                               └──────────────┘    │
-       │                  ┌──────────────┐                                            │
+       │                          │    ┌── handleBack() ───────── │  判定割込    │    │
+       │                          │    │  Scene 3 (End) に戻る    └───────┬──────┘    │
+       │                          │    │                                  │            │
+       │                          ▼    ▼                  moveToJudgment()│            │
+       │                  ┌──────────────┐ ───────────────────────────────┘            │
        │   resetRace()    │  Scene 4-B   │ <──────────────────────────────────────────┘
-       └───────────────── │   RESULT     │              moveToResult()
-                          │  最終結果    │
+       └───────────────── │   RESULT     │ ─── handleBack(判定なし) ──> Scene 3 (End)
+          (新規レース)     │  最終結果    │
                           └──────────────┘
 ```
 
@@ -82,7 +84,10 @@ midPhaseCount = 4:  Start → Pace → Mid1 → Mid2 → Mid3 → Mid4 → End
 | Scene 3 内 | 前フェーズ | `prevPhase()` | 「戻る」ボタン（任意） |
 | Scene 3 (End) | Scene 4-A | `moveToJudgment()` | `detectJudgmentNeeds()` で判定対象あり |
 | Scene 3 (End) | Scene 4-B | `moveToResult()` | `detectJudgmentNeeds()` で判定対象なし |
+| Scene 4-A | Scene 3 (End) | `setCurrentPhase('End')` + scene変更 | 「戻る」ボタン（終盤フェーズに復帰） |
 | Scene 4-A | Scene 4-B | `moveToResult()` | 判定ダイス入力完了 |
+| Scene 4-B | Scene 4-A | `moveToJudgment()` | 「戻る」ボタン（判定対象あり時） |
+| Scene 4-B | Scene 3 (End) | `setCurrentPhase('End')` + scene変更 | 「戻る」ボタン（判定対象なし時） |
 | Scene 4-B | Scene 1 | `resetRace()` | 「新規レース」ボタン |
 
 ---
@@ -199,6 +204,9 @@ midPhaseCount = 4:  Start → Pace → Mid1 → Mid2 → Mid3 → Mid4 → End
 |---------|-----------|-----------|
 | Scene 2 → Scene 1 | `moveToSetup()` | participants のエントリー情報は保持。gate は Scene 2 で再確定。 |
 | Scene 3 → Scene 2 | `moveToGate()` | エントリー誤り発覚時に使用。participants・history は保持。Scene 2 で枠順を再抽選。 |
+| Scene 4-A → Scene 3 (End) | `setCurrentPhase('End')` + scene='race' | 終盤フェーズに復帰。判定ダイス入力前のスコア確認・修正用。 |
+| Scene 4-B → Scene 4-A | `moveToJudgment()` | 判定対象が存在する場合の戻り先。判定ダイスの再入力が可能。 |
+| Scene 4-B → Scene 3 (End) | `setCurrentPhase('End')` + scene='race' | 判定対象が存在しない場合の戻り先。End フェーズに直接復帰。 |
 | Scene 4-B → Scene 1 | `resetRace()` | participants・paceResult・config.fullGateSize を全クリア。midPhaseCount は保持。 |
 
 ### Scene 3 内のフェーズ戻り
