@@ -129,6 +129,63 @@ describe('EmojiParser (88-ch Support)', () => {
         expect(result.results[0].name).toBe('ウマ娘A');
     });
 
+    it('should parse multi-line subtraction correctly (Critical Fix)', () => {
+        const input = `
+            ウマ娘A 73-🎲 dice3d6=
+            1回目: 5
+            2回目: 5
+            3回目: 5
+            合計: 15
+        `;
+        const result = parser.parse(input, participants, 'RACE');
+
+        expect(result.errors).toHaveLength(0);
+        expect(result.results).toHaveLength(1);
+        expect(result.results[0]).toMatchObject({
+            name: 'ウマ娘A',
+            diceStr: '3d6',
+            diceResult: -15,
+            fixValue: 73,
+            total: 58
+        });
+    });
+
+    it('should parse multi-line addition correctly (regression)', () => {
+        const input = `
+            ウマ娘A 15+🎲 dice3d6=
+            1回目: 6
+            2回目: 6
+            3回目: 6
+            合計: 18
+        `;
+        const result = parser.parse(input, participants, 'RACE');
+
+        expect(result.errors).toHaveLength(0);
+        expect(result.results).toHaveLength(1);
+        expect(result.results[0]).toMatchObject({
+            name: 'ウマ娘A',
+            diceStr: '3d6',
+            diceResult: 18,
+            fixValue: 15,
+            total: 33
+        });
+    });
+
+    it('should parse single-line subtraction correctly (regression)', () => {
+        const input = `ウマ娘A 73-🎲 dice1d12=7`;
+        const result = parser.parse(input, participants, 'RACE');
+
+        expect(result.errors).toHaveLength(0);
+        expect(result.results).toHaveLength(1);
+        expect(result.results[0]).toMatchObject({
+            name: 'ウマ娘A',
+            diceStr: '1d12',
+            diceResult: -7,
+            fixValue: 73,
+            total: 66
+        });
+    });
+
     it('should report correct errors for missing total line', () => {
         const input = `
             ウマ娘A 15+🎲 dice3d6=

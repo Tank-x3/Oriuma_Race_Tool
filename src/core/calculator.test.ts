@@ -84,6 +84,99 @@ describe('Calculator', () => {
         expect(score).toBe(18);
     });
 
+    describe('Unique Skill phase restriction', () => {
+        it('adds uniqueDice when phase matches (phases: ["Start"], phase: Start)', () => {
+            const startDice = { diceStr: '3d5', values: [3, 3, 3], sum: 9 };
+            const uniqueDice = { diceStr: '1d10', values: [8], sum: 8 };
+
+            const uma: Umamusume = {
+                ...mockUma,
+                uniqueSkill: { type: 'Stability', phases: ['Start'] },
+                history: {
+                    'Start': { baseDice: startDice, uniqueDice: uniqueDice, computedScore: 0 }
+                }
+            };
+
+            const score = Calculator.calculateTotalScore(uma, DEFAULT_STRATEGIES, null);
+            // Fix 10 + Dice 9 + Unique (5 + 8) = 32
+            expect(score).toBe(32);
+        });
+
+        it('does NOT add uniqueDice when phase does not match (prevents double counting)', () => {
+            // phases: ['Mid1'] だが Mid2 に uniqueDice が残存しているケース
+            const startDice = { diceStr: '3d5', values: [3, 3, 3], sum: 9 };
+            const mid1Unique = { diceStr: '1d10', values: [7], sum: 7 };
+            const mid2Unique = { diceStr: '1d10', values: [6], sum: 6 };
+
+            const uma: Umamusume = {
+                ...mockUma,
+                uniqueSkill: { type: 'Stability', phases: ['Mid1'] },
+                history: {
+                    'Start': { baseDice: startDice, computedScore: 0 },
+                    'Mid1': { baseDice: { diceStr: '3d5', values: [2, 2, 2], sum: 6 }, uniqueDice: mid1Unique, computedScore: 0 },
+                    'Mid2': { baseDice: { diceStr: '3d5', values: [3, 3, 3], sum: 9 }, uniqueDice: mid2Unique, computedScore: 0 }
+                }
+            };
+
+            const score = Calculator.calculateTotalScore(uma, DEFAULT_STRATEGIES, null);
+            // Fix 10 + Start 9 + Mid1 (6 + Unique 5+7=12) + Mid2 (9のみ、uniqueは加算されない)
+            // = 10 + 9 + 6 + 12 + 9 = 46
+            expect(score).toBe(46);
+        });
+
+        it('does NOT add uniqueDice when phases is empty', () => {
+            const startDice = { diceStr: '3d5', values: [3, 3, 3], sum: 9 };
+            const uniqueDice = { diceStr: '1d10', values: [8], sum: 8 };
+
+            const uma: Umamusume = {
+                ...mockUma,
+                uniqueSkill: { type: 'Stability', phases: [] },
+                history: {
+                    'Start': { baseDice: startDice, uniqueDice: uniqueDice, computedScore: 0 }
+                }
+            };
+
+            const score = Calculator.calculateTotalScore(uma, DEFAULT_STRATEGIES, null);
+            // Fix 10 + Dice 9 = 19 (uniqueは加算されない)
+            expect(score).toBe(19);
+        });
+
+        it('respects phase restriction for Gamble type', () => {
+            const startDice = { diceStr: '3d5', values: [3, 3, 3], sum: 9 };
+            const uniqueDice = { diceStr: '1d20', values: [15], sum: 15 };
+
+            const uma: Umamusume = {
+                ...mockUma,
+                uniqueSkill: { type: 'Gamble', phases: ['Mid1'] },
+                history: {
+                    'Start': { baseDice: startDice, uniqueDice: uniqueDice, computedScore: 0 }
+                }
+            };
+
+            const score = Calculator.calculateTotalScore(uma, DEFAULT_STRATEGIES, null);
+            // Fix 10 + Dice 9 = 19 (Start は phases に含まれないので unique 無視)
+            expect(score).toBe(19);
+        });
+
+        it('respects phase restriction for Persistent type', () => {
+            const midDice = { diceStr: '3d5', values: [4, 4, 4], sum: 12 };
+            const uniqueDice = { diceStr: '1d6', values: [5], sum: 5 };
+
+            const uma: Umamusume = {
+                ...mockUma,
+                uniqueSkill: { type: 'Persistent', phases: ['Mid2'] },
+                history: {
+                    'Start': { baseDice: { diceStr: '3d5', values: [3, 3, 3], sum: 9 }, computedScore: 0 },
+                    'Mid2': { baseDice: midDice, uniqueDice: uniqueDice, computedScore: 0 }
+                }
+            };
+
+            const score = Calculator.calculateTotalScore(uma, DEFAULT_STRATEGIES, null);
+            // Fix 10 + Start 9 + Mid2 (12 + 5) = 36 (Persistent は固定ボーナスなし)
+            expect(score).toBe(36);
+        });
+    });
+
     it('adds Unique Skill bonus if activated', () => {
         // 先行 (Fix 10)
         // Unique: Stability (5 + 1d10)

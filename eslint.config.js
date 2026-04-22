@@ -19,5 +19,15 @@ export default defineConfig([
       ecmaVersion: 2020,
       globals: globals.browser,
     },
+    rules: {
+      // 仕様上、テンプレートリテラルやコメント内で全角スペース(U+3000)を
+      // 区切り文字として意図的に使用するため、これらのコンテキストでは許可する
+      // (参照: docs/specs/ui/scene2-gate.md L78-81)
+      'no-irregular-whitespace': ['error', {
+        skipStrings: true,
+        skipTemplates: true,
+        skipComments: true,
+      }],
+    },
   },
 ])

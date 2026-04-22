@@ -38,17 +38,7 @@ export class Calculator {
                 total += startData.manualModifier;
             }
             // Unique skill in Start? Allowed if configured.
-            if (startData.uniqueDice) {
-                // Unique skill logic:
-                // Stability: 5 + 1d10. If uniqueDice is the 1d10 part, we need to add 5.
-                // But the 5 is "Unique Fix Value".
-                // The Requirement says: "5+dice1d10=". 5 is part of Unique Dice formula.
-                // It says "Base Value" (Strategy Fix) is separate.
-                // Unique Skill: "5 + 1d10" -> The result of this whole thing is added.
-                // If our DiceResult includes the 'sum' of just the dice, we need to know the fixed part.
-                // Actually, UniqueSkillType definition:
-                // Stability: 5 + 1d10
-                // We should add 5 if type is Stability.
+            if (startData.uniqueDice && participant.uniqueSkill.phases.includes('Start')) {
                 const skillType = participant.uniqueSkill.type;
                 if (skillType === 'Stability') total += 5;
                 total += startData.uniqueDice.sum;
@@ -71,8 +61,8 @@ export class Calculator {
             if (data.baseDice) {
                 total += data.baseDice.sum;
             }
-            // Add Unique
-            if (data.uniqueDice) {
+            // Add Unique (フェーズ制限チェック)
+            if (data.uniqueDice && participant.uniqueSkill.phases.includes(phaseId)) {
                 const skillType = participant.uniqueSkill.type;
                 if (skillType === 'Stability') total += 5;
                 total += data.uniqueDice.sum;

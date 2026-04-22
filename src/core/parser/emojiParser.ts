@@ -24,7 +24,7 @@ export class EmojiParser implements ParserStrategy {
             // Anchor: 'dice' followed by digits 'd' digits
             // Modified: Allow spaces around '=' (e.g., "dice1d12= 7")
             // Modified: Allow optional negative sign before dice (e.g., "-dice")
-            const diceMatch = trimmed.match(/(?:🎲)?\s*(\-)?dice(\d+d\d+)\s*=\s*(\d+)?/);
+            const diceMatch = trimmed.match(/(?:🎲)?\s*(-)?dice(\d+d\d+)\s*=\s*(\d+)?/);
 
             if (diceMatch) {
                 // If a previous block was pending without explicit total line, closes it?
@@ -55,8 +55,8 @@ export class EmojiParser implements ParserStrategy {
 
                 // Check if ends with "Fix+" or "Fix-"
                 // Modified: Capture operator (+ or -)
-                // Regex: (.*?)(\d+)([\+\-])\s*$
-                const fixMatch = preMatch.match(/^(.*?)(\d+)([\+\-])\s*$/);
+                // Regex: (.*?)(\d+)([+-])\s*$
+                const fixMatch = preMatch.match(/^(.*?)(\d+)([+-])\s*$/);
 
                 let nameRaw = preMatch;
                 let fixValue = 0;
@@ -74,30 +74,11 @@ export class EmojiParser implements ParserStrategy {
                     // But maybe no fix value.
                 }
 
-                // Apply negation if operator was minus
-                // Note: currentBlock might need this info if diceResult comes later (multi-line)
-                // But currentBlock structure doesn't store 'isSubtractive'.
-                // If diceResult is inline, apply now.
+                // 演算子がマイナスの場合、インライン結果を負数に変換
+                // 複数行の場合は currentBlock._isSubtractive で合計行処理時に適用
                 if (inlineResult !== undefined && !isFixPlus) {
                     inlineResult = -Math.abs(inlineResult);
                 }
-                // If diceResult comes LATER (multi-line), we need to store this state.
-                // However, ParsedLine interface doesn't have 'isSubtractive'.
-                // StandardParser just stores everything resolved.
-                // We should assume multi-line also respects this operator?
-                // "73-🎲 ... 合計: 23" -> Should be treated as -23?
-                // Yes, logic implies 73 - 23.
-                // We can flip fixValue to be negative? No, Fix is 73.
-                // We need to carry over this negation to the multi-line result.
-
-                // Let's negate inlineResult here if present.
-                // For multi-line, we might need a hack if we can't change ParsedLine.
-                // But wait, 'currentBlock' is Partial<ParsedLine>.
-                // We can add a custom property to currentBlock (as any) or just assume validChecksum will handle it?
-                // No, diceResult needs to be negative.
-                // Let's store 'isSubtractive' in currentBlock (cast as any for internal use).
-
-
 
 
                 // Clean name (remove ② circle numbers etc if requirement say so? 
@@ -133,11 +114,10 @@ export class EmojiParser implements ParserStrategy {
                     diceStr,
                     fixValue,
                     diceResult: inlineResult, // Might be undefined
-                    total: inlineResult ? (fixValue + inlineResult) : undefined, // If inline result exists, it is usually the ROLL result for older format?
-                    // Wait, StandardParser: "30+dice...=15 (45)" -> Result 15, Total 45.
-                    // 88-ch Header: "15+🎲 dice3d6=" (No value) OR "15+🎲 dice3d6=18" (Result? Total?)
-                    // Usage in test: "15+🎲 dice3d6=18" matched diceResult: 18, total: 33. So 18 is ROLL.
+                    total: inlineResult ? (fixValue + inlineResult) : undefined,
                 };
+                // 複数行フォーマットで減算フラグを保持（合計行処理時に参照）
+                (currentBlock as any)._isSubtractive = !isFixPlus;
 
                 // If inline result was present, it's a single line entry (Standard-ish mixed in)
                 if (inlineResult !== undefined) {
@@ -162,13 +142,15 @@ export class EmojiParser implements ParserStrategy {
                 // Step 2: Result Extraction (Multi-line Body)
                 // Look for "合計: N" (This is usually the DICE SUM, not the Final Score)
                 // Modified: Support negative total (e.g. "合計: -20")
-                const totalMatch = trimmed.match(/合計[:：]\s*(\-?\d+)/);
+                const totalMatch = trimmed.match(/合計[:：]\s*(-?\d+)/);
                 if (totalMatch) {
                     const diceSum = parseInt(totalMatch[1], 10);
-                    currentBlock.diceResult = diceSum;
+                    // 減算フラグに応じてdiceResultの符号を決定
+                    const isSubtractive = (currentBlock as any)._isSubtractive;
+                    currentBlock.diceResult = isSubtractive ? -Math.abs(diceSum) : diceSum;
 
-                    // Calculate Total Score (Fix + Dice)
-                    currentBlock.total = (currentBlock.fixValue || 0) + diceSum;
+                    // Calculate Total Score (Fix +/- Dice)
+                    currentBlock.total = (currentBlock.fixValue || 0) + currentBlock.diceResult;
 
                     // Checksum: We trust the bot's sum for now. 
                     // (To be stricter, we could sum the individual lines, but that's complex)

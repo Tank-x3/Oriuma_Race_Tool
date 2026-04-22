@@ -28,6 +28,30 @@ describe('Great Escape (Oonige) Negative Dice Logic', () => {
       expect(result.results[0].diceResult).toBe(-20);
       expect(result.results[0].total).toBe(-20);
     });
+
+    test('parses Fix-dice format (no emoji, 大逃げ 終盤): "① Twin Turbo　58-dice1d27=20(20)"', () => {
+      // 大逃げの終盤ダイス形式: Fix あり + マイナス演算子 + 絵文字なし
+      const input = '① Twin Turbo　58-dice1d27=20(20)';
+      const result = StandardParser.parse(input, participants, 'RACE');
+
+      expect(result.errors).toHaveLength(0);
+      expect(result.results).toHaveLength(1);
+      expect(result.results[0].fixValue).toBe(58);
+      expect(result.results[0].diceResult).toBe(-20);
+      expect(result.results[0].total).toBe(38);
+    });
+
+    test('parses Fix-dice format with space: "Twin Turbo 58-dice1d27=20"', () => {
+      // parensなしバージョンの回帰確認
+      const input = 'Twin Turbo 58-dice1d27=20';
+      const result = StandardParser.parse(input, participants, 'RACE');
+
+      expect(result.errors).toHaveLength(0);
+      expect(result.results).toHaveLength(1);
+      expect(result.results[0].fixValue).toBe(58);
+      expect(result.results[0].diceResult).toBe(-20);
+      expect(result.results[0].total).toBe(38);
+    });
   });
 
   describe('EmojiParser', () => {

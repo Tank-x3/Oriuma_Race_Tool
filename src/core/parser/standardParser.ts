@@ -66,7 +66,7 @@ export class StandardParser implements ParserStrategy {
             if (!cleanLine) continue;
 
             // Regex Updated (same as parseRace): supports Half/Full width Plus and Negative dice
-            const regex = /^(.*?)[\s\u3000🎲]+(?:(\d+)[\+\＋])?(\-)?dice(\d*d\d+?)\s*=\s*(.*?)(?:\s*\((\-?\d+)\))?$/i;
+            const regex = /^(.*?)[\s\u3000🎲]+(?:(\d+)([+＋\-]))?\s*(-)?\s*dice(\d*d\d+?)\s*=\s*(.*?)(?:\s*\((-?\d+)\))?$/iu;
             const match = cleanLine.match(regex);
 
             if (!match) {
@@ -76,8 +76,10 @@ export class StandardParser implements ParserStrategy {
                 continue;
             }
 
-            const [, nameRaw, fixRaw, negativeSign, diceStr, rollRaw, parensRaw] = match;
+            const [, nameRaw, fixRaw, fixOperator, negativeSign, diceStr, rollRaw, parensRaw] = match;
             const fixValue = fixRaw ? parseInt(fixRaw, 10) : 0;
+            // Fix演算子 '-' または dice前の '-' のどちらかが付いていたら減算扱い
+            const isSubtractive = fixOperator === '-' || Boolean(negativeSign);
             let diceResult = 0;
 
             if (parensRaw) {
@@ -92,12 +94,12 @@ export class StandardParser implements ParserStrategy {
                 }
             }
 
-            if (negativeSign) {
+            if (isSubtractive) {
                 diceResult = -Math.abs(diceResult);
             }
 
             const total = fixValue + diceResult;
-            const cleanedName = nameRaw.replace(/^[①-⑳0-9\.]+\s*/, '').trim();
+            const cleanedName = nameRaw.replace(/^[①-⑳0-9.]+\s*/u, '').trim();
 
             results.push({
                 originalText: cleanLine,
@@ -131,19 +133,19 @@ export class StandardParser implements ParserStrategy {
             // Regex Updated to handle:
             // 1. Full-width Plus "＋"
             // 2. Loose dice results "5 3 5 (13)"
-            // 3. Negative dice (Great Escape) "62＋-dice1d27=..." or "-dice..."
+            // 3. Negative dice (Great Escape) "62+-dice1d27=...", "-dice...", "58-dice..."
 
             // Regex Analysis:
             // ^(.*?)          -> Group 1: Name
             // [\s\u3000🎲]+   -> Separator
-            // (?:(\d+)[\+\＋])? -> Group 2: Fix (optional)
-            // (\-)?           -> Group 3: Negative sign (optional) before dice
-            // dice(\d*d\d+?)  -> Group 4: DiceStr
+            // (?:(\d+)([+＋\-]))? -> Group 2: Fix value, Group 3: Fix operator ('+' or '-')
+            // \s*(-)?         -> Group 4: Negative sign before 'dice' (Fixなし大逃げ用)
+            // dice(\d*d\d+?)  -> Group 5: DiceStr
             // \s*=\s*         -> Equals
-            // (.*?)           -> Group 5: Roll Result
-            // (?:\s*\((\-?\d+)\))?$ -> Group 6: Parens Value (Total/Sum)
+            // (.*?)           -> Group 6: Roll Result
+            // (?:\s*\((-?\d+)\))?$ -> Group 7: Parens Value (Sum of dice, absolute)
 
-            const regex = /^(.*?)[\s\u3000🎲]+(?:(\d+)[\+\＋])?(\-)?dice(\d*d\d+?)\s*=\s*(.*?)(?:\s*\((\-?\d+)\))?$/i;
+            const regex = /^(.*?)[\s\u3000🎲]+(?:(\d+)([+＋\-]))?\s*(-)?\s*dice(\d*d\d+?)\s*=\s*(.*?)(?:\s*\((-?\d+)\))?$/iu;
 
             const match = cleanLine.match(regex);
 
@@ -154,9 +156,11 @@ export class StandardParser implements ParserStrategy {
                 continue;
             }
 
-            const [, nameRaw, fixRaw, negativeSign, diceStr, rollRaw, parensRaw] = match;
+            const [, nameRaw, fixRaw, fixOperator, negativeSign, diceStr, rollRaw, parensRaw] = match;
 
             const fixValue = fixRaw ? parseInt(fixRaw, 10) : 0;
+            // Fix演算子 '-' または dice前の '-' のどちらかが付いていたら減算扱い
+            const isSubtractive = fixOperator === '-' || Boolean(negativeSign);
             let diceResult = 0;
             let total = 0;
 
@@ -199,7 +203,7 @@ export class StandardParser implements ParserStrategy {
                     errors.push(`ダイス合計値が不正です (計算値: ${val}, 記載値: ${checkVal})`);
                 }
 
-                if (negativeSign) {
+                if (isSubtractive) {
                     val = -Math.abs(val);
                 }
 
@@ -217,14 +221,14 @@ export class StandardParser implements ParserStrategy {
                 const val = diceValues.reduce((acc, cur) => acc + cur, 0);
                 diceResult = val;
 
-                if (negativeSign) {
+                if (isSubtractive) {
                     diceResult = -Math.abs(diceResult);
                 }
                 total = fixValue + diceResult;
             }
 
             // Clean name: Remove "①", "②" etc.
-            const cleanedName = nameRaw.replace(/^[①-⑳0-9\.]+\s*/, '').trim();
+            const cleanedName = nameRaw.replace(/^[①-⑳0-9.]+\s*/u, '').trim();
 
             // Find participant
             const participant = participants.find(p => p.name === cleanedName);
