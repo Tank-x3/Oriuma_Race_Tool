@@ -92,6 +92,22 @@
 
 <!-- 3.2 Visual Tweaks は Phase 5 へ延期 -->
 
+### Phase 3.5: コードレビュー対応 (2026-03)
+**ゴール:** コードレビュー（167件検出→93件ユニーク課題）で発見されたCritical/High課題の修正と仕様書整備。
+
+- [x] **3.5.1. Critical修正 — CR-1: calculator.ts 固有スキルフェーズ制限**
+    - [x] `calculateTotalScore()` に `phases.includes(phaseId)` チェック追加
+    - [x] テスト5件追加、全54テスト通過
+- [x] **3.5.2. Critical修正 — CR-2: emojiParser.ts 減算Fix**
+    - [x] 複数行フォーマットで `_isSubtractive` フラグ導入
+    - [x] 追加修正: StandardParser `Fix-dice` regex拡張（Round 2, 同一バグクラスタ）
+    - [x] テスト5件追加、全59テスト通過
+- [ ] **3.5.3. SA エスカレーション — 仕様書更新**
+    - [ ] CR-SA-1: tech-stack.md + parser-system.md 更新（約15件）
+    - [ ] CR-SA-2: UI仕様 + 双方調整(X) + validator.ts責務設計（約19件）
+- [ ] **3.5.4. High Engineer タスク（CR-3〜CR-8）**
+- [ ] **3.5.5. Medium/Low Engineer タスク（CR-9〜CR-37）**
+
 ### Phase 4: 拡張機能実装
 **ゴール:** ハウスルール等の柔軟性確保。
 

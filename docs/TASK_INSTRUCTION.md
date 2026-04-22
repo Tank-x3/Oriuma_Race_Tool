@@ -1,78 +1,88 @@
-# Task Instruction: ダイス解析バグ修正 (Critical)
+# Task Instruction: EmojiParser 減算Fix実装 (Critical)
 
 ## 1. Overview
-**優先度:** 🚨 **CRITICAL (最優先)**
-**作成日:** 2026-02-08
-**PM:** PMセッション
+**優先度:** CRITICAL (最優先)
+**作成日:** 2026-03-06
+**PM:** PMセッション #2
+**Issue:** CR-2（事項番号 #3-2-F）
 
 ### 要約
-レース中（Scene 3）のダイス結果解析で、複数ダイス（例: `dice3d5`）のスペース区切り出目を正しく合計できず、チェックサム検証がエラーになる致命的バグを修正する。
+`emojiParser.ts` の複数行フォーマット解析で、減算ケース（`73-🎲 dice3d6=`）の `isSubtractive` フラグが未実装。`合計:` 行処理時に `diceSum` が常に加算され、期待値 `73 - 15 = 58` が `73 + 15 = 88` と誤計算される。
 
 ---
 
 ## 2. Background & Problem
 
 ### 発生事象
+88-ch形式の複数行フォーマットで、Fix値からダイス結果を**減算**するケース:
+
 ```
-入力: ① カンパネラ　10+dice3d5=3 1 4 (8)
-エラー: ダイス合計値が不正です (計算値: 13, 記載値: 8)
+73-🎲 dice3d6=
+1 2 3
+合計: 15
 ```
+
+- **期待結果:** `73 - 15 = 58`
+- **現在の結果:** `73 + 15 = 88`（加算で誤計算）
 
 ### 根本原因
-`src/core/parser/standardParser.ts` の `parseRace` メソッド（L167付近）において：
-```typescript
-let val = parseInt(rollRaw.trim(), 10);
-```
-- `rollRaw` = `"3 1 4 "` (スペース区切りのダイス出目)
-- `parseInt("3 1 4", 10)` → `3` (最初の数値のみ)
-- 正しい計算: `3 + 1 + 4 = 8`
+`emojiParser.ts` の以下の流れで減算情報が失われる:
+
+1. **ヘッダー解析（L65-71）:** `fixMatch` で演算子 `+` or `-` を検出し、`isFixPlus = false` を設定 → ここまでは正しい
+2. **単一行の場合（L81-83）:** `inlineResult` を負数に変換 → 正しく動作
+3. **複数行の場合（L84-98）:** コード内コメントで「`isSubtractive` を保存する必要がある」と明記されているが**未実装**
+4. **`合計:` 行処理（L167-171）:** `currentBlock.total = (currentBlock.fixValue || 0) + diceSum` → **常に加算**
 
 ### 影響範囲
-- **Scene 3 全フェーズ** (序盤・中盤・終盤)
-- **全ての複数ダイス** (`XdY` で `X > 1` の場合)
+- `src/core/parser/emojiParser.ts` — 複数行フォーマットの減算ケース全般
+- 大逃げ戦法（基礎値から減算するケース）で順位・結果に直接影響する重大な計算誤り
+
+### 参考資料
+- `FINDINGS_CONSOLIDATED.md` #3-2-F（L1621-）
+- `CODE_REVIEW_BOARD.md` Step 5-3-2 Critical B#2（L3783）
+- `CODE_REVIEW_BOARD.md` Step 3-2 詳細（L1321-1326）
 
 ---
 
 ## 3. What to Implement (実装内容)
 
 ### 修正対象ファイル
-- `src/core/parser/standardParser.ts`
+- `src/core/parser/emojiParser.ts`
+- `src/core/parser/emojiParser.test.ts`（テスト追加。ファイルが存在しない場合は新規作成）
 
 ### 変更内容
-`parseRace` メソッド内で `rollRaw` からダイス合計値を抽出する処理を以下のように変更：
 
-1. **スペース区切りの数値を全て抽出**
-2. **各数値を合計してダイス出目合計とする**
+1. **`currentBlock` に減算フラグを保持する仕組みを追加する**
+   - ヘッダー解析時に `isFixPlus` の値を `currentBlock` に記録する
+   - 内部的な型拡張（`as any` やローカル型定義）で対応可
 
-**擬似コード:**
-```typescript
-// Before
-let val = parseInt(rollRaw.trim(), 10);
+2. **`合計:` 行処理で減算フラグを参照する**
+   - `isSubtractive` が true の場合: `total = fixValue - diceSum`
+   - `isSubtractive` が false の場合: `total = fixValue + diceSum`（現行動作）
 
-// After
-const diceValues = rollRaw.trim().split(/\s+/).map(s => parseInt(s, 10)).filter(n => !isNaN(n));
-let val = diceValues.reduce((acc, cur) => acc + cur, 0);
-```
+3. **単一行ケースの動作は維持する**
+   - 既存の `inlineResult` 負数変換ロジック（L48-50, L81-83）は変更しないこと
+   - 既存テストが壊れないことを確認
 
 ### 注意点
-- 単一ダイス（例: `dice1d100=50`）の場合も動作すること（`["50"].reduce(...)` = `50`）
-- 空白のみの場合のエッジケースを考慮
-- 既存の `negativeSign` 処理との整合性を維持
+- `ParsedLine` インターフェースの変更は**不要**（`diceResult` を負数で格納するか、`total` 計算時に符号を反転すればよい）
+- `StandardParser` には既に `-dice` 構文の減算処理が実装済み。動作の一貫性を意識すること
+- `REQUIREMENTS.md` の修正は不要
 
 ---
 
 ## 4. Done Definition (完了条件)
 
 ### 必須
-- [ ] 既存のユニットテストが全て通過すること
-- [ ] 新規テストケース「複数ダイスのスペース区切り形式」が通過すること
-- [ ] 以下の入力が正しく解析されること:
-  - `① カンパネラ　10+dice3d5=3 1 4 (8)` → diceResult: 8, total: 18
-  - `② ウマ娘B　30+dice3d8=5 3 2 (10)` → diceResult: 10, total: 40
+- [ ] 既存のユニットテストが全て通過すること（`npm test`）
+- [ ] 以下のテストケースが追加され通過すること:
+  - **複数行減算:** `73-🎲 dice3d6=` + `合計: 15` → `diceResult: -15`（or equivalent）、`total: 58`
+  - **複数行加算（回帰確認）:** `15+🎲 dice3d6=` + `合計: 18` → `diceResult: 18`、`total: 33`
+  - **単一行減算（回帰確認）:** `73-🎲 dice1d12=7` → `total: 66`
 
 ### 推奨
-- [ ] 大逃げ（負のダイス）でも正しく動作すること
-  - `① 大逃げ　62+-dice1d27=15 (15)` → diceResult: -15
+- [ ] 複数行減算で `(N)` チェックサム付きケースが正しく計算されること
+- [ ] コード内の未解決コメント（L84-98付近の TODO的コメント）を解消すること
 
 ---
 
@@ -85,19 +95,12 @@ npm test
 ```
 
 ### 手動検証（PM確認用）
-1. `npm run dev` で開発サーバー起動
-2. Scene 1 でエントリー登録（脚質「先行」など複数ダイス系）
-3. Scene 2 で枠順決定
-4. Scene 3 で以下のテキストを貼り付けて解析実行:
-   ```
-   ① テストウマ娘　10+dice3d5=3 1 4 (8)
-   ```
-5. **期待結果:** エラーなしで正しく合計値(18)がスコアに反映
+減算ケースの手動検証は自動テストで十分にカバーされるため、テスト結果の確認をもって検証とする。
 
 ---
 
 ## 6. Notes
 
-- `REQUIREMENTS.md` の修正は不要（要件定義は正しく、実装がそれを満たしていなかった）
-- 変更範囲は `standardParser.ts` のみで十分
-- `parseJudgment` メソッドも同様の問題がある可能性があるため、合わせて確認・修正
+- history問題（CR-38）は本タスクの範囲外。PM#3でSAエスカレーションと併せて対応予定
+- `emojiParser.ts` L84-98 のコメント群は問題の所在を正確に記述しているため、修正の参考にすること
+- `StandardParser` の `-dice` 処理（`standardParser.ts`）を参照すると、減算の実装パターンが確認できる
