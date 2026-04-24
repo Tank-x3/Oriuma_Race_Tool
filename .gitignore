@@ -22,3 +22,11 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local-only project artifacts (TRIAGE Wave 1 REPO-1, 2026-04-24)
+# GitHub には「ツールのソースコードのみ」を公開する方針。
+# ドキュメント / 作業ログ / ロール指示書 / Claude 向け指示はローカル運用。
+docs/
+work_logs/
+guidelines/
+CLAUDE.md
