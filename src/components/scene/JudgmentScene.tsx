@@ -219,19 +219,19 @@ export const JudgmentScene = () => {
 
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-8 animate-in fade-in duration-500">
-      <div className="flex justify-between items-center pb-4 border-b">
-        <button onClick={handleBack} className="text-gray-500 hover:text-gray-900 flex items-center gap-1 font-medium transition-colors">
+      <div className="flex justify-between items-center pb-4 border-b border-slate-200 dark:border-slate-700">
+        <button onClick={handleBack} className="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 flex items-center gap-1 font-medium transition-colors">
           &lt; レース画面(最終フェーズ)に戻る
         </button>
-        <h2 className="text-2xl font-bold flex items-center gap-2">
-          <AlertCircle className="w-6 h-6 text-yellow-600" />
+        <h2 className="text-2xl font-bold flex items-center gap-2 text-slate-800 dark:text-slate-100">
+          <AlertCircle className="w-6 h-6 text-yellow-600 dark:text-yellow-400" />
           最終結果判定
         </h2>
       </div>
 
-      <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-r-lg shadow-sm">
-        <p className="font-bold text-yellow-800 text-lg">⚠️ 判定が必要です</p>
-        <p className="text-yellow-700 mt-1">
+      <div className="bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-yellow-400 dark:border-yellow-500 p-4 rounded-r-lg shadow-sm">
+        <p className="font-bold text-yellow-800 dark:text-yellow-200 text-lg">⚠️ 判定が必要です</p>
+        <p className="text-yellow-700 dark:text-yellow-300 mt-1">
           スコア同点（写真判定）または 1点差（着差判定）が発生しました。<br />
           指示に従ってダイスを振り、結果を入力してください。
         </p>
@@ -239,50 +239,54 @@ export const JudgmentScene = () => {
 
       <div className="grid md:grid-cols-2 gap-6">
         {/* [1] Provisional Ranking */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col h-full">
-          <div className="p-4 bg-gray-50 border-b border-gray-100 flex justify-between items-center">
+        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden flex flex-col h-full">
+          <div className="p-4 bg-slate-50 dark:bg-slate-900/50 border-b border-slate-100 dark:border-slate-700/50 flex justify-between items-center">
             <h3 className="font-bold !text-slate-800 dark:!text-slate-200 flex items-center gap-2">
-              <span className="bg-slate-200 text-slate-600 w-6 h-6 rounded-full flex items-center justify-center text-xs font-mono">1</span>
+              <span className="bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 w-6 h-6 rounded-full flex items-center justify-center text-xs font-mono">1</span>
               暫定順位リスト
             </h3>
             <button
               onClick={() => copyToClipboard(generateProvisionalList(), setCopiedList)}
               className={clsx(
                 "flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all",
-                copiedList ? "bg-green-100 text-green-700" : "bg-white border text-gray-600 hover:bg-gray-50"
+                copiedList
+                  ? "bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300"
+                  : "bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700"
               )}
             >
               {copiedList ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
               {copiedList ? "コピー完了" : "リストをコピー"}
             </button>
           </div>
-          <div className="p-4 flex-1 overflow-y-auto max-h-60 bg-gray-50/50">
-            <div className="space-y-1 text-sm font-mono text-gray-800">
+          <div className="p-4 flex-1 overflow-y-auto max-h-60 bg-slate-50/50 dark:bg-slate-900/30">
+            <div className="space-y-1 text-sm font-mono text-slate-800 dark:text-slate-200">
               {sortedParticipants.map((p, i) => (
-                <div key={p.id} className="flex gap-2 p-1 border-b border-gray-100 last:border-0">
-                  <span className="w-6 text-right font-bold text-gray-400">{i + 1}.</span>
-                  <span>{p.name} <span className="text-gray-500">({p.score})</span></span>
+                <div key={p.id} className="flex gap-2 p-1 border-b border-slate-100 dark:border-slate-700/50 last:border-0">
+                  <span className="w-6 text-right font-bold text-slate-400 dark:text-slate-500">{i + 1}.</span>
+                  <span>{p.name} <span className="text-slate-500 dark:text-slate-400">({p.score})</span></span>
                 </div>
               ))}
             </div>
           </div>
-          <div className="p-2 text-center text-xs text-gray-400 border-t bg-gray-50">
+          <div className="p-2 text-center text-xs text-slate-400 dark:text-slate-500 border-t border-slate-200 dark:border-slate-700/50 bg-slate-50 dark:bg-slate-900/50">
             掲示板に貼り付けて、判定対象者がいることを周知してください。
           </div>
         </div>
 
         {/* [2] Dice Output */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col h-full">
-          <div className="p-4 bg-gray-50 border-b border-gray-100 flex justify-between items-center">
+        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden flex flex-col h-full">
+          <div className="p-4 bg-slate-50 dark:bg-slate-900/50 border-b border-slate-100 dark:border-slate-700/50 flex justify-between items-center">
             <h3 className="font-bold !text-slate-800 dark:!text-slate-200 flex items-center gap-2">
-              <span className="bg-slate-200 text-slate-600 w-6 h-6 rounded-full flex items-center justify-center text-xs font-mono">2</span>
+              <span className="bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 w-6 h-6 rounded-full flex items-center justify-center text-xs font-mono">2</span>
               判定用ダイス出力
             </h3>
             <button
               onClick={() => copyToClipboard(generateDiceText(), setCopiedDice)}
               className={clsx(
                 "flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all",
-                copiedDice ? "bg-green-100 text-green-700" : "bg-blue-50 border border-blue-100 text-blue-600 hover:bg-blue-100"
+                copiedDice
+                  ? "bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300"
+                  : "bg-blue-50 dark:bg-indigo-900/30 border border-blue-100 dark:border-indigo-800/50 text-blue-600 dark:text-indigo-300 hover:bg-blue-100 dark:hover:bg-indigo-900/50"
               )}
             >
               {copiedDice ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
@@ -291,32 +295,32 @@ export const JudgmentScene = () => {
           </div>
           <textarea
             readOnly
-            className="flex-1 w-full p-4 bg-gray-50 text-sm font-mono resize-none focus:outline-none"
+            className="flex-1 w-full p-4 bg-slate-50 dark:bg-slate-950 text-sm font-mono text-slate-700 dark:text-slate-300 resize-none focus:outline-none"
             value={generateDiceText()}
           />
         </div>
       </div>
 
       {/* [3] Input Area */}
-      <div className="bg-white rounded-xl shadow border border-gray-200 overflow-hidden">
-        <div className="p-4 bg-gray-50 border-b border-gray-100">
+      <div className="bg-white dark:bg-slate-800 rounded-xl shadow border border-slate-200 dark:border-slate-700 overflow-hidden">
+        <div className="p-4 bg-slate-50 dark:bg-slate-900/50 border-b border-slate-100 dark:border-slate-700/50">
           <h3 className="font-bold !text-slate-800 dark:!text-slate-200 flex items-center gap-2">
-            <span className="bg-slate-200 text-slate-600 w-6 h-6 rounded-full flex items-center justify-center text-xs font-mono">3</span>
+            <span className="bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 w-6 h-6 rounded-full flex items-center justify-center text-xs font-mono">3</span>
             判定結果取り込み
           </h3>
-          <p className="text-xs text-gray-500 mt-1 pl-8">掲示板のダイス結果レスをそのまま貼り付けてください。</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 pl-8">掲示板のダイス結果レスをそのまま貼り付けてください。</p>
         </div>
 
         <div className="p-6 space-y-4">
           {error && (
-            <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm whitespace-pre-wrap flex items-start gap-2">
+            <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/50 rounded-lg text-red-700 dark:text-red-300 text-sm whitespace-pre-wrap flex items-start gap-2">
               <AlertCircle className="w-5 h-5 shrink-0" />
               <div>{error}</div>
             </div>
           )}
 
           <textarea
-            className="w-full h-32 p-4 border rounded-lg font-mono text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow"
+            className="w-full h-32 p-4 border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-lg font-mono text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow placeholder:text-slate-400 dark:placeholder:text-slate-500"
             placeholder="例: &#13;&#10;ウマ娘A 🎲 dice1d5= 3 (2) &#13;&#10;ウマ娘B 🎲 dice1d5= 5 (4)"
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
@@ -325,7 +329,7 @@ export const JudgmentScene = () => {
           <button
             onClick={handleParse}
             disabled={!inputValue.trim()}
-            className="w-full py-4 bg-blue-600 text-white font-bold rounded-xl shadow-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 text-lg"
+            className="w-full py-4 bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white font-bold rounded-xl shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 text-lg"
           >
             判定を適用して最終結果へ
             <ArrowRight className="w-6 h-6" />

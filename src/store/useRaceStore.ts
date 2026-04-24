@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { Umamusume, RaceState } from '../types';
 import { DEFAULT_STRATEGIES as STRATEGIES } from '../core/strategies';
+import { Calculator } from '../core/calculator';
 
 interface RaceStoreState extends RaceState {
     uiState: {
@@ -117,9 +118,40 @@ export const useRaceStore = create<RaceStoreState>((set) => ({
 
     updateParticipant: (id, updates) =>
         set((state) => ({
-            participants: state.participants.map((p) =>
-                p.id === id ? { ...p, ...updates } : p
-            ),
+            participants: state.participants.map((p) => {
+                if (p.id !== id) return p;
+                const next: Umamusume = { ...p, ...updates };
+
+                // CR-38 / basic-rules.md §6 Case 4:
+                // uniqueSkill.phases から外れたフェーズの uniqueDice をサイレント自動クリアし、
+                // スコアを再計算する。baseDice / manualModifier / specialStrategy / computedScore は保持する。
+                if (updates.uniqueSkill) {
+                    const oldPhases = p.uniqueSkill?.phases ?? [];
+                    const newPhases = next.uniqueSkill?.phases ?? [];
+                    const removed = oldPhases.filter((ph) => !newPhases.includes(ph));
+
+                    if (removed.length > 0) {
+                        const newHistory: typeof next.history = { ...next.history };
+                        for (const ph of removed) {
+                            const entry = newHistory[ph];
+                            if (entry && entry.uniqueDice !== undefined) {
+                                const cleared = { ...entry };
+                                delete cleared.uniqueDice;
+                                newHistory[ph] = cleared;
+                            }
+                        }
+                        next.history = newHistory;
+                    }
+
+                    next.score = Calculator.calculateTotalScore(
+                        next,
+                        state.strategies,
+                        state.paceResult.face
+                    );
+                }
+
+                return next;
+            }),
         })),
 
     applyGateAssignments: (assignments) =>
