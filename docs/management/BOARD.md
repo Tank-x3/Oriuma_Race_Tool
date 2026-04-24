@@ -156,3 +156,57 @@
 1. **PM #1**: ✅ BOARD.md 更新（93件のIssue登録）+ CR-1 タスク発行
 2. **PM #2**: ✅ E-1 検証完了 → CR-2 タスク発行 → E-2 検証完了（Round 1+2）
 3. **PM #3（次回）**: ガイドライン改定に伴うプロジェクト整理 → SA エスカレーション発行（CR-SA-1/2 + CR-38 history問題）
+
+---
+
+## TRIAGE 由来タスク（2026-04-24 登録）
+
+> 出典: `docs/_archived/TRIAGE.md` §6-B Wave 0〜4。通常ワークフロー外の整理として TRIAGE モードで確定した項目群。
+> Wave 0 は 2026-04-24 の TRIAGE 解除コミット (deec17b) で完了済。
+> Wave 1〜4 は本 BOARD に新規 Issue として登録（既存 Issue と重複なし）。
+
+### Wave 1: REPO 整備 — PM 単独
+
+| Issue | 概要 | 対象 | 状態 |
+|-------|------|------|------|
+| REPO-0 | 未コミット残滓（`M docs/CODE_REVIEW_BOARD.md` +1924 行 / `?? docs/FINDINGS_CONSOLIDATED.md`）を `git add` → コミット | リポジトリ状態 | ⬜ Wave 1 で実施 |
+| REPO-1 | `.gitignore` に `docs/` + `work_logs/` + `guidelines/` + `CLAUDE.md` を追加 → コミット（ローカル専用化の境界確定） | `.gitignore` | ⬜ Wave 1 で実施 |
+| REPO-2 | `git rm -r --cached` で除外対象 ∩ tracked ファイルを tracked 解除 → コミット → **push**（force-push 禁止、履歴残置） | 全 tracked docs / work_logs / guidelines / CLAUDE.md | ⬜ Wave 1 で実施 |
+| REPO-3 | `guidelines/pm.md` Step 3 Verification に「GitHub push を規定値」明記、`guidelines/engineer.md` Step 3b に「push は PM 側」を注記（REPO-1 後はローカル編集のみ） | `guidelines/pm.md`, `guidelines/engineer.md` | ⬜ Wave 1 で実施 |
+
+### Wave 2: CR-38 対応（致命的・進行ブロック解消） — SA → Engineer
+
+| Issue | 概要 | 対象 | 状態 |
+|-------|------|------|------|
+| CR-38-SA | `docs/specs/logic/basic-rules.md` §6「途中修正運用ルール」に固有タイプ修正時の history 挙動を追記し実装方針提示。**DOC-3a の basic-rules.md §6 部分は本タスクに吸収** | `basic-rules.md` §6 | ⬜ SA 対応待ち |
+| CR-38-E | CR-38 実装（SA 方針に基づく） | store / history 管理 | ⬜ SA 完了後 |
+
+### Wave 3: DEV-1 対応（ダークモード UX バグ） — Engineer（Wave 2-E と合流可）
+
+| Issue | 概要 | 対象 | 状態 |
+|-------|------|------|------|
+| DEV-1a | Scene 4-A ダークモード配色整備（`GateScene.tsx` dark: 33 件基準）。337 行中の背景 / 文字 / 枠線色全般 | `src/components/scene/JudgmentScene.tsx` | ⬜ |
+| DEV-1b | Scene 4-B ダークモード配色整備（dark: 0 件）。DEV-1a と連続で Scene 4 フロー一体修正 | `src/components/scene/ResultScene.tsx` | ⬜ |
+
+### Wave 4: DOC 整備 — PM 1 セッション + SA 1 セッション
+
+| Issue | 概要 | 対象 | ロール | 状態 |
+|-------|------|------|------|------|
+| DOC-2 | Docs リファクタ「構造維持 + 問題箇所是正」原則の明文化 | 方針確認のみ | PM | ⬜ |
+| DOC-1a | CLAUDE.md §43 ディレクトリ構成に `docs/ideas/BOARD.md` / `docs/ideas/REJECTED.md` / `docs/ARCHITECT_FEEDBACK.md` / `docs/management/DEPLOY_GUIDE.md` を追記 | `CLAUDE.md` §43 | PM | ⬜ |
+| DOC-1b | CLAUDE.md §28「移行・セットアップ」を削除 or 「移行完了済」注記化 | `CLAUDE.md` §28 | PM | ⬜ |
+| DOC-1c | `guidelines/engineer.md` Capabilities の `gas_src/` 言及を削除 | `guidelines/engineer.md` | PM | ⬜ |
+| DOC-1d | `guidelines/system-architect.md` の `PROJECT_OVERVIEW.md` 言及を削除 or 存在確認注記化 | `guidelines/system-architect.md` | PM | ⬜ |
+| DOC-1e | 4 ガイドラインに「特別作業ドキュメント（CLAUDE.md §87 参照）は通常ロールセッションで編集しない」旨を追記 | 4 `guidelines/*.md` | PM | ⬜ |
+| DOC-4 | `work_logs/` を「正式な作業記録・コードベース情報整理のベース」と位置づける旨を `guidelines/*.md` / `CLAUDE.md` に明記 | `guidelines/*.md`, `CLAUDE.md` | PM | ⬜ |
+| DOC-3c | CR-10 スコープ記述に「Scene 2 バリデーションメッセージ文言（`REVIEW_20260121_Scene2.md` 指摘）の現状確認」を追記し DOC-3c クローズ | BOARD.md CR-10 行 | PM | ⬜ |
+| DOC-3a | `parser-system.md` / `tech-stack.md` を実態反映更新（Zustand 採用 / 平坦ディレクトリ / 3 種 Parser コンテキスト / EmojiParser 減算仕様）。**CR-SA-1 駆動**（basic-rules.md §6 は W2-1 で処理済） | `docs/specs/architecture/*.md` | SA | ⬜ |
+| DOC-3b | `parser-system.md` に `ParsedLine.isSubtractive` 設計注記（「現設計は diceResult 負数化で吸収、将来の検算ロジック拡張時に再確認」）。DOC-3a と同一セッション | `parser-system.md` | SA | ⬜ |
+| DOC-3d | `docs/REQUIREMENTS.md` の `(N)` / チェックサム仕様の反映状態を目視確認 | `docs/REQUIREMENTS.md` | SA | ⬜ |
+
+### Wave 依存関係
+
+- **Wave 1 は Wave 2〜4 すべてに先行**（GitHub 露出最小化・ローカル専用化の確立）
+- **Wave 2-SA → Wave 2-E** は直列
+- **Wave 3 は Wave 2-E と合流可**
+- **Wave 4 は Wave 3 完了後**（PM 管轄は Wave 2-SA と並行先行の余地あり）
