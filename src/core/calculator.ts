@@ -1,15 +1,38 @@
 import type { Umamusume, Strategy } from '../types';
 import { getPaceModifier, getStrategy } from './strategies';
 
+/**
+ * 現在の中盤回数設定からアクティブなフェーズ ID 集合を導出する。
+ * Scene 1 の #1-3a-9（Soft Delete）で、history 上には残っていても
+ * 「現在設定されているフェーズ」のみを合算対象とするために使用する。
+ * Start / End は常にアクティブ。Pace は history に入らないためここでは扱わない。
+ */
+export const getActivePhaseIds = (midPhaseCount: number): string[] => {
+    const ids: string[] = ['Start'];
+    if (midPhaseCount === 1) {
+        ids.push('Mid');
+    } else if (midPhaseCount > 1) {
+        for (let i = 1; i <= midPhaseCount; i++) {
+            ids.push(`Mid${i}`);
+        }
+    }
+    ids.push('End');
+    return ids;
+};
+
 export class Calculator {
     /**
      * Calculates the total score for a participant based on their history and current race state.
+     * activePhaseIds を渡すと、history 上に残っているが現在のフェーズ設定外となっている
+     * データ（Soft Delete 対象）を合算対象から除外する。未指定なら従来どおり全走査。
      */
     static calculateTotalScore(
         participant: Umamusume,
         strategies: Strategy[],
-        paceRoll: number | null
+        paceRoll: number | null,
+        activePhaseIds?: readonly string[]
     ): number {
+        const activeSet = activePhaseIds ? new Set(activePhaseIds) : null;
         let total = 0;
         const strategy = getStrategy(participant.strategy, strategies);
 
@@ -54,6 +77,9 @@ export class Calculator {
         // Iterate other keys
         Object.keys(participant.history).forEach(phaseId => {
             if (phaseId === 'Start') return; // Already handled
+
+            // Soft Delete（#1-3a-9）: 現在のフェーズ設定外となっているフェーズは合算除外。
+            if (activeSet && !activeSet.has(phaseId)) return;
 
             const data = participant.history[phaseId];
 

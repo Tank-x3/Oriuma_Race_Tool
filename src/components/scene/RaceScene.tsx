@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Flag, PlayCircle, RotateCcw, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useRaceEngine } from '../../hooks/useRaceEngine';
 import { useRaceStore } from '../../store/useRaceStore';
-import { Calculator } from '../../core/calculator';
+import { Calculator, getActivePhaseIds } from '../../core/calculator';
 import { RankingCalculator } from '../../core/logic/RankingCalculator';
 import { PhaseOutput } from './race/PhaseOutput';
 import { PhaseInput } from './race/PhaseInput';
@@ -25,6 +25,7 @@ export const RaceScene: React.FC = () => {
         paceResult,
         participants,
         strategies,
+        config,
         updateParticipant,
         resetRace,
         moveToJudgment,
@@ -125,7 +126,8 @@ export const RaceScene: React.FC = () => {
                 const totalScore = Calculator.calculateTotalScore(
                     p,
                     strategies,
-                    paceResult.face
+                    paceResult.face,
+                    getActivePhaseIds(config.midPhaseCount)
                 );
                 // Only update if changed (optimization)
                 if (totalScore !== p.score) {

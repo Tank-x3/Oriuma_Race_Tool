@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useRaceStore } from './useRaceStore';
 import type { DiceResult, Umamusume } from '../types';
+import { getActivePhaseIds } from '../core/calculator';
 
 // 固有ダイス DiceResult の生成ヘルパー
 const makeDice = (str: string, values: number[]): DiceResult => ({
@@ -22,8 +23,22 @@ const setupParticipant = (override: Partial<Umamusume>): Umamusume => ({
 });
 
 // addParticipant は history / score を破棄するため、テストでは setState で直接注入する。
+// 既存テストは Mid1/Mid2 を扱う前提で設計されているため、midPhaseCount=2 を併せてセットする。
+// （CR-3 で Calculator が activePhaseIds で絞り込むようになったため、config.midPhaseCount が
+//   resetRace 直後の初期値 1 のままだと Mid1/Mid2 が合算から除外されてしまう。）
 const installParticipant = (uma: Umamusume) => {
-    useRaceStore.setState({ participants: [uma] });
+    useRaceStore.setState({
+        config: {
+            midPhaseCount: 2,
+            fullGateSize: null,
+            houseRules: {
+                enableModifier: false,
+                enableSpecialStrategy: false,
+                enableCompositeUnique: false,
+            },
+        },
+        participants: [uma],
+    });
 };
 
 describe('useRaceStore.updateParticipant - CR-38 / basic-rules §6 Case 4', () => {
@@ -127,6 +142,45 @@ describe('useRaceStore.updateParticipant - CR-38 / basic-rules §6 Case 4', () =
         expect(updated.score).toBe(36);
     });
 
+    it('CR-38-E との独立性: midPhaseCount 変更では uniqueSkill.phases は触らない', () => {
+        // Scenario: midPhaseCount を 2 -> 1 に変更しても、Mid2 指定の uniqueSkill.phases
+        // は EntryForm の useEffect 経由でリセットされるのが本筋であり、
+        // setMidPhaseCount 自体では uniqueSkill には触らない（スコープ外）。
+        const mid2Dice = makeDice('3d5', [4, 4, 4]); // 12
+        const uniqueMid2 = makeDice('1d10', [7]);
+
+        const initial = setupParticipant({
+            uniqueSkill: { type: 'Stability', phases: ['Mid2'] },
+            history: {
+                Start: { baseDice: makeDice('3d8', [3, 3, 4]), computedScore: 20 },
+                Mid1: { baseDice: makeDice('3d5', [2, 2, 2]), computedScore: 26 },
+                Mid2: { baseDice: mid2Dice, uniqueDice: uniqueMid2, computedScore: 50 },
+            },
+        });
+
+        useRaceStore.setState({
+            config: {
+                midPhaseCount: 2,
+                fullGateSize: null,
+                houseRules: {
+                    enableModifier: false,
+                    enableSpecialStrategy: false,
+                    enableCompositeUnique: false,
+                },
+            },
+            participants: [initial],
+        });
+
+        useRaceStore.getState().setMidPhaseCount(1);
+
+        const updated = useRaceStore.getState().participants[0];
+        // uniqueSkill.phases はそのまま（独立性確保）
+        expect(updated.uniqueSkill.phases).toEqual(['Mid2']);
+        // Mid2 の history も保持（Soft Delete）
+        expect(updated.history['Mid2'].baseDice).toEqual(mid2Dice);
+        expect(updated.history['Mid2'].uniqueDice).toEqual(uniqueMid2);
+    });
+
     it('保護: phases に変更がなければ history も score も触らない', () => {
         const startDice = makeDice('3d5', [3, 4, 3]);
         const uniqueStart = makeDice('1d10', [5]);
@@ -153,5 +207,168 @@ describe('useRaceStore.updateParticipant - CR-38 / basic-rules §6 Case 4', () =
         expect(updated.history['Start'].uniqueDice).toEqual(uniqueStart);
         // score は再計算されず元の値が温存される
         expect(updated.score).toBe(999);
+    });
+});
+
+describe('getActivePhaseIds - CR-3 / scene1-setup.md §4', () => {
+    it('midPhaseCount = 0: 中盤フェーズなし', () => {
+        expect(getActivePhaseIds(0)).toEqual(['Start', 'End']);
+    });
+
+    it('midPhaseCount = 1: 中盤は単に "Mid"', () => {
+        expect(getActivePhaseIds(1)).toEqual(['Start', 'Mid', 'End']);
+    });
+
+    it('midPhaseCount = 2: "Mid1", "Mid2" でナンバリング', () => {
+        expect(getActivePhaseIds(2)).toEqual(['Start', 'Mid1', 'Mid2', 'End']);
+    });
+
+    it('midPhaseCount = 4: 仕様上の最大値', () => {
+        expect(getActivePhaseIds(4)).toEqual(['Start', 'Mid1', 'Mid2', 'Mid3', 'Mid4', 'End']);
+    });
+});
+
+describe('useRaceStore.setMidPhaseCount - CR-3 / scene1-setup.md §4 Soft Delete', () => {
+    beforeEach(() => {
+        useRaceStore.getState().resetRace();
+    });
+
+    // midPhaseCount = 2 の状態で Mid1 / Mid2 にダイス履歴がある参加者を注入するヘルパー
+    const installParticipantWithMid2History = () => {
+        const startDice = makeDice('3d8', [3, 4, 3]); // 10
+        const mid1Dice = makeDice('3d5', [2, 2, 2]); // 6
+        const mid2Dice = makeDice('3d5', [4, 4, 4]); // 12
+        const endDice = makeDice('1d7', [3]); // 3
+
+        const initial: Umamusume = {
+            id: 'p1',
+            entryIndex: 1,
+            name: 'Test',
+            strategy: '先行',
+            uniqueSkill: { type: 'Stability', phases: [] }, // 固有ダイスは別軸（CR-38-E）なので本テストでは無効化
+            gate: 1,
+            score: 0,
+            history: {
+                Start: { baseDice: startDice, computedScore: 20 },
+                Mid1: { baseDice: mid1Dice, computedScore: 26 },
+                Mid2: { baseDice: mid2Dice, computedScore: 50 },
+                End: { baseDice: endDice, computedScore: 53 },
+            },
+        };
+
+        useRaceStore.setState({
+            config: {
+                midPhaseCount: 2,
+                fullGateSize: null,
+                houseRules: {
+                    enableModifier: false,
+                    enableSpecialStrategy: false,
+                    enableCompositeUnique: false,
+                },
+            },
+            participants: [initial],
+        });
+
+        return { startDice, mid1Dice, mid2Dice, endDice };
+    };
+
+    it('Scenario 1: 2 -> 1 で Mid2 の history は保持、score は Mid2 を除外した値に再計算される', () => {
+        const { mid2Dice } = installParticipantWithMid2History();
+
+        useRaceStore.getState().setMidPhaseCount(1);
+
+        const updated = useRaceStore.getState().participants[0];
+
+        // history は Soft Delete（削除せず保持）
+        expect(updated.history['Mid2']).toBeDefined();
+        expect(updated.history['Mid2'].baseDice).toEqual(mid2Dice);
+
+        // config は更新
+        expect(useRaceStore.getState().config.midPhaseCount).toBe(1);
+
+        // score: fix 10 + Start 10 + Mid1 6 + End 3 = 29（Mid2 12 を除外）
+        // ただし activePhaseIds = ['Start', 'Mid', 'End']、Mid1 は含まれないので実際は Mid1 も除外
+        // Mid1 を除外するか含めるかは midPhaseCount=1 時の仕様：「中盤」は単一フェーズ ID「Mid」
+        // であり、データは Mid1 に残っているため合算されない（＝ユーザーは Mid1 のデータを
+        // Mid に再貼り付けするか、2 に戻して復元する運用になる）。
+        // よって: fix 10 + Start 10 + End 3 = 23
+        expect(updated.score).toBe(23);
+    });
+
+    it('Scenario 2: 2 -> 1 -> 2 で Mid2 の history が自動復活し合算に戻る', () => {
+        installParticipantWithMid2History();
+
+        // 2 -> 1
+        useRaceStore.getState().setMidPhaseCount(1);
+        const afterShrink = useRaceStore.getState().participants[0];
+        expect(afterShrink.history['Mid2']).toBeDefined(); // Soft Delete で保持
+
+        // 1 -> 2（復元）
+        useRaceStore.getState().setMidPhaseCount(2);
+        const restored = useRaceStore.getState().participants[0];
+
+        // history は引き続き保持されており、score が Mid1 + Mid2 を含む値に復帰
+        expect(restored.history['Mid2']).toBeDefined();
+        // fix 10 + Start 10 + Mid1 6 + Mid2 12 + End 3 = 41
+        expect(restored.score).toBe(41);
+    });
+
+    it('Scenario 3: 同じ値への再設定（no-op）でも history / 参加者構造は破壊されない', () => {
+        const { mid1Dice, mid2Dice } = installParticipantWithMid2History();
+
+        useRaceStore.getState().setMidPhaseCount(2);
+
+        const updated = useRaceStore.getState().participants[0];
+        expect(updated.history['Mid1'].baseDice).toEqual(mid1Dice);
+        expect(updated.history['Mid2'].baseDice).toEqual(mid2Dice);
+        // fix 10 + Start 10 + Mid1 6 + Mid2 12 + End 3 = 41
+        expect(updated.score).toBe(41);
+    });
+
+    it('Scenario 4: midPhaseCount = 0 へ変更で全ての中盤 history が合算除外される', () => {
+        installParticipantWithMid2History();
+
+        useRaceStore.getState().setMidPhaseCount(0);
+
+        const updated = useRaceStore.getState().participants[0];
+        // history は保持
+        expect(updated.history['Mid1']).toBeDefined();
+        expect(updated.history['Mid2']).toBeDefined();
+        // score: fix 10 + Start 10 + End 3 = 23
+        expect(updated.score).toBe(23);
+    });
+});
+
+describe('useRaceStore.moveToGate - CR-3 / #1-3a-3 名前空欄行スキップ', () => {
+    beforeEach(() => {
+        useRaceStore.getState().resetRace();
+    });
+
+    it('moveToGate 時、名前空欄の参加者は participants から除外される', () => {
+        const make = (id: string, name: string): Umamusume => ({
+            id,
+            entryIndex: 0,
+            name,
+            strategy: '先行',
+            uniqueSkill: { type: 'Stability', phases: ['Start'] },
+            gate: null,
+            score: 0,
+            history: {},
+        });
+
+        useRaceStore.setState({
+            participants: [
+                make('p1', 'タンク'),
+                make('p2', '  '),     // trim で空になる空白のみの行
+                make('p3', 'タンク2'),
+                make('p4', ''),       // 完全な空欄
+            ],
+        });
+
+        useRaceStore.getState().moveToGate();
+
+        const after = useRaceStore.getState().participants;
+        expect(after.map(p => p.id)).toEqual(['p1', 'p3']);
+        expect(useRaceStore.getState().uiState.scene).toBe('gate');
     });
 });

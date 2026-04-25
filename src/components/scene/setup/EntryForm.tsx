@@ -24,15 +24,34 @@ export const EntryForm: React.FC = () => {
     const [isSubmitted, setIsSubmitted] = React.useState(false);
 
     // --- Validation Logic ---
+    // #1-3a-5: 名前入力済み行のうち、trim 後に重複している名前の集合。
+    const duplicatedNames = useMemo(() => {
+        const counts = new Map<string, number>();
+        participants.forEach(p => {
+            const trimmed = p.name.trim();
+            if (!trimmed) return;
+            counts.set(trimmed, (counts.get(trimmed) ?? 0) + 1);
+        });
+        const dup = new Set<string>();
+        counts.forEach((count, name) => {
+            if (count > 1) dup.add(name);
+        });
+        return dup;
+    }, [participants]);
+
     const invalidEntries = useMemo(() => {
         return participants.map((p, idx) => {
             const errors: string[] = [];
             // Use p.entryIndex (1-based from store) if available, otherwise fallback to idx+1
             const rowNum = p.entryIndex ?? (idx + 1);
+            const trimmedName = p.name.trim();
 
-            // Name Check
-            if (!p.name.trim()) errors.push(`[#${rowNum}] 名前が未入力です`);
-            if (/[+=]/.test(p.name)) errors.push(`[#${rowNum}] 名前に使用できない文字が含まれています (+)`);
+            // #1-3a-3: 名前空欄行はバリデーション対象外（他項目の未入力エラーを抑制）。
+            if (!trimmedName) return { id: p.id, errors: [] };
+
+            // Name Check（空欄は対象外になったので、ここでは禁止文字と重複のみ）
+            if (/[+=]/.test(p.name)) errors.push(`・名前に計算記号(+, =)は使用できません`);
+            if (duplicatedNames.has(trimmedName)) errors.push(`・名前 '${trimmedName}' が重複しています`);
 
             // Strategy Check
             if (!p.strategy) errors.push(`[#${rowNum}] 脚質が未選択です`);
@@ -43,20 +62,38 @@ export const EntryForm: React.FC = () => {
 
             return { id: p.id, errors };
         }).filter(r => r.errors.length > 0);
-    }, [participants]);
+    }, [participants, duplicatedNames]);
+
+    // #1-3a-3: 名前入力済みの行のみを有効エントリとして扱う。
+    const activeParticipants = useMemo(
+        () => participants.filter(p => p.name.trim() !== ''),
+        [participants]
+    );
 
     const allErrors = useMemo(() => {
         const errs: string[] = [];
         if (config.fullGateSize === null) errs.push('フルゲート人数を設定してください');
-        if (participants.length === 0) errs.push('参加者が登録されていません');
+        if (activeParticipants.length === 0) errs.push('参加者が登録されていません');
 
+        // 重複名エラーは名前ごとに1件だけ表示する（重複ペア両方から errors に入ると同一メッセージが複数出てしまうため、
+        // ここで一括管理する）。
+        const dupMessages: string[] = [];
+        duplicatedNames.forEach(name => {
+            dupMessages.push(`・名前 '${name}' が重複しています`);
+        });
+        errs.push(...dupMessages);
+
+        // 残りの行単位エラー（重複メッセージは invalidEntries 側から除く）
         invalidEntries.forEach(e => {
-            errs.push(...e.errors);
+            e.errors.forEach(msg => {
+                if (msg.startsWith("・名前 '") && msg.endsWith("' が重複しています")) return;
+                errs.push(msg);
+            });
         });
         return errs;
-    }, [invalidEntries, config.fullGateSize, participants.length]);
+    }, [invalidEntries, config.fullGateSize, activeParticipants.length, duplicatedNames]);
 
-    const isValid = participants.length > 0 && invalidEntries.length === 0;
+    const isValid = activeParticipants.length > 0 && invalidEntries.length === 0;
 
     const handleConfirm = () => {
         setIsSubmitted(true);
@@ -85,6 +122,7 @@ export const EntryForm: React.FC = () => {
             case 'uniquePhase': return entry.errors.some(e => e.includes('発動位置'));
         }
     };
+
 
     const availablePhases = useMemo(() => {
         const phases = [{ id: 'Start', label: '序盤' }];

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { Umamusume, RaceState } from '../types';
 import { DEFAULT_STRATEGIES as STRATEGIES } from '../core/strategies';
-import { Calculator } from '../core/calculator';
+import { Calculator, getActivePhaseIds } from '../core/calculator';
 
 interface RaceStoreState extends RaceState {
     uiState: {
@@ -53,13 +53,30 @@ export const useRaceStore = create<RaceStoreState>((set) => ({
     setCurrentPhase: (phaseId) => set({ currentPhaseId: phaseId }),
     setPaceResult: (face, label) => set({ paceResult: { face, label } }),
 
+    // #1-3a-9 Soft Delete:
+    // midPhaseCount を変更しても history は削除しない（データ保持）。
+    // ただし合計スコア計算は「現在設定されているフェーズ」のみを合算対象とするため、
+    // participants.score を新しい midPhaseCount で再計算する。
+    // 回数を増やした場合は、保持されていた history[Mid2] 等が自動的に合算復帰する。
     setMidPhaseCount: (count) =>
-        set((state) => ({
-            config: {
-                ...state.config,
-                midPhaseCount: count,
-            }
-        })),
+        set((state) => {
+            const activePhaseIds = getActivePhaseIds(count);
+            return {
+                config: {
+                    ...state.config,
+                    midPhaseCount: count,
+                },
+                participants: state.participants.map(p => ({
+                    ...p,
+                    score: Calculator.calculateTotalScore(
+                        p,
+                        state.strategies,
+                        state.paceResult.face,
+                        activePhaseIds
+                    ),
+                })),
+            };
+        }),
 
     setFullGateSize: (size: number) =>
         set((state) => ({
@@ -146,7 +163,8 @@ export const useRaceStore = create<RaceStoreState>((set) => ({
                     next.score = Calculator.calculateTotalScore(
                         next,
                         state.strategies,
-                        state.paceResult.face
+                        state.paceResult.face,
+                        getActivePhaseIds(state.config.midPhaseCount)
                     );
                 }
 
@@ -162,8 +180,12 @@ export const useRaceStore = create<RaceStoreState>((set) => ({
             }),
         })),
 
+    // #1-3a-3: エントリー確定時に名前空欄行を除外し、以降の Scene では
+    // 名前入力済みの有効参加者のみを扱う。仕様: scene1-setup.md ワイヤーフレーム
+    // 「名前が空欄の行は無視される」。
     moveToGate: () =>
         set((state) => ({
+            participants: state.participants.filter(p => p.name.trim() !== ''),
             uiState: { ...state.uiState, scene: 'gate' },
             currentPhaseId: 'gate_lottery', // Use a clear ID
         })),

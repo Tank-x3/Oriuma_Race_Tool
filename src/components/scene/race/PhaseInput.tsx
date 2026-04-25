@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useRaceStore } from '../../../store/useRaceStore';
 import { ParserFactory } from '../../../core/parser/parserFactory';
-import { Calculator } from '../../../core/calculator';
+import { Calculator, getActivePhaseIds } from '../../../core/calculator';
 import { getPaceLabel } from '../../../core/strategies';
 import { useNotificationStore } from '../../ui/Notification';
 import { Play, RotateCw, AlertTriangle } from 'lucide-react';
@@ -17,6 +17,7 @@ export const PhaseInput: React.FC<PhaseInputProps> = ({ onErrors }) => {
         currentPhaseId,
         strategies,
         paceResult,
+        config,
         updateParticipant,
         setPaceResult
     } = useRaceStore();
@@ -117,7 +118,8 @@ export const PhaseInput: React.FC<PhaseInputProps> = ({ onErrors }) => {
                     const totalScore = Calculator.calculateTotalScore(
                         updatedPForCalc,
                         strategies,
-                        paceResult.face
+                        paceResult.face,
+                        getActivePhaseIds(config.midPhaseCount)
                     );
 
                     // Store updated state in map
