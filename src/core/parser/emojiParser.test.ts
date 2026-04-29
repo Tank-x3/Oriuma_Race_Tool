@@ -282,4 +282,30 @@ describe('EmojiParser (88-ch Support)', () => {
         expect(incompleteError).toBeDefined();
         expect(result.results).toHaveLength(0);
     });
+
+    // CR-7 Part B: #3-3-G PACE コンテキスト委譲テスト
+    // 仕様: docs/specs/architecture/parser-system.md §B "PACE コンテキストの委譲" (L209-211)
+    // 委譲先: emojiParser.ts:6-9 → StandardParser.parse(text, participants, 'PACE')
+    describe('PACE delegation', () => {
+        it('delegates PACE context to StandardParser', () => {
+            const text = '🎲 dice1d9=6';
+            const result = parser.parse(text, [], 'PACE');
+
+            expect(result.errors).toHaveLength(0);
+            expect(result.results).toHaveLength(1);
+            expect(result.results[0]).toMatchObject({
+                diceResult: 6,
+                participantId: 'GM',
+                name: 'GM',
+            });
+        });
+
+        it('returns StandardParser error when delegated PACE has no dice', () => {
+            // 委譲経路の異常系: dice1d9= が無いテキストで委譲先のエラーがそのまま返ること
+            const result = parser.parse('普通の雑談です', [], 'PACE');
+
+            expect(result.results).toHaveLength(0);
+            expect(result.errors[0]).toContain('ペースダイス');
+        });
+    });
 });

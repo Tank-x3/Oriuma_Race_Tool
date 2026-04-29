@@ -127,4 +127,64 @@ describe('StandardParser', () => {
             });
         });
     });
+
+    // CR-7 Part A: #3-3-A PACE コンテキストテスト
+    // 仕様: docs/specs/architecture/parser-system.md §A Context 2 PACE (L121-128)
+    // 委譲先: standardParser.ts:18-56 parsePace
+    describe('PACE context', () => {
+        it('parses PACE context correctly with dice1d9=N', () => {
+            const text = 'GM\ndice1d9=4';
+            const result = StandardParser.parse(text, [], 'PACE');
+
+            expect(result.errors).toHaveLength(0);
+            expect(result.results).toHaveLength(1);
+            expect(result.results[0]).toMatchObject({
+                diceResult: 4,
+                diceStr: '1d9',
+                participantId: 'GM',
+                name: 'GM',
+                total: 4,
+                fixValue: 0,
+                validChecksum: true,
+            });
+        });
+
+        it('returns error when no PACE dice found', () => {
+            const result = StandardParser.parse('no dice here', [], 'PACE');
+
+            expect(result.results).toHaveLength(0);
+            expect(result.errors).toHaveLength(1);
+            expect(result.errors[0]).toContain('ペースダイス');
+        });
+
+        it('returns error when multiple PACE dice found', () => {
+            const text = 'dice1d9=4\ndice1d9=7';
+            const result = StandardParser.parse(text, [], 'PACE');
+
+            expect(result.results).toHaveLength(0);
+            expect(result.errors).toHaveLength(1);
+            expect(result.errors[0]).toContain('複数');
+        });
+
+        it('parses PACE with leading 🎲 emoji', () => {
+            // (?:🎲)? 分岐の網羅
+            const text = '🎲 dice1d9=5';
+            const result = StandardParser.parse(text, [], 'PACE');
+
+            expect(result.errors).toHaveLength(0);
+            expect(result.results).toHaveLength(1);
+            expect(result.results[0].diceResult).toBe(5);
+            expect(result.results[0].participantId).toBe('GM');
+        });
+
+        it('parses PACE with whitespace around equals sign', () => {
+            // \s*=\s* 分岐の網羅
+            const text = 'dice1d9 = 5';
+            const result = StandardParser.parse(text, [], 'PACE');
+
+            expect(result.errors).toHaveLength(0);
+            expect(result.results).toHaveLength(1);
+            expect(result.results[0].diceResult).toBe(5);
+        });
+    });
 });
