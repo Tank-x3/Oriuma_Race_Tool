@@ -197,4 +197,89 @@ describe('EmojiParser (88-ch Support)', () => {
         expect(result.errors.length).toBeGreaterThan(0);
         expect(result.errors[0]).toContain('合計');
     });
+
+    // CR-4 Part A: #3-2-C 未完了ブロック → 新ヘッダーの Critical 化
+    it('should report error when an incomplete block is followed by a new header (CR-4 #3-2-C)', () => {
+        const input = `
+            ウマ娘A 15+🎲 dice3d6=
+            ウマ娘B 5+🎲 dice3d6= 1 2 3 (6)
+            合計: 6
+        `;
+        const result = parser.parse(input, participants, 'RACE');
+
+        // ウマ娘A の未完了ブロックがエラー化されること
+        const incompleteError = result.errors.find(e =>
+            e.includes('合計行が見つかりません') && e.includes('ウマ娘A')
+        );
+        expect(incompleteError).toBeDefined();
+
+        // ウマ娘A のデータは results に含まれないこと
+        expect(result.results.find(r => r.name === 'ウマ娘A')).toBeUndefined();
+
+        // ウマ娘B（単一行フォーマット）は正常に処理されること
+        const okResult = result.results.find(r => r.name === 'ウマ娘B');
+        expect(okResult).toBeDefined();
+        expect(okResult?.fixValue).toBe(5);
+    });
+
+    // CR-4 Part B: #1-2-6 名前不一致時の results 不追加
+    it('should not include unmatched-name entries in results (CR-4 #1-2-6)', () => {
+        const input = `
+            ダイタクヘリオス 10+🎲 dice3d6= 2 3 4 (9)
+            合計: 19
+            ウマ娘A 5+🎲 dice3d6= 1 2 1 (4)
+            合計: 9
+        `;
+        const result = parser.parse(input, participants, 'RACE');
+
+        // 名前不一致エラーが仕様文言（・接頭辞付き）で発生すること
+        const nameMismatchError = result.errors.find(e =>
+            e.includes('・登録名と一致しないデータが含まれています') && e.includes('ダイタクヘリオス')
+        );
+        expect(nameMismatchError).toBeDefined();
+
+        // ダイタクヘリオスは results に含まれないこと
+        expect(result.results.find(r => r.name === 'ダイタクヘリオス')).toBeUndefined();
+
+        // ウマ娘A は正常に results に含まれること
+        const okResult = result.results.find(r => r.name === 'ウマ娘A');
+        expect(okResult).toBeDefined();
+        expect(okResult?.participantId).toBe('1');
+    });
+
+    // CR-4 Part B: 名前不一致行の合計行が後続処理に干渉しないこと
+    it('should silently skip body lines after a name-mismatch header (CR-4 #1-2-6)', () => {
+        const input = `
+            未登録ウマ 10+🎲 dice3d6=
+            1回目: 1
+            2回目: 2
+            3回目: 3
+            合計: 6
+            ウマ娘B 7+🎲 dice3d6=6 (13)
+        `;
+        const result = parser.parse(input, participants, 'RACE');
+
+        // 未登録ウマ がエラー化、results 不追加
+        expect(result.errors.some(e => e.includes('未登録ウマ'))).toBe(true);
+        expect(result.results.find(r => r.name === '未登録ウマ')).toBeUndefined();
+
+        // ウマ娘B は正常処理（未登録ウマの 合計: 6 行が漏れて参照されないこと）
+        const okResult = result.results.find(r => r.name === 'ウマ娘B');
+        expect(okResult).toBeDefined();
+        expect(okResult?.diceResult).toBe(6);
+        expect(okResult?.total).toBe(13);
+    });
+
+    // CR-4 Part A: 既存の EOF 未完了ブロック検出（リグレッション保護）
+    it('should still report incomplete block at EOF (CR-4 Part A regression)', () => {
+        const input = `
+            ウマ娘A 15+🎲 dice3d6=
+        `;
+        const result = parser.parse(input, participants, 'RACE');
+        const incompleteError = result.errors.find(e =>
+            e.includes('合計行が見つかりません') && e.includes('ウマ娘A')
+        );
+        expect(incompleteError).toBeDefined();
+        expect(result.results).toHaveLength(0);
+    });
 });

@@ -86,7 +86,8 @@ describe('Great Escape (Oonige) Negative Dice Logic', () => {
   test('parses 88-ch format with minus before emoji: "73-🎲 dice1d27= 23"', () => {
     // Fix 73, Dice -23 -> Total 50
     // Currently problematic as it parses Fix 73 and Dice +23 -> Total 96
-    const input = '③ ダイタクヘリオス　73-🎲 dice1d27= 23';
+    // CR-4 Part B 以降、名前不一致は results に追加されないため登録名（Twin Turbo）を使用
+    const input = '③ Twin Turbo　73-🎲 dice1d27= 23';
     const parser = new EmojiParser();
     const result = parser.parse(input, participants, 'RACE');
 

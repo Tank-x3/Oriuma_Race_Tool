@@ -15,6 +15,14 @@ export class EmojiParser implements ParserStrategy {
 
         let currentBlock: Partial<ParsedLine> | null = null;
 
+        // 未完了ブロック（合計行未到達）をエラーとして報告するヘルパー。
+        // 新ヘッダー検出時 / ファイル末尾の両方で使用する（仕様: parser-system.md §B Step 3）。
+        const reportIncompleteBlock = (block: Partial<ParsedLine>) => {
+            if (block.total === undefined && block.diceResult === undefined) {
+                errors.push(`データの解析に失敗しました（合計行が見つかりません）: "${block.name}"`);
+            }
+        };
+
         for (const line of lines) {
             const trimmed = line.trim();
             if (!trimmed) continue;
@@ -27,16 +35,9 @@ export class EmojiParser implements ParserStrategy {
             const diceMatch = trimmed.match(/(?:🎲)?\s*(-)?dice(\d+d\d+)\s*=\s*(\d+)?/);
 
             if (diceMatch) {
-                // If a previous block was pending without explicit total line, closes it?
-                // 88-ch usually provides Total line. If missing, maybe we should push what we have or error?
-                // For now, let's assume if we hit a new header, the previous block is done (or failed if incomplete).
+                // 直前ブロックが合計行未到達のまま新ヘッダーに到達したケースを Critical 化（#3-2-C）
                 if (currentBlock) {
-                    // Logic: If previous block didn't have total, it might be incomplete. 
-                    // However, sometimes single line has result.
-                    // If currentBlock has total/result, push it.
-                    if (currentBlock.total !== undefined || currentBlock.diceResult !== undefined) {
-                        // pushed in loop? No, push when completed.
-                    }
+                    reportIncompleteBlock(currentBlock);
                 }
 
                 // Parse Header
@@ -99,13 +100,15 @@ export class EmojiParser implements ParserStrategy {
 
                 const participant = participants.find(p => p.name === cleanName || nameRaw.includes(p.name));
 
-                if (participant) {
-                    matchedParticipantId = participant.id;
-                    matchedName = participant.name; // Normalize to registered name
-                } else {
-                    // Store strict name for error reporting
-                    matchedName = cleanName;
+                if (!participant) {
+                    // 名前不一致は即座にエラーとし、ブロックは作成しない（#1-2-6 / StandardParser:233-238 と挙動を対称化）
+                    errors.push(`・登録名と一致しないデータが含まれています: "${cleanName}"`);
+                    currentBlock = null;
+                    continue;
                 }
+
+                matchedParticipantId = participant.id;
+                matchedName = participant.name; // Normalize to registered name
 
                 currentBlock = {
                     originalText: trimmed,
@@ -163,18 +166,16 @@ export class EmojiParser implements ParserStrategy {
         }
 
         // Post-processing Validation
+        // 名前不一致はヘッダー検出時に results 不追加 + errors 追加で完結するため、ここでは participantId 空チェックは不要。
         results.forEach(res => {
-            if (!res.participantId) {
-                errors.push(`登録名と一致しないデータが含まれています: "${res.name}"`);
-            }
             if (res.validChecksum === false) {
                 errors.push(`ダイス合計値が不正です: "${res.name}"`);
             }
         });
 
-        // Current block not null means incomplete?
+        // ファイル末尾で残った未完了ブロックを検出（#3-2-C と同じヘルパーを再利用）
         if (currentBlock) {
-            errors.push(`データの解析に失敗しました（合計行が見つかりません）: "${currentBlock.name}"`);
+            reportIncompleteBlock(currentBlock);
         }
 
         return { results, errors };
