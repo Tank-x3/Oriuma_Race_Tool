@@ -99,18 +99,15 @@ describe('StandardParser', () => {
             });
         });
 
-        it('parses space-separated dice values without parens (dice3d6=5 3 2)', () => {
+        it('rejects space-separated dice values without parens (CR-4b: (N) 必須化)', () => {
+            // CR-4b: (N) 必須化（parser-system.md §A L93-94, L142）
+            // あにまん仕様により StandardParser は (N) 必須。欠落時は errors 追加 + results 排除（continue）。
             const text = 'ウマ娘A 20+dice3d6=5 3 2';
             const result = StandardParser.parse(text, multiDiceParticipants);
 
-            expect(result.errors).toHaveLength(0);
-            expect(result.results).toHaveLength(1);
-            expect(result.results[0]).toMatchObject({
-                name: 'ウマ娘A',
-                fixValue: 20,
-                diceResult: 10,
-                total: 30
-            });
+            expect(result.results).toHaveLength(0);
+            expect(result.errors.length).toBeGreaterThan(0);
+            expect(result.errors[0]).toContain('合計値');
         });
 
         it('parses negative dice with space-separated values (-dice3d5=3 1 4)', () => {

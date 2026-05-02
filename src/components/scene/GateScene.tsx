@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useRaceStore } from '../../store/useRaceStore';
 import { Dices, ClipboardCopy, ArrowRight, CheckCircle2, ArrowLeft } from 'lucide-react';
-import { StandardParser } from '../../core/parser/standardParser';
+import { ParserFactory } from '../../core/parser/parserFactory';
 import { NotificationArea } from '../ui/NotificationArea';
 
 // Helper for Circle Numbers (①, ②...)
@@ -97,7 +97,9 @@ export const GateScene: React.FC = () => {
 
     // [3] Parse & Analyze
     const handleParse = () => {
-        const { results, errors } = StandardParser.parse(inputText, participants);
+        // CR-SA-3-E2-Followup-A: ParserFactory 経由で 88ch 形式 (🎲) を EmojiParser へ振り分け
+        // 仕様根拠: parser-system.md §A 概要「Scene 別コンテキストマッピング」(L33-43)
+        const { results, errors } = ParserFactory.getParser(inputText).parse(inputText, participants, 'RACE');
         const newErrors: string[] = [...errors];
 
         // Critical Validations

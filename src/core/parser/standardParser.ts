@@ -212,19 +212,10 @@ export class StandardParser implements ParserStrategy {
 
 
             } else {
-                // スペース区切りの複数ダイス出目に対応
-                const diceValues = rollRaw.trim().split(/\s+/).map(s => parseInt(s, 10)).filter(n => !isNaN(n));
-                if (diceValues.length === 0) {
-                    errors.push(`ダイス値を読み取れませんでした: "${rollRaw}"`);
-                    continue;
-                }
-                const val = diceValues.reduce((acc, cur) => acc + cur, 0);
-                diceResult = val;
-
-                if (isSubtractive) {
-                    diceResult = -Math.abs(diceResult);
-                }
-                total = fixValue + diceResult;
+                // CR-4b: (N) 必須化（あにまん仕様、parser-system.md §A L93-94, L142）
+                // 欠落時は errors 追加 + 当該行 skip。results.push に到達させない。
+                errors.push(`合計値(N)が記載されていません: "${cleanLine}"`);
+                continue;
             }
 
             // Clean name: Remove "①", "②" etc.

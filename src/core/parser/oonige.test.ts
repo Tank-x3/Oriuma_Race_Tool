@@ -21,7 +21,8 @@ describe('Great Escape (Oonige) Negative Dice Logic', () => {
     });
 
     test('parses negative dice without fix value: "Twin Turbo -dice1d27=20"', () => {
-      const input = 'Twin Turbo -dice1d27=20';
+      // CR-4b により (N) 必須化、テスト本来の意図（Fix なし負数ダイス解析）は (N) 付きで保持
+      const input = 'Twin Turbo -dice1d27=20 (20)';
       const result = StandardParser.parse(input, participants, 'RACE');
 
       expect(result.errors).toHaveLength(0);
@@ -42,8 +43,8 @@ describe('Great Escape (Oonige) Negative Dice Logic', () => {
     });
 
     test('parses Fix-dice format with space: "Twin Turbo 58-dice1d27=20"', () => {
-      // parensなしバージョンの回帰確認
-      const input = 'Twin Turbo 58-dice1d27=20';
+      // CR-4b により (N) 必須化、Fix-dice 半角スペース区切りの回帰確認は (N) 付きで維持
+      const input = 'Twin Turbo 58-dice1d27=20 (20)';
       const result = StandardParser.parse(input, participants, 'RACE');
 
       expect(result.errors).toHaveLength(0);
