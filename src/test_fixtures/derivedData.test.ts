@@ -10,6 +10,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { ParserFactory } from '../core/parser/parserFactory';
+import { StandardParser } from '../core/parser/standardParser';
 import type { Umamusume } from '../types';
 import {
   listRealDataFixtures,
@@ -23,6 +24,9 @@ import {
   generateRangeShiftHead,
   generateRangeShiftTail,
   generatePhaseInjection,
+  generateTrailingWhitespaceEdit,
+  generateBlankLineInjection,
+  generateInvalidParenSum,
   findFirstDiceLineIndex,
   findLastDiceLineIndex,
   type DerivedFromMeta,
@@ -138,6 +142,46 @@ describe('Derived data layer fixtures (CR-SA-3-E4)', () => {
               result.results.length !== origResult.results.length ||
               result.errors.length !== origResult.errors.length;
             expect(detected).toBe(true);
+          });
+
+          // CR-SA-3-E4-2 (ENG07 / 2026-05-06): 残り 3 パターン。
+          // 仕様 SSoT: docs/specs/architecture/testing-strategy.md §B L140-155
+
+          it('trailingWhitespaceEdit: Parser 前処理 trim で吸収（regression guard）', () => {
+            const derived = generateTrailingWhitespaceEdit(block, meta);
+            const parser = ParserFactory.getParser(derived.codeBlock);
+            const result = parser.parse(derived.codeBlock, participants, 'RACE');
+
+            // 主軸 assertion (regression guard): 元と同じ件数 = trim 吸収成功。
+            expect(result.results.length).toBe(origResult.results.length);
+            expect(result.errors.length).toBe(origResult.errors.length);
+          });
+
+          it('blankLineInjection: Parser 前処理 空行フィルタで吸収（regression guard）', () => {
+            const derived = generateBlankLineInjection(block, meta);
+            const parser = ParserFactory.getParser(derived.codeBlock);
+            const result = parser.parse(derived.codeBlock, participants, 'RACE');
+
+            // 主軸 assertion (regression guard): 元と同じ件数 = 空行フィルタ吸収成功。
+            expect(result.results.length).toBe(origResult.results.length);
+            expect(result.errors.length).toBe(origResult.errors.length);
+          });
+
+          it('invalidParenSum: StandardParser で (N) 改竄エラー検出', () => {
+            // ParserFactory が StandardParser を返す block のみ対象。
+            // EmojiParser は (N) 自動算出のため改竄概念が成立せず skip。
+            const probe = ParserFactory.getParser(block.codeBlock);
+            if (!(probe instanceof StandardParser)) return;
+
+            const derived = generateInvalidParenSum(block, meta);
+            // (N) を含まないブロックは派生不可 = 入力不変 → skip。
+            if (derived.codeBlock === block.codeBlock) return;
+
+            const parser = ParserFactory.getParser(derived.codeBlock);
+            const result = parser.parse(derived.codeBlock, participants, 'RACE');
+
+            // 主軸 assertion: errors 件数増加 = (N) 改竄検出証拠。
+            expect(result.errors.length).toBeGreaterThan(origResult.errors.length);
           });
         });
       });

@@ -9,7 +9,10 @@ import type { PhaseBlock, PhaseName } from './fixtureLoader';
 export type DerivedPattern =
   | 'rangeShiftHead'
   | 'rangeShiftTail'
-  | 'phaseInjection';
+  | 'phaseInjection'
+  | 'trailingWhitespaceEdit'
+  | 'blankLineInjection'
+  | 'invalidParenSum';
 
 export interface DerivedFromMeta {
   filePath: string;
@@ -98,4 +101,66 @@ export function findLastDiceLineIndex(codeBlock: string): number {
     if (DICE_LINE_RE.test(lines[i])) return i;
   }
   return -1;
+}
+
+// CR-SA-3-E4-2 (ENG07 / 2026-05-06): 残り 3 パターン純関数追加。
+// 仕様 SSoT: docs/specs/architecture/testing-strategy.md §B L140-155
+
+// 各行末に半角空白 1 つ + 全角空白 1 つを追加した派生ブロックを返す。
+// 仕様書 §B「各行末に半角/全角空白を 1〜数個追加」と整合。
+// Parser 前処理 trim で吸収される想定 → regression guard。
+export function generateTrailingWhitespaceEdit(
+  block: PhaseBlock,
+  meta: DerivedFromMeta,
+): DerivedBlock {
+  const lines = block.codeBlock.split(/\r?\n/);
+  const edited = lines.map((line) => `${line} 　`); // 半角SP + 全角SP
+  return {
+    derivedFrom: meta,
+    derivedPattern: 'trailingWhitespaceEdit',
+    phaseName: block.phaseName,
+    codeBlock: edited.join('\n'),
+  };
+}
+
+// 各行間に空行を 1 行追加した派生ブロックを返す。
+// 仕様書 §B「各行間に空行を追加」と整合。
+// Parser 前処理 空行フィルタで吸収される想定 → regression guard。
+export function generateBlankLineInjection(
+  block: PhaseBlock,
+  meta: DerivedFromMeta,
+): DerivedBlock {
+  const lines = block.codeBlock.split(/\r?\n/);
+  const edited = lines.flatMap((line) => [line, '']);
+  return {
+    derivedFrom: meta,
+    derivedPattern: 'blankLineInjection',
+    phaseName: block.phaseName,
+    codeBlock: edited.join('\n'),
+  };
+}
+
+// 最初に検出された (N) の N を意図的に大きく書き換えた派生ブロックを返す。
+// (N) が見つからない場合は codeBlock を変更せずそのまま返す（テスト側で skip 判定）。
+// 仕様書 §B「(N) の値を意図的に書き換え」と整合。
+// 「ダイス合計値が不正です」(StandardParser L203) エラー検出。
+// EmojiParser は (N) 自動算出のため改竄概念が成立せず、対象外（テスト側で instanceof 判定）。
+export function generateInvalidParenSum(
+  block: PhaseBlock,
+  meta: DerivedFromMeta,
+): DerivedBlock {
+  const parenRe = /\((-?\d+)\)/;
+  const matched = block.codeBlock.match(parenRe);
+  let edited = block.codeBlock;
+  if (matched) {
+    const orig = parseInt(matched[1], 10);
+    const tampered = orig + 9999; // 衝突回避のため大きく加算
+    edited = block.codeBlock.replace(parenRe, `(${tampered})`);
+  }
+  return {
+    derivedFrom: meta,
+    derivedPattern: 'invalidParenSum',
+    phaseName: block.phaseName,
+    codeBlock: edited,
+  };
 }
