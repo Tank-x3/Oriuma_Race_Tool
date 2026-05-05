@@ -273,20 +273,7 @@ export const EntryForm: React.FC = () => {
 
                 <button
                     onClick={handleConfirm}
-                    // Disable only if submitted and invalid? No, keep it enabled to trigger validation feedback.
-                    // But requirements said "Disabled and blocks transition". 
-                    // However, new UX requirement: "Don't validate until click".
-                    // So button should be ENABLED initially. 
-                    // When clicked, if invalid, it stays enabled but shows errors?
-                    // Or disabled after click?
-                    // User Req: "エントリー確定ボタンを押した時点で...不備がある場合は...エラーを表示する"
-                    // And "ブロックする".
-                    // So if `isSubmitted` is true AND `!isValid`, then maybe disable?
-                    // Or just let it be clickable to re-trigger?
-                    // Usually clickable is better UX so they can see "Yes, I clicked it".
-                    // But I will follow the spirit: Click -> Check -> If Error, Show Error & Block.
-                    // So button is always enabled (unless loading).
-                    className="flex items-center gap-2 px-6 py-2 bg-primary-600 hover:bg-primary-500 disabled:bg-slate-200 dark:disabled:bg-slate-700 disabled:text-slate-400 dark:disabled:text-slate-500 text-white font-bold rounded-lg transition-all shadow-lg shadow-primary-500/20 disabled:shadow-none"
+                    className="flex items-center gap-2 px-6 py-2 bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-all shadow-lg shadow-indigo-500/20 disabled:shadow-none"
                 >
                     <span>エントリー確定</span>
                     <PlayCircle className="w-4 h-4" />

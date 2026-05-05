@@ -139,22 +139,22 @@ export const ResultScene = () => {
           zIndex: -1000
         }}
       >
-        <div ref={printRef} className="bg-white rounded-lg overflow-hidden relative" style={{ width: '800px' }}>
+        <div ref={printRef} className="bg-white text-gray-800 rounded-lg overflow-hidden relative" style={{ width: '800px' }}>
           <div className="p-8">
             <h2 className="text-2xl font-extrabold text-gray-800 mb-6 text-center">🏆 レース結果</h2>
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="border-b-2 border-gray-800 text-lg">
-                  <th className="p-2 w-16 text-center">着順</th>
-                  <th className="p-2">名前</th>
-                  <th className="p-2 text-right w-32">着差</th>
+                <tr className="border-b-2 border-gray-800 text-lg text-gray-800">
+                  <th className="p-2 w-16 text-center text-gray-800">着順</th>
+                  <th className="p-2 text-gray-800">名前</th>
+                  <th className="p-2 text-right w-32 text-gray-800">着差</th>
                 </tr>
               </thead>
               <tbody>
                 {results.map((r, i) => (
                   <tr key={r.participant.id} className={clsx("border-b border-gray-200", i < 3 && "bg-yellow-50/30")}>
-                    <td className="p-3 text-center text-xl font-bold font-mono">{r.rank}</td>
-                    <td className="p-3 font-bold text-lg">{r.participant.name}</td>
+                    <td className="p-3 text-center text-xl font-bold font-mono text-gray-800">{r.rank}</td>
+                    <td className="p-3 font-bold text-lg text-gray-800">{r.participant.name}</td>
                     <td className="p-3 text-right font-bold text-gray-700">{r.marginText}</td>
                   </tr>
                 ))}
@@ -172,10 +172,10 @@ export const ResultScene = () => {
         <button
           onClick={handleCopy}
           className={clsx(
-            "flex items-center gap-2 text-white px-8 py-4 rounded-lg shadow transition lg:text-lg font-bold",
+            "flex items-center gap-2 text-white px-8 py-4 rounded-lg shadow transition lg:text-lg font-bold disabled:opacity-50 disabled:cursor-not-allowed",
             copied
               ? "bg-green-600 hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600"
-              : "bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
+              : "bg-slate-600 hover:bg-slate-700 dark:bg-slate-500 dark:hover:bg-slate-600"
           )}
         >
           {copied ? <Check className="w-6 h-6" /> : <Copy className="w-6 h-6" />}
@@ -184,7 +184,7 @@ export const ResultScene = () => {
         <button
           onClick={handleSaveImage}
           disabled={saving}
-          className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-500 dark:hover:bg-emerald-600 text-white px-8 py-4 rounded-lg shadow transition lg:text-lg font-bold disabled:opacity-50"
+          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 text-white px-8 py-4 rounded-lg shadow transition lg:text-lg font-bold disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {saving ? "生成中..." : "🖼️ 画像として保存(.png)"}
         </button>

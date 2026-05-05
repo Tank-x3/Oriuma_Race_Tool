@@ -245,7 +245,7 @@ export const GateScene: React.FC = () => {
 
                     <button
                         onClick={handleParse}
-                        className="w-full flex items-center justify-center gap-2 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg transition-colors shadow-lg shadow-indigo-500/20 border-b-4 border-indigo-700 hover:border-indigo-600 active:border-b-0 active:translate-y-1"
+                        className="w-full flex items-center justify-center gap-2 py-3 bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 text-white font-bold rounded-lg transition-colors shadow-lg shadow-indigo-500/20 border-b-4 border-indigo-700 hover:border-indigo-600 dark:border-indigo-700 active:border-b-0 active:translate-y-1"
                     >
                         <Dices className="w-5 h-5" />
                         解析実行
@@ -304,9 +304,9 @@ export const GateScene: React.FC = () => {
                                     const text = assignments.map(a => `${getCircleNumber(a.gate)} ${a.name} (出目: ${a.roll === 0 ? '---' : a.roll})`).join('\n');
                                     handleCopy(text, 'result');
                                 }}
-                                className={`flex-1 flex items-center justify-center gap-2 py-3 border rounded-lg font-bold transition-colors ${copiedSection === 'result'
-                                    ? 'bg-green-50 border-green-200 text-green-600'
-                                    : 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200'
+                                className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg font-bold transition-colors ${copiedSection === 'result'
+                                    ? 'bg-green-600 hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600 text-white'
+                                    : 'bg-slate-600 hover:bg-slate-700 dark:bg-slate-500 dark:hover:bg-slate-600 text-white'
                                     }`}
                             >
                                 {copiedSection === 'result' ? <CheckCircle2 className="w-5 h-5" /> : <ClipboardCopy className="w-5 h-5" />}
@@ -314,7 +314,7 @@ export const GateScene: React.FC = () => {
                             </button>
                             <button
                                 onClick={handleConfirm}
-                                className="flex-[2] flex items-center justify-center gap-2 py-3 bg-green-600 hover:bg-green-500 text-white font-bold rounded-lg transition-colors shadow-lg shadow-green-500/20 border-b-4 border-green-700 hover:border-green-600 active:border-b-0 active:translate-y-1"
+                                className="flex-[2] flex items-center justify-center gap-2 py-3 bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 text-white font-bold rounded-lg transition-colors shadow-lg shadow-indigo-500/20 border-b-4 border-indigo-700 hover:border-indigo-600 dark:border-indigo-700 active:border-b-0 active:translate-y-1"
                             >
                                 <span>枠順を確定してレース開始</span>
                                 <ArrowRight className="w-5 h-5" />

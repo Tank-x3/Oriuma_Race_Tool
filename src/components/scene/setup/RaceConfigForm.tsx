@@ -92,7 +92,7 @@ export const RaceConfigForm: React.FC = () => {
                         <button
                             onClick={handleGenerate}
                             disabled={!isValidSize}
-                            className="flex-1 h-10 px-4 bg-primary-600 hover:bg-primary-500 disabled:bg-slate-200 disabled:text-slate-400 dark:disabled:bg-slate-700 dark:disabled:text-slate-500 text-white text-sm font-medium rounded-lg transition-colors shadow-lg shadow-primary-500/20 disabled:shadow-none"
+                            className="flex-1 h-10 px-4 bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors shadow-lg shadow-indigo-500/20 disabled:shadow-none"
                         >
                             入力欄生成 (Update)
                         </button>

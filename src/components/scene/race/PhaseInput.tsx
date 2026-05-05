@@ -189,10 +189,10 @@ export const PhaseInput: React.FC<PhaseInputProps> = ({ onErrors }) => {
                         onClick={handleParse}
                         disabled={!inputText.trim() || isParsing}
                         className={clsx(
-                            "px-6 py-2 rounded-lg font-bold flex items-center gap-2 transition-all shadow-md active:scale-95",
+                            "px-6 py-2 rounded-lg font-bold flex items-center gap-2 transition-all shadow-md active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed",
                             !inputText.trim() || isParsing
-                                ? "bg-gray-300 dark:bg-gray-700 text-gray-500 cursor-not-allowed"
-                                : "bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-500/30"
+                                ? "bg-slate-300 dark:bg-slate-700 text-slate-500 dark:text-slate-400"
+                                : "bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 text-white shadow-indigo-500/30"
                         )}
                     >
                         {isParsing ? <RotateCw className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}

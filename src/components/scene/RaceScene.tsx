@@ -7,7 +7,6 @@ import { RankingCalculator } from '../../core/logic/RankingCalculator';
 import { PhaseOutput } from './race/PhaseOutput';
 import { PhaseInput } from './race/PhaseInput';
 import { RaceDashboard } from './race/RaceDashboard';
-import { clsx } from 'clsx';
 import { NotificationArea } from '../ui/NotificationArea';
 // import { HouseRuleModal } from './HouseRuleModal'; // To be implemented later
 
@@ -234,12 +233,7 @@ export const RaceScene: React.FC = () => {
                     <div className="flex justify-end pt-4">
                         <button
                             onClick={handleNext}
-                            className={clsx(
-                                "px-6 py-3 text-white font-bold rounded-xl shadow-lg transition-all transform hover:scale-105 active:scale-95 flex items-center gap-2",
-                                isLastPhase
-                                    ? "bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700"
-                                    : "bg-indigo-600 hover:bg-indigo-700"
-                            )}
+                            className="px-6 py-3 text-white font-bold rounded-xl shadow-lg shadow-indigo-500/20 transition-all transform hover:scale-105 active:scale-95 flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             {isLastPhase ? '最終結果判定へ' : '次のフェーズへ'}
                             <ChevronRight className="w-5 h-5" />

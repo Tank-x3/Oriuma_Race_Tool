@@ -286,7 +286,7 @@ export const JudgmentScene = () => {
                 "flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all",
                 copiedDice
                   ? "bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300"
-                  : "bg-blue-50 dark:bg-indigo-900/30 border border-blue-100 dark:border-indigo-800/50 text-blue-600 dark:text-indigo-300 hover:bg-blue-100 dark:hover:bg-indigo-900/50"
+                  : "bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700"
               )}
             >
               {copiedDice ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
@@ -320,7 +320,7 @@ export const JudgmentScene = () => {
           )}
 
           <textarea
-            className="w-full h-32 p-4 border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-lg font-mono text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow placeholder:text-slate-400 dark:placeholder:text-slate-500"
+            className="w-full h-32 p-4 border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-lg font-mono text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-shadow placeholder:text-slate-400 dark:placeholder:text-slate-500"
             placeholder="例: &#13;&#10;ウマ娘A 🎲 dice1d5= 3 (2) &#13;&#10;ウマ娘B 🎲 dice1d5= 5 (4)"
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
@@ -329,7 +329,7 @@ export const JudgmentScene = () => {
           <button
             onClick={handleParse}
             disabled={!inputValue.trim()}
-            className="w-full py-4 bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white font-bold rounded-xl shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 text-lg"
+            className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 text-lg"
           >
             判定を適用して最終結果へ
             <ArrowRight className="w-6 h-6" />

@@ -17,21 +17,21 @@ export const NotificationArea: React.FC<NotificationAreaProps> = ({
     return (
         <div
             className={`w-full p-4 rounded-lg border transition-all duration-300 ${hasErrors
-                ? 'bg-red-50 border-red-500 text-red-800'
-                : 'bg-blue-50 border-blue-200 text-blue-800'
+                ? 'bg-red-50 border-red-500 text-red-800 dark:bg-red-900/30 dark:border-red-500/50 dark:text-red-200'
+                : 'bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-900/30 dark:border-blue-700/50 dark:text-blue-200'
                 } ${className}`}
         >
             <div className="flex items-start gap-3">
                 {hasErrors ? (
-                    <AlertCircle className="w-5 h-5 mt-0.5 shrink-0 text-red-600" />
+                    <AlertCircle className="w-5 h-5 mt-0.5 shrink-0 text-red-600 dark:text-red-300" />
                 ) : (
-                    <Info className="w-5 h-5 mt-0.5 shrink-0 text-blue-600" />
+                    <Info className="w-5 h-5 mt-0.5 shrink-0 text-blue-600 dark:text-blue-300" />
                 )}
 
                 <div className="flex-1">
                     {hasErrors ? (
                         <div className="flex flex-col gap-1">
-                            <span className="font-bold text-red-900 mb-1">
+                            <span className="font-bold text-red-900 dark:text-red-100 mb-1">
                                 以下のエラーを確認してください:
                             </span>
                             <ul className="list-disc pl-5 space-y-1 text-sm font-medium">
