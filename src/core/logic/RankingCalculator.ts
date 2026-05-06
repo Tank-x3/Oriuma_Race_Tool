@@ -147,10 +147,17 @@ export const RankingCalculator = {
           }
         } else if (scoreDiff === 1) {
           // Margin Logic (1 point diff)
-          // Find who holds the dice for this gap (The Rep of the Upper Score Group).
-          // Search in original `participants` or strictly by score matching.
-          const upperRep = participants.find(p => p.score === prev.score && p.judgment?.margin !== undefined);
-          const dice = upperRep?.judgment?.margin ?? 0;
+          // CR-5b: Upper スコアグループの代表者は detectJudgmentNeeds line 90 と同じ
+          // 「最小 gate 番号の参加者」（gate ?? entryIndex 比較）で決定的に選ぶ。
+          // 旧実装の find() は格納順 + judgment.margin 有無の曖昧検索で、
+          // 同点者がいるグループの隣接判定で意図しない参加者を選ぶ可能性があった。
+          const upperGroup = participants.filter(p => p.score === prev.score);
+          const upperRep = upperGroup.reduce((min, p) => {
+            const minGate = min.gate ?? min.entryIndex;
+            const pGate = p.gate ?? p.entryIndex;
+            return pGate < minGate ? p : min;
+          });
+          const dice = upperRep.judgment?.margin ?? 0;
 
           if (dice === 1) marginText = "アタマ";
           else if (dice === 2) marginText = "クビ";

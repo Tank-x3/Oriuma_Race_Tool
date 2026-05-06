@@ -102,4 +102,75 @@ describe('RankingCalculator', () => {
     const results = RankingCalculator.calculateFinalRanking([p1, p2]);
     expect(results[1].marginText).toBe('2 1/2');
   });
+
+  describe('CR-5b: 同点者隣接着差判定（複合シナリオ）', () => {
+    it('should reference the smallest-gate representative dice in tie + 1-point diff scenario', () => {
+      // A・B 同点（score 100）+ C 1 点差（score 99）
+      // 代表者 = 最小 gate の A（gate=1）。A.judgment.margin=2（クビ）が参照されるべき
+      const pA = createMockUma('1', 'A', 100, 1);
+      const pB = createMockUma('2', 'B', 100, 2);
+      const pC = createMockUma('3', 'C', 99, 3);
+
+      pA.judgment = { photo: 5, margin: 2 }; // 代表者ダイス = クビ
+      pB.judgment = { photo: 1 };
+
+      const results = RankingCalculator.calculateFinalRanking([pA, pB, pC]);
+
+      // 順位: A (photo=5 勝) → B (photo=1 負) → C
+      expect(results[0].participant.id).toBe('1');
+      expect(results[1].participant.id).toBe('2');
+      expect(results[2].participant.id).toBe('3');
+      // C の着差は A の代表者ダイス margin=2 → 「クビ」
+      expect(results[2].marginText).toBe('クビ');
+    });
+
+    it('should NOT reference non-representative dice even if it is set', () => {
+      // A・B 同点（score 100）+ C 1 点差（score 99）
+      // 代表者は A（gate=1）。誤って B（gate=2）に margin=1 が入っていても参照されない
+      const pA = createMockUma('1', 'A', 100, 1);
+      const pB = createMockUma('2', 'B', 100, 2);
+      const pC = createMockUma('3', 'C', 99, 3);
+
+      pA.judgment = { photo: 5 }; // 代表者だが margin 未設定
+      pB.judgment = { photo: 1, margin: 1 }; // 非代表者だが margin=1 が入っている
+
+      const results = RankingCalculator.calculateFinalRanking([pA, pB, pC]);
+
+      // C の着差は A.judgment.margin が undefined なので fallback "1"
+      // B.judgment.margin=1（アタマ）は参照されてはならない
+      expect(results[2].participant.id).toBe('3');
+      expect(results[2].marginText).not.toBe('アタマ');
+      expect(results[2].marginText).toBe('1'); // fallback
+    });
+
+    it('should reference correct representative for each gap in 3-tier score structure', () => {
+      // A 100（単独）/ B・C 99（同点）/ D 98（単独）
+      // gap1: A vs B/C グループ → 代表者 A（gate=1）の margin が参照される
+      // gap2: B/C グループ vs D → 代表者 B（gate=2、最小 gate）の margin が参照される
+      const pA = createMockUma('1', 'A', 100, 1);
+      const pB = createMockUma('2', 'B', 99, 2);
+      const pC = createMockUma('3', 'C', 99, 3);
+      const pD = createMockUma('4', 'D', 98, 4);
+
+      pA.judgment = { margin: 1 };               // gap1 代表 → アタマ
+      pB.judgment = { photo: 5, margin: 2 };     // gap2 代表 → クビ
+      pC.judgment = { photo: 1 };                // 非代表
+      // D の手前判定で参照されるのは B のダイス
+
+      const results = RankingCalculator.calculateFinalRanking([pA, pB, pC, pD]);
+
+      // 順位順: A → B (photo=5) → C (photo=1) → D
+      expect(results[0].participant.id).toBe('1');
+      expect(results[1].participant.id).toBe('2');
+      expect(results[2].participant.id).toBe('3');
+      expect(results[3].participant.id).toBe('4');
+
+      // gap1 (A → B): A の margin=1 → 「アタマ」
+      expect(results[1].marginText).toBe('アタマ');
+      // C は B と同点で写真判定負け → 「ハナ」
+      expect(results[2].marginText).toBe('ハナ');
+      // gap2 (C → D, score diff=1): B の margin=2 → 「クビ」
+      expect(results[3].marginText).toBe('クビ');
+    });
+  });
 });
