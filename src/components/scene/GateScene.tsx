@@ -3,6 +3,7 @@ import { useRaceStore } from '../../store/useRaceStore';
 import { Dices, ClipboardCopy, ArrowRight, CheckCircle2, ArrowLeft } from 'lucide-react';
 import { ParserFactory } from '../../core/parser/parserFactory';
 import { NotificationArea } from '../ui/NotificationArea';
+import type { GateAssignment } from '../../types';
 
 // Helper for Circle Numbers (①, ②...)
 const getCircleNumber = (num: number): string => {
@@ -13,14 +14,36 @@ const getCircleNumber = (num: number): string => {
 };
 
 export const GateScene: React.FC = () => {
-    const { participants, applyGateAssignments, startRace, moveToSetup } = useRaceStore();
+    const {
+        participants,
+        applyGateAssignments,
+        startRace,
+        moveToSetup,
+        gateAssignments,
+        setGateAssignments,
+    } = useRaceStore();
     const [inputText, setInputText] = useState('');
     const [parseErrors, setParseErrors] = useState<string[]>([]);
     const [copiedSection, setCopiedSection] = useState<string | null>(null);
 
-    // Initialize assignments from store if available (Persistence)
-    const [assignments, setAssignments] = useState<{ id: string; name: string; roll: number; gate: number }[] | null>(() => {
-        // If at least one participant has a gate assigned, reconstruct the view
+    // CR-5a-2: 表示用 assignments の構築（scene2-gate.md §3 復元優先順位 3 段階）。
+    //   (1) gateAssignments != null            → ストア中間状態から表示用に name を join（SA07 新挙動）
+    //   (2) gateAssignments == null かつ
+    //       participants[].gate != null       → 既存 participants から再構築
+    //                                           （Scene 3 以降からの戻り経路 / 旧データ復元、roll は失われており 0 で dummy）
+    //   (3) 両方 null                          → null（未解析、[4] セクション非表示）
+    const displayAssignments = useMemo<{ id: string; name: string; roll: number; gate: number }[] | null>(() => {
+        if (gateAssignments) {
+            const nameMap = new Map(participants.map(p => [p.id, p.name]));
+            return gateAssignments
+                .map(a => ({
+                    id: a.id,
+                    name: nameMap.get(a.id) ?? '',
+                    roll: a.roll,
+                    gate: a.gate,
+                }))
+                .sort((a, b) => a.gate - b.gate);
+        }
         const hasGate = participants.some(p => p.gate !== null);
         if (hasGate) {
             return participants
@@ -28,13 +51,13 @@ export const GateScene: React.FC = () => {
                 .map(p => ({
                     id: p.id,
                     name: p.name,
-                    roll: 0, // Roll is not persisted, set dummy
-                    gate: p.gate!
+                    roll: 0,
+                    gate: p.gate!,
                 }))
                 .sort((a, b) => a.gate - b.gate);
         }
         return null;
-    });
+    }, [gateAssignments, participants]);
 
     // [1] Entry Confirmation List
     const entryListText = useMemo(() => {
@@ -121,7 +144,8 @@ export const GateScene: React.FC = () => {
 
         if (newErrors.length > 0) {
             setParseErrors(newErrors);
-            setAssignments(null);
+            // CR-5a-2: 解析失敗時は前回成功結果を残さない（最新結果と誤認するリスク回避、scene2-gate.md §3）
+            setGateAssignments(null);
             return;
         }
 
@@ -139,22 +163,21 @@ export const GateScene: React.FC = () => {
             return idxA - idxB; // ASC
         });
 
-        // Assign Gates
-        const finalAssignments = sorted.map((res, index) => ({
+        // CR-5a-2: 最小情報原則で {id, roll, gate} のみ保存（name は participants から再構築可、SA07 §7.2）
+        const finalAssignments: GateAssignment[] = sorted.map((res, index) => ({
             id: res.participantId,
-            name: res.name,
             roll: res.diceResult,
-            gate: index + 1
+            gate: index + 1,
         }));
 
         setParseErrors([]);
-        setAssignments(finalAssignments);
+        setGateAssignments(finalAssignments);
     };
 
     // [4] Confirm & Navigate
     const handleConfirm = () => {
-        if (!assignments) return;
-        applyGateAssignments(assignments.map(a => ({ id: a.id, gate: a.gate })));
+        if (!displayAssignments) return;
+        applyGateAssignments(displayAssignments.map(a => ({ id: a.id, gate: a.gate })));
         startRace();
     };
 
@@ -260,7 +283,7 @@ export const GateScene: React.FC = () => {
             </section>
 
             {/* [4] Result List - Only visible after parsing */}
-            {assignments && (
+            {displayAssignments && (
                 <section className="bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm border-2 border-indigo-500/30 dark:border-indigo-400/30 rounded-xl shadow-xl overflow-hidden animate-in slide-in-from-bottom-4">
                     <div className="p-4 border-b border-indigo-100 dark:border-indigo-900/50 bg-indigo-50/50 dark:bg-indigo-900/20 flex justify-between items-center">
                         <h3 className="font-bold text-indigo-900 dark:text-indigo-100 flex items-center gap-2">
@@ -279,7 +302,7 @@ export const GateScene: React.FC = () => {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100 dark:divide-slate-700 bg-white dark:bg-slate-900">
-                                    {assignments.map((a) => (
+                                    {displayAssignments.map((a) => (
                                         <tr key={a.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
                                             <td className="px-4 py-2 text-center">
                                                 <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 font-bold text-sm font-mono border border-indigo-200 dark:border-indigo-700/50">
@@ -301,7 +324,7 @@ export const GateScene: React.FC = () => {
                         <div className="flex gap-4">
                             <button
                                 onClick={() => {
-                                    const text = assignments.map(a => `${getCircleNumber(a.gate)} ${a.name} (出目: ${a.roll === 0 ? '---' : a.roll})`).join('\n');
+                                    const text = displayAssignments.map(a => `${getCircleNumber(a.gate)} ${a.name} (出目: ${a.roll === 0 ? '---' : a.roll})`).join('\n');
                                     handleCopy(text, 'result');
                                 }}
                                 className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg font-bold transition-colors ${copiedSection === 'result'

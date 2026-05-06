@@ -1,6 +1,16 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { useRaceStore } from './useRaceStore';
-import type { DiceResult, Umamusume } from '../types';
+import {
+    useRaceStore,
+    persistPartialize,
+    persistMigrate,
+    handleRehydrateError,
+    PERSIST_NAME,
+    PERSIST_VERSION,
+    RESTORE_ERROR_MESSAGE,
+    type PersistedRaceState,
+} from './useRaceStore';
+import { useNotificationStore } from '../components/ui/Notification';
+import type { DiceResult, GateAssignment, Umamusume } from '../types';
 import { getActivePhaseIds } from '../core/calculator';
 
 // 固有ダイス DiceResult の生成ヘルパー
@@ -370,5 +380,173 @@ describe('useRaceStore.moveToGate - CR-3 / #1-3a-3 名前空欄行スキップ',
         const after = useRaceStore.getState().participants;
         expect(after.map(p => p.id)).toEqual(['p1', 'p3']);
         expect(useRaceStore.getState().uiState.scene).toBe('gate');
+    });
+});
+
+describe('CR-5a: zustand persist 設定', () => {
+    it('persistPartialize: uiState.isParsingInput を除外し、その他全フィールドを含める', () => {
+        const fullState = useRaceStore.getState();
+        // isParsingInput を意図的に true にしても partialize 出力は scene のみで除外される
+        const stateWithParsing = {
+            ...fullState,
+            uiState: { scene: 'race' as const, isParsingInput: true },
+        };
+
+        const partialized = persistPartialize(stateWithParsing);
+
+        expect(partialized).toEqual({
+            config: fullState.config,
+            participants: fullState.participants,
+            currentPhaseId: fullState.currentPhaseId,
+            paceResult: fullState.paceResult,
+            strategies: fullState.strategies,
+            gateAssignments: fullState.gateAssignments,
+            uiState: { scene: 'race' },
+        });
+        // uiState.isParsingInput が確実に除外されていること
+        expect((partialized.uiState as { isParsingInput?: boolean }).isParsingInput).toBeUndefined();
+    });
+
+    it('persistPartialize: actions（function）が永続化対象から除外される', () => {
+        const fullState = useRaceStore.getState();
+        const partialized = persistPartialize(fullState);
+
+        // partialize の戻り値に function 系のアクションが含まれていないこと
+        const partializedKeys = Object.keys(partialized);
+        expect(partializedKeys).not.toContain('setMidPhaseCount');
+        expect(partializedKeys).not.toContain('resetRace');
+        expect(partializedKeys).not.toContain('moveToGate');
+        expect(partializedKeys.sort()).toEqual([
+            'config',
+            'currentPhaseId',
+            'gateAssignments',
+            'paceResult',
+            'participants',
+            'strategies',
+            'uiState',
+        ]);
+    });
+
+    it('PERSIST_VERSION / PERSIST_NAME: 想定値が export されている', () => {
+        expect(PERSIST_VERSION).toBe(1);
+        expect(PERSIST_NAME).toBe('race-store');
+    });
+
+    it('persistMigrate: 任意の persistedState を passthrough で返す（雛形動作）', () => {
+        const dummyPersisted = {
+            config: { midPhaseCount: 3, fullGateSize: 12, houseRules: {} },
+            participants: [{ id: 'old', name: 'legacy' }],
+            currentPhaseId: 'Mid1',
+            paceResult: { face: 5, label: 'Slow' },
+            strategies: [],
+            uiState: { scene: 'race' },
+        } as unknown as PersistedRaceState;
+
+        const result = persistMigrate(dummyPersisted, 0);
+
+        // passthrough 確認: 同じ参照が返る
+        expect(result).toBe(dummyPersisted);
+    });
+
+    it('handleRehydrateError: error 引数があれば useNotificationStore に error 通知を追加', () => {
+        // notification store をクリア
+        useNotificationStore.setState({ notifications: [] });
+
+        handleRehydrateError(new Error('JSON parse failed'));
+
+        const notifications = useNotificationStore.getState().notifications;
+        expect(notifications).toHaveLength(1);
+        expect(notifications[0].type).toBe('error');
+        expect(notifications[0].message).toBe(RESTORE_ERROR_MESSAGE);
+
+        // 後続テストへの影響回避
+        useNotificationStore.setState({ notifications: [] });
+    });
+
+    it('handleRehydrateError: error が undefined のときは通知を追加しない', () => {
+        useNotificationStore.setState({ notifications: [] });
+
+        handleRehydrateError(undefined);
+
+        const notifications = useNotificationStore.getState().notifications;
+        expect(notifications).toHaveLength(0);
+    });
+});
+
+describe('CR-5a-2: gateAssignments ストア昇格', () => {
+    beforeEach(() => {
+        useRaceStore.getState().resetRace();
+    });
+
+    it('setGateAssignments: 配列値で上書き保存できる', () => {
+        const value: GateAssignment[] = [
+            { id: 'p1', roll: 42, gate: 1 },
+            { id: 'p2', roll: 77, gate: 2 },
+        ];
+
+        useRaceStore.getState().setGateAssignments(value);
+
+        expect(useRaceStore.getState().gateAssignments).toEqual(value);
+    });
+
+    it('setGateAssignments: null で前回保存値をクリアできる（解析失敗時の挙動）', () => {
+        useRaceStore.getState().setGateAssignments([{ id: 'p1', roll: 5, gate: 1 }]);
+        expect(useRaceStore.getState().gateAssignments).not.toBeNull();
+
+        useRaceStore.getState().setGateAssignments(null);
+
+        expect(useRaceStore.getState().gateAssignments).toBeNull();
+    });
+
+    it('resetRace: gateAssignments を null にリセットする（houserule-features.md §4.5）', () => {
+        useRaceStore.getState().setGateAssignments([
+            { id: 'p1', roll: 12, gate: 1 },
+            { id: 'p2', roll: 34, gate: 2 },
+        ]);
+        expect(useRaceStore.getState().gateAssignments).not.toBeNull();
+
+        useRaceStore.getState().resetRace();
+
+        expect(useRaceStore.getState().gateAssignments).toBeNull();
+    });
+
+    it('persistPartialize: gateAssignments を保存対象に含める（中間状態の永続化、houserule-features.md §4.2 #6）', () => {
+        const value: GateAssignment[] = [
+            { id: 'p1', roll: 88, gate: 1 },
+            { id: 'p2', roll: 55, gate: 2 },
+        ];
+        useRaceStore.getState().setGateAssignments(value);
+
+        const partialized = persistPartialize(useRaceStore.getState());
+
+        expect(partialized.gateAssignments).toEqual(value);
+    });
+
+    it('フォールバック条件: gateAssignments == null かつ participants[].gate != null の状態を保てる（Scene 3 以降からの戻り経路 / 旧データ復元、scene2-gate.md §3 復元優先順位 (2)）', () => {
+        // Scene 2 で確定 → Scene 3 へ進み participants[].gate に値が入った後、
+        // 何らかの遷移で gateAssignments のみが先にリセットされた想定。
+        // GateScene 側のフォールバック再構築ロジック（既存 line 22-37 由来）が
+        // 起動できる状態の組み合わせがストアで成立していることを確認する。
+        useRaceStore.setState({
+            participants: [
+                {
+                    id: 'p1', entryIndex: 1, name: 'A',
+                    strategy: '先行',
+                    uniqueSkill: { type: 'Stability', phases: ['Start'] },
+                    gate: 1, score: 0, history: {},
+                },
+                {
+                    id: 'p2', entryIndex: 2, name: 'B',
+                    strategy: '先行',
+                    uniqueSkill: { type: 'Stability', phases: ['Start'] },
+                    gate: 2, score: 0, history: {},
+                },
+            ],
+            gateAssignments: null,
+        });
+
+        const state = useRaceStore.getState();
+        expect(state.gateAssignments).toBeNull();
+        expect(state.participants.some(p => p.gate !== null)).toBe(true);
     });
 });

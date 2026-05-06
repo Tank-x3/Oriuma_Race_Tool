@@ -65,6 +65,15 @@ export interface Umamusume {
     };
 }
 
+// CR-SA-7 / SA07: Scene 2 解析実行直後の中間状態（[4] 枠順確定リスト）を
+// ストアに保持して中間リロード復元を成立させるための最小情報。
+// `name` は participants から再構築可能なため除外（最小情報原則）。
+export interface GateAssignment {
+    id: string;
+    roll: number;
+    gate: number;
+}
+
 export interface RaceState {
     config: {
         midPhaseCount: number;
@@ -83,4 +92,6 @@ export interface RaceState {
         label: string | null; // "High", "Slow" etc - derived
     };
     strategies: Strategy[]; // Default + Custom strategies
+    // CR-SA-7 / SA07: Scene 2 解析実行直後の中間状態。null = 未解析 / 解析失敗。
+    gateAssignments: GateAssignment[] | null;
 }
