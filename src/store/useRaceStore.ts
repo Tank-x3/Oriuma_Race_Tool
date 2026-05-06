@@ -25,6 +25,10 @@ interface RaceStoreState extends RaceState {
     startRace: () => void;
     setCurrentPhase: (phaseId: string) => void;
     setPaceResult: (face: number, label: string) => void;
+    // CR-8: prevPhase() からの呼び出し用。指定 phaseId の participants[].history を削除し、
+    // score を再計算する。options.resetPace=true の場合は paceResult も { face: null, label: null }
+    // にリセットし、その状態で score 再計算する（ペース戻り時の再投擲フロー成立条件）。
+    revertPhaseHistory: (phaseId: string, options: { resetPace: boolean }) => void;
     moveToJudgment: () => void;
     moveToResult: () => void;
     moveToSetup: () => void;
@@ -229,6 +233,36 @@ export const useRaceStore = create<RaceStoreState>()(
                 })),
 
             setGateAssignments: (value) => set({ gateAssignments: value }),
+
+            // CR-8: 戻り元フェーズの history を削除し、score を再計算する。
+            // resetPace=true の場合は paceResult を null にリセットし、再計算もその前提で行う
+            // （Mid 以降のフェーズスコアから paceModifier が外れる）。
+            // 仕様根拠: scene3-race.md §6 「内容修正へ(Back)」 / CODE_REVIEW_BOARD #4-1-4
+            revertPhaseHistory: (phaseId, options) =>
+                set((state) => {
+                    const activePhaseIds = getActivePhaseIds(state.config.midPhaseCount);
+                    const newPaceFace = options.resetPace ? null : state.paceResult.face;
+
+                    const newParticipants = state.participants.map((p) => {
+                        const newHistory = { ...p.history };
+                        delete newHistory[phaseId];
+                        const next: Umamusume = { ...p, history: newHistory };
+                        next.score = Calculator.calculateTotalScore(
+                            next,
+                            state.strategies,
+                            newPaceFace,
+                            activePhaseIds
+                        );
+                        return next;
+                    });
+
+                    return options.resetPace
+                        ? {
+                              participants: newParticipants,
+                              paceResult: { face: null, label: null },
+                          }
+                        : { participants: newParticipants };
+                }),
 
             // #1-3a-3: エントリー確定時に名前空欄行を除外し、以降の Scene では
             // 名前入力済みの有効参加者のみを扱う。仕様: scene1-setup.md ワイヤーフレーム

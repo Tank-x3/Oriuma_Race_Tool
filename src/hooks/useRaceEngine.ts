@@ -1,8 +1,31 @@
 import { useMemo } from 'react';
 import { useRaceStore } from '../store/useRaceStore';
 
+// CR-8: prevPhase() の副作用部分（store 操作）から純粋な計画決定ロジックを切り出した関数。
+// 戻り元フェーズ・戻り先フェーズ・ペース判定リセット要否を決定する。
+// no-op（序盤 / 不正フェーズ / レースループ外）の場合は null を返す。
+// ペース判定リセット条件: 戻り元が 'Pace'、または戻り元が phaseSequence の最初の Mid
+// （midPhaseCount=1 なら 'Mid'、>=2 なら 'Mid1'、いずれも phaseSequence[2]）。
+export const computePrevPhasePlan = (
+    currentPhaseId: string,
+    phaseSequence: readonly string[]
+): { revertPhaseId: string; resetPace: boolean; prevPhaseId: string } | null => {
+    const currentIndex = phaseSequence.indexOf(currentPhaseId);
+    if (currentIndex <= 0) return null;
+
+    const prevPhaseId = phaseSequence[currentIndex - 1];
+    const firstMidId = phaseSequence[2];
+    const shouldResetPace = currentPhaseId === 'Pace' || currentPhaseId === firstMidId;
+
+    return {
+        revertPhaseId: currentPhaseId,
+        resetPace: shouldResetPace,
+        prevPhaseId,
+    };
+};
+
 export const useRaceEngine = () => {
-    const { config, currentPhaseId, setCurrentPhase } = useRaceStore();
+    const { config, currentPhaseId, setCurrentPhase, revertPhaseHistory } = useRaceStore();
 
     // Determine phase sequence based on config
     const phaseSequence = useMemo(() => {
@@ -44,17 +67,13 @@ export const useRaceEngine = () => {
     };
 
     const prevPhase = () => {
-        // Standard back: Go to previous race phase
-        if (currentIndex > 0) {
-            const prevId = phaseSequence[currentIndex - 1];
-            setCurrentPhase(prevId);
-        } else if (isFirstPhase) {
-            // Requirement Logic: Back from Start -> Go to Gate Lottery?
-            // "現在が 序盤 の場合: Scene 2（枠順抽選）に戻る。"
-            // This requires changing 'scene' not just 'phase'.
-            // The hook primarily manages Race Loop phases.
-            // Caller might handle "Back from Start".
-        }
+        // CR-8: 戻り元フェーズの history を削除 + score 再計算 + 必要なら paceResult リセット。
+        // 序盤からの戻り（Scene 2 への遷移）は RaceScene.tsx:153-160 の handleBack() が担う。
+        const plan = computePrevPhasePlan(currentPhaseId, phaseSequence);
+        if (plan === null) return;
+
+        revertPhaseHistory(plan.revertPhaseId, { resetPace: plan.resetPace });
+        setCurrentPhase(plan.prevPhaseId);
     };
 
     const getPhaseLabel = (id: string) => {

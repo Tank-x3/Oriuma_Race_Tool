@@ -550,3 +550,160 @@ describe('CR-5a-2: gateAssignments ストア昇格', () => {
         expect(state.participants.some(p => p.gate !== null)).toBe(true);
     });
 });
+
+describe('useRaceStore.revertPhaseHistory - CR-8 / scene3-race.md §6', () => {
+    beforeEach(() => {
+        useRaceStore.getState().resetRace();
+    });
+
+    // CR-8 専用の参加者注入ヘルパー。midPhaseCount を引数で切り替え、paceResult.face も同時セット。
+    const installForRevert = (
+        midPhaseCount: number,
+        paceFace: number | null,
+        history: Umamusume['history']
+    ): Umamusume => {
+        const uma: Umamusume = {
+            id: 'p1',
+            entryIndex: 1,
+            name: 'Test',
+            strategy: '先行', // fixValue 10
+            uniqueSkill: { type: 'Stability', phases: [] }, // 固有ダイスは本テストでは無効化
+            gate: 1,
+            score: 0,
+            history,
+        };
+        useRaceStore.setState({
+            config: {
+                midPhaseCount,
+                fullGateSize: null,
+                houseRules: {
+                    enableModifier: false,
+                    enableSpecialStrategy: false,
+                    enableCompositeUnique: false,
+                },
+            },
+            participants: [uma],
+            paceResult:
+                paceFace === null
+                    ? { face: null, label: null }
+                    : { face: paceFace, label: 'Test' },
+        });
+        return uma;
+    };
+
+    it('(a) Mid → Pace 戻り: history.Mid 削除 + paceResult null + score 再計算（midPhaseCount=1）', () => {
+        // 先行 paceFace=5 → 先行ペース修正値 = +0（基準値、ニュートラル）
+        // 構造: Start (3d8 sum 10) + Mid (3d5 sum 8)
+        // 戻り前 score = fix 10 + Start 10 + Mid 8 + paceMod 0 = 28
+        // 戻り後 score = fix 10 + Start 10 = 20（Mid 削除 + paceMod も 0 なので不変だが意味的にリセット）
+        installForRevert(1, 5, {
+            Start: { baseDice: makeDice('3d8', [3, 4, 3]), computedScore: 20 },
+            Mid: { baseDice: makeDice('3d5', [3, 3, 2]), computedScore: 28 },
+        });
+
+        useRaceStore.getState().revertPhaseHistory('Mid', { resetPace: true });
+
+        const updated = useRaceStore.getState().participants[0];
+        const state = useRaceStore.getState();
+        expect(updated.history['Mid']).toBeUndefined();
+        expect(updated.history['Start']).toBeDefined();
+        expect(state.paceResult).toEqual({ face: null, label: null });
+        expect(updated.score).toBe(20);
+    });
+
+    it('(b) Mid2 → Mid1 戻り: Mid2 のみ削除 + Mid1 維持 + paceResult 維持（midPhaseCount=2）', () => {
+        // 先行 paceFace=5（中立）。Start 10 + Mid1 6 + Mid2 12 + paceMod 0 = 38
+        // 戻り後: Mid2 削除 → fix 10 + Start 10 + Mid1 6 + paceMod 0 = 26
+        const mid1Dice = makeDice('3d5', [2, 2, 2]); // 6
+        const mid2Dice = makeDice('3d5', [4, 4, 4]); // 12
+        installForRevert(2, 5, {
+            Start: { baseDice: makeDice('3d8', [3, 4, 3]), computedScore: 20 },
+            Mid1: { baseDice: mid1Dice, computedScore: 26 },
+            Mid2: { baseDice: mid2Dice, computedScore: 38 },
+        });
+
+        useRaceStore.getState().revertPhaseHistory('Mid2', { resetPace: false });
+
+        const updated = useRaceStore.getState().participants[0];
+        const state = useRaceStore.getState();
+        expect(updated.history['Mid2']).toBeUndefined();
+        // Mid1 の baseDice は維持（再進行時の前回結果再利用を可能に）
+        expect(updated.history['Mid1']?.baseDice).toEqual(mid1Dice);
+        // paceResult は維持
+        expect(state.paceResult.face).toBe(5);
+        expect(updated.score).toBe(26);
+    });
+
+    it('(c) 二重加算回避: 戻った後に Mid を新しい history で上書きしても score が累積しない', () => {
+        // Start 10 + Mid 旧 8 + paceMod 0 = 28
+        // revert で Mid 削除 → 20
+        // 新 Mid history (sum 12) を上書きして再計算 → 32（旧 8 + 新 12 = 40 にならない）
+        installForRevert(1, 5, {
+            Start: { baseDice: makeDice('3d8', [3, 4, 3]), computedScore: 20 },
+            Mid: { baseDice: makeDice('3d5', [3, 3, 2]), computedScore: 28 },
+        });
+
+        // Step 1: revertPhaseHistory で Mid 削除 + paceResult リセット
+        useRaceStore.getState().revertPhaseHistory('Mid', { resetPace: true });
+
+        // Step 2: paceResult 再投擲（中立 face=5）+ Mid 再入力（sum=12）
+        useRaceStore.getState().setPaceResult(5, 'Test');
+        useRaceStore.setState((state) => ({
+            participants: state.participants.map((p) =>
+                p.id === 'p1'
+                    ? {
+                          ...p,
+                          history: {
+                              ...p.history,
+                              Mid: { baseDice: makeDice('3d5', [4, 4, 4]), computedScore: 32 },
+                          },
+                          score: 32, // fix 10 + Start 10 + Mid 12 + paceMod 0
+                      }
+                    : p
+            ),
+        }));
+
+        const updated = useRaceStore.getState().participants[0];
+        // 二重加算なし: 旧 Mid sum 8 + 新 Mid sum 12 = 20 ではなく、新 12 のみ
+        expect(updated.history['Mid']?.baseDice?.sum).toBe(12);
+        expect(updated.score).toBe(32);
+    });
+
+    it('(d) Pace → Start 戻り: history は Pace 用 entry なしで不変 + paceResult null（防御的挙動）', () => {
+        // Pace フェーズは history に entry を持たないため、phaseId='Pace' での
+        // history 削除は実質 no-op となる。paceResult リセットのみが意味を持つ。
+        // 戻り前 score = fix 10 + Start 10 + paceMod 0 = 20（先行 paceFace=5）
+        // 戻り後 score = fix 10 + Start 10 + paceMod なし = 20
+        installForRevert(1, 5, {
+            Start: { baseDice: makeDice('3d8', [3, 4, 3]), computedScore: 20 },
+        });
+
+        useRaceStore.getState().revertPhaseHistory('Pace', { resetPace: true });
+
+        const updated = useRaceStore.getState().participants[0];
+        const state = useRaceStore.getState();
+        expect(updated.history['Start']).toBeDefined();
+        expect(state.paceResult).toEqual({ face: null, label: null });
+        expect(updated.score).toBe(20);
+    });
+
+    it('(e) End → Mid 戻り: End のみ削除 + paceResult 維持（中盤フェーズに戻るがペース再投擲不要）', () => {
+        // 先行 paceFace=5（中立、paceMod 0）
+        // Start 10 + Mid 8 + End 5 + paceMod 0 = 33
+        // 戻り後: End 削除 → fix 10 + Start 10 + Mid 8 = 28
+        installForRevert(1, 5, {
+            Start: { baseDice: makeDice('3d8', [3, 4, 3]), computedScore: 20 },
+            Mid: { baseDice: makeDice('3d5', [3, 3, 2]), computedScore: 28 },
+            End: { baseDice: makeDice('1d7', [5]), computedScore: 33 },
+        });
+
+        useRaceStore.getState().revertPhaseHistory('End', { resetPace: false });
+
+        const updated = useRaceStore.getState().participants[0];
+        const state = useRaceStore.getState();
+        expect(updated.history['End']).toBeUndefined();
+        expect(updated.history['Mid']).toBeDefined();
+        expect(state.paceResult.face).toBe(5);
+        expect(updated.score).toBe(28);
+    });
+});
