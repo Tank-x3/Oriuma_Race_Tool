@@ -95,6 +95,7 @@ describe('EmojiParser (88-ch Support)', () => {
         });
     });
 
+    // CR-SA-3-E5-3 保持判断: 88ch race-001〜004 全 participants（4 + 15 + 5 + 11 = 35 名）に空白入り名前不在のため EmojiParser リテラル「テスト ウマ」検証は設計駆動層に残置。なお StandardParser 側は animan race-003 の Revival Simon / Wasted XIII / Brightest Nova（半角空白入り英語名 3 名）で実データカバー済（CR-SA-3-E5-3）
     it('should handle names with spaces', () => {
         const input = `
             204: 名無しさん

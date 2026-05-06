@@ -183,6 +183,7 @@ describe('StandardParser', () => {
             expect(result.results[0].participantId).toBe('GM');
         });
 
+        // CR-SA-3-E5-3 保持判断: 両側空白 `dice1d9 = 5` リテラルは実データに不在（88ch race-001〜004 全件は `dice1d9= N` の右側のみ空白、animan race-001〜003 全件は空白なし）。`\s*=\s*` 分岐の網羅は実データ層 88ch PACE phase 経由で間接カバー済だが、リテラル境界保証として設計駆動層に残置（CR-SA-3-E5-3）
         it('parses PACE with whitespace around equals sign', () => {
             // \s*=\s* 分岐の網羅
             const text = 'dice1d9 = 5';
