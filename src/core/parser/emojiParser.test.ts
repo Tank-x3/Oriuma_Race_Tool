@@ -12,7 +12,8 @@ describe('EmojiParser (88-ch Support)', () => {
         { id: '3', name: 'テストウマ', strategy: '追込', uniqueSkill: { type: 'Stability', phases: [] }, uniqueSkillPhase: '終盤', speed: 0, stamina: 0, power: 0, guts: 0, wisdom: 0, score: 0 } as unknown as Umamusume,
     ];
 
-    it('should parse single-line format correctly (Standard-like behavior)', () => {
+    // 移植先: realData.test.ts CR-SA-3-E5-2 #56 (CR-SA-3-E5-2)
+    it.skip('should parse single-line format correctly (Standard-like behavior)', () => {
         const input = `
             ウマ娘A 15+🎲 dice3d6=18 (33)
             ウマ娘B 5+🎲 dice3d6=10 (15)
@@ -31,7 +32,8 @@ describe('EmojiParser (88-ch Support)', () => {
         });
     });
 
-    it('should handle single-line with space after equals (User Report)', () => {
+    // 移植先: realData.test.ts CR-SA-3-E5-2 #57 (CR-SA-3-E5-2)
+    it.skip('should handle single-line with space after equals (User Report)', () => {
         // Report: "① フルールドシュマン　5+🎲 dice1d12= 7" -> Error "Total not found"
         // Mock "フルールドシュマン" as "ウマ娘A" for simplicity or add to logic?
         // Let's just use existing "ウマ娘A" with the failing format.
@@ -45,7 +47,8 @@ describe('EmojiParser (88-ch Support)', () => {
         expect(result.results[0].total).toBe(12);
     });
 
-    it('should parse multi-line block format (88-ch)', () => {
+    // 移植先: realData.test.ts CR-SA-3-E5-2 #58 (CR-SA-3-E5-2)
+    it.skip('should parse multi-line block format (88-ch)', () => {
         const input = `
             202: 名無しさん
             ② ウマ娘A 15+🎲 dice3d6=
@@ -114,7 +117,8 @@ describe('EmojiParser (88-ch Support)', () => {
         expect(result.results[0].diceResult).toBe(12);
     });
 
-    it('should ignore non-dice posts', () => {
+    // 移植先: realData.test.ts CR-SA-3-E5-2 #60 (CR-SA-3-E5-2)
+    it.skip('should ignore non-dice posts', () => {
         const input = `
             205: 名無しさん
             普通の雑談レス
@@ -129,6 +133,7 @@ describe('EmojiParser (88-ch Support)', () => {
         expect(result.results[0].name).toBe('ウマ娘A');
     });
 
+    // 保持判断 (CR-SA-3-E5-2 #61): 「複数行 negative dice」(73-🎲 dice3d6= ... 合計: -15) は実データ層 7 ファイルに不在のため移植中止。設計駆動層に残置（CR-2 Critical Fix の検証意図保護）。
     it('should parse multi-line subtraction correctly (Critical Fix)', () => {
         const input = `
             ウマ娘A 73-🎲 dice3d6=
@@ -150,7 +155,8 @@ describe('EmojiParser (88-ch Support)', () => {
         });
     });
 
-    it('should parse multi-line addition correctly (regression)', () => {
+    // 移植先: realData.test.ts CR-SA-3-E5-2 #62 (CR-SA-3-E5-2)
+    it.skip('should parse multi-line addition correctly (regression)', () => {
         const input = `
             ウマ娘A 15+🎲 dice3d6=
             1回目: 6
@@ -171,7 +177,8 @@ describe('EmojiParser (88-ch Support)', () => {
         });
     });
 
-    it('should parse single-line subtraction correctly (regression)', () => {
+    // 移植先: realData.test.ts CR-SA-3-E5-2 #63 (CR-SA-3-E5-2)
+    it.skip('should parse single-line subtraction correctly (regression)', () => {
         const input = `ウマ娘A 73-🎲 dice1d12=7`;
         const result = parser.parse(input, participants, 'RACE');
 
@@ -271,7 +278,8 @@ describe('EmojiParser (88-ch Support)', () => {
     });
 
     // CR-4 Part A: 既存の EOF 未完了ブロック検出（リグレッション保護）
-    it('should still report incomplete block at EOF (CR-4 Part A regression)', () => {
+    // 移植先: derivedData.test.ts rangeShiftTail パターン (CR-SA-3-E5-2 #68)
+    it.skip('should still report incomplete block at EOF (CR-4 Part A regression)', () => {
         const input = `
             ウマ娘A 15+🎲 dice3d6=
         `;
@@ -287,7 +295,8 @@ describe('EmojiParser (88-ch Support)', () => {
     // 仕様: docs/specs/architecture/parser-system.md §B "PACE コンテキストの委譲" (L209-211)
     // 委譲先: emojiParser.ts:6-9 → StandardParser.parse(text, participants, 'PACE')
     describe('PACE delegation', () => {
-        it('delegates PACE context to StandardParser', () => {
+        // 移植先: realData.test.ts CR-SA-3-E5-2 #69 (CR-SA-3-E5-2)
+        it.skip('delegates PACE context to StandardParser', () => {
             const text = '🎲 dice1d9=6';
             const result = parser.parse(text, [], 'PACE');
 

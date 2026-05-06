@@ -8,7 +8,8 @@ describe('StandardParser', () => {
         { id: '2', name: 'Silence Suzuka', strategy: '大逃げ', entryIndex: 2, uniqueSkill: { type: 'Gamble', phases: [] }, gate: 2, score: 0, history: {} }
     ];
 
-    it('parses standard format with fix value', () => {
+    // 移植先: realData.test.ts CR-SA-3-E5-2 #42 (CR-SA-3-E5-2)
+    it.skip('parses standard format with fix value', () => {
         // (N) はダイス出目の総和を表す（totalではない）
         // dice3d8 = 3個の8面ダイス、出目: 5 5 5 = 15
         const text = '①Silence Suzuka 30+dice3d8=5 5 5 (15)';
@@ -26,7 +27,8 @@ describe('StandardParser', () => {
         });
     });
 
-    it('parses format without fix value (Start/Unique)', () => {
+    // 移植先: realData.test.ts CR-SA-3-E5-2 #43 (CR-SA-3-E5-2)
+    it.skip('parses format without fix value (Start/Unique)', () => {
         const text = 'Special Week dice1d100=50 (50)';
         const result = StandardParser.parse(text, participants);
 
@@ -39,7 +41,8 @@ describe('StandardParser', () => {
         });
     });
 
-    it('detects checksum error', () => {
+    // 移植先: derivedData.test.ts invalidParenSum パターン (CR-SA-3-E5-2 #44)
+    it.skip('detects checksum error', () => {
         // Need matching participant
         const p = [...participants, { id: '3', name: 'Something', strategy: '逃げ', entryIndex: 3, uniqueSkill: { type: 'Stability' as const, phases: [] }, gate: 3, score: 0, history: {} } as Umamusume];
         const text = 'Something dice1d6=3 (10)'; // 0+3 != 10
@@ -67,7 +70,8 @@ describe('StandardParser', () => {
         expect(result.errors[0]).toContain('Invalid dice format');
     });
 
-    it('parses with full-width space separator', () => {
+    // 移植先: realData.test.ts CR-SA-3-E5-2 #47 (CR-SA-3-E5-2)
+    it.skip('parses with full-width space separator', () => {
         // (N) はダイス出目の総和を表す
         // dice3d8 = 3個の8面ダイス、出目: 5 5 5 = 15
         const text = 'Silence Suzuka　30+dice3d8=5 5 5 (15)';
@@ -84,7 +88,8 @@ describe('StandardParser', () => {
             { id: '3', name: 'Silence Suzuka', strategy: '大逃げ', entryIndex: 3, uniqueSkill: { type: 'Gamble', phases: [] }, gate: 3, score: 0, history: {} }
         ];
 
-        it('parses space-separated dice values with parens (dice3d5=3 1 4 (8))', () => {
+        // 移植先: realData.test.ts CR-SA-3-E5-2 #48 (CR-SA-3-E5-2)
+        it.skip('parses space-separated dice values with parens (dice3d5=3 1 4 (8))', () => {
             // (8) はダイス出目の総和 (3+1+4=8)
             const text = '① カンパネラ　10+dice3d5=3 1 4 (8)';
             const result = StandardParser.parse(text, multiDiceParticipants);
@@ -99,7 +104,8 @@ describe('StandardParser', () => {
             });
         });
 
-        it('rejects space-separated dice values without parens (CR-4b: (N) 必須化)', () => {
+        // 移植先: derivedData.test.ts invalidParenSum パターン (CR-SA-3-E5-2 #49)
+        it.skip('rejects space-separated dice values without parens (CR-4b: (N) 必須化)', () => {
             // CR-4b: (N) 必須化（parser-system.md §A L93-94, L142）
             // あにまん仕様により StandardParser は (N) 必須。欠落時は errors 追加 + results 排除（continue）。
             const text = 'ウマ娘A 20+dice3d6=5 3 2';
@@ -110,6 +116,7 @@ describe('StandardParser', () => {
             expect(result.errors[0]).toContain('合計値');
         });
 
+        // 保持判断 (CR-SA-3-E5-2 #50): 「複数ダイス space-separated negative」(-dice3d5=3 1 4) は実データ層 7 ファイルに不在のため移植中止。設計駆動層に残置。
         it('parses negative dice with space-separated values (-dice3d5=3 1 4)', () => {
             // 負のダイスの場合、(8)は-8のダイス結果の絶対値を表す
             const text = 'Silence Suzuka -dice3d5=3 1 4 (8)';
@@ -129,7 +136,8 @@ describe('StandardParser', () => {
     // 仕様: docs/specs/architecture/parser-system.md §A Context 2 PACE (L121-128)
     // 委譲先: standardParser.ts:18-56 parsePace
     describe('PACE context', () => {
-        it('parses PACE context correctly with dice1d9=N', () => {
+        // 移植先: realData.test.ts CR-SA-3-E5-2 #51 (CR-SA-3-E5-2)
+        it.skip('parses PACE context correctly with dice1d9=N', () => {
             const text = 'GM\ndice1d9=4';
             const result = StandardParser.parse(text, [], 'PACE');
 
@@ -163,7 +171,8 @@ describe('StandardParser', () => {
             expect(result.errors[0]).toContain('複数');
         });
 
-        it('parses PACE with leading 🎲 emoji', () => {
+        // 移植先: realData.test.ts CR-SA-3-E5-2 #54 (ParserFactory delegation 経由)
+        it.skip('parses PACE with leading 🎲 emoji', () => {
             // (?:🎲)? 分岐の網羅
             const text = '🎲 dice1d9=5';
             const result = StandardParser.parse(text, [], 'PACE');
