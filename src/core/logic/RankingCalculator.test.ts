@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { RankingCalculator } from '../../../src/core/logic/RankingCalculator';
-import { Umamusume } from '../../../src/types';
+import { RankingCalculator } from './RankingCalculator';
+import type { Umamusume } from '../../types';
 
 const createMockUma = (id: string, name: string, score: number, gate: number): Umamusume => ({
   id,
