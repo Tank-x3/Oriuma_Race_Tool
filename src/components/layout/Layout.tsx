@@ -42,8 +42,8 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
             </main>
 
             {/* Footer */}
-            <footer className="border-t border-white/5 bg-slate-950/50 relative z-10">
-                <div className="container mx-auto px-4 h-16 flex items-center justify-center text-sm text-slate-600">
+            <footer className="border-t border-slate-200 dark:border-white/5 bg-slate-100 dark:bg-slate-950/50 relative z-10">
+                <div className="container mx-auto px-4 h-16 flex items-center justify-center text-sm text-slate-600 dark:text-slate-400">
                     <p>© 2026 Ori-Uma Race Aggregation Tool</p>
                 </div>
             </footer>
