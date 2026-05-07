@@ -3,7 +3,7 @@ import { persist } from 'zustand/middleware';
 import type { Umamusume, RaceState, GateAssignment } from '../types';
 import { DEFAULT_STRATEGIES as STRATEGIES } from '../core/strategies';
 import { Calculator, getActivePhaseIds } from '../core/calculator';
-import { useNotificationStore } from '../components/ui/Notification';
+import { useNotificationStore } from './useNotificationStore';
 
 interface RaceStoreState extends RaceState {
     uiState: {

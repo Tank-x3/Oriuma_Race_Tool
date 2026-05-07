@@ -3,7 +3,7 @@ import { useRaceStore } from '../../../store/useRaceStore';
 import { ParserFactory } from '../../../core/parser/parserFactory';
 import { Calculator, getActivePhaseIds } from '../../../core/calculator';
 import { getPaceLabel } from '../../../core/strategies';
-import { useNotificationStore } from '../../ui/Notification';
+import { useNotificationStore } from '../../../store/useNotificationStore';
 import { Play, RotateCw, AlertTriangle } from 'lucide-react';
 import { clsx } from 'clsx';
 

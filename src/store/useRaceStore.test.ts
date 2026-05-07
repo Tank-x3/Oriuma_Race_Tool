@@ -9,7 +9,7 @@ import {
     RESTORE_ERROR_MESSAGE,
     type PersistedRaceState,
 } from './useRaceStore';
-import { useNotificationStore } from '../components/ui/Notification';
+import { useNotificationStore } from './useNotificationStore';
 import type { DiceResult, GateAssignment, Umamusume } from '../types';
 import { getActivePhaseIds } from '../core/calculator';
 
