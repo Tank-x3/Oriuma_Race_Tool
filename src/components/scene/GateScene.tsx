@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useRaceStore } from '../../store/useRaceStore';
 import { Dices, ClipboardCopy, ArrowRight, CheckCircle2, ArrowLeft } from 'lucide-react';
 import { ParserFactory } from '../../core/parser/parserFactory';
+import { getUndetectedParticipantNames } from '../../core/parser/parserUtils';
 import { NotificationArea } from '../ui/NotificationArea';
 import type { GateAssignment } from '../../types';
 
@@ -134,7 +135,12 @@ export const GateScene: React.FC = () => {
         if (results.length !== participants.length) {
             // Only show count mismatch if input lines explicitly do not match participants
             if (inputLineCount !== participants.length) {
-                newErrors.push(`人数が一致しません (登録: ${participants.length}人 / 検出: ${results.length}人)。コピー漏れがないか確認してください`);
+                // CR-14: 未検出者の名前一覧をエラーメッセージに追記する。
+                const undetectedNames = getUndetectedParticipantNames(participants, results);
+                const undetectedSuffix = undetectedNames.length > 0
+                    ? ` 未検出: ${undetectedNames.join(', ')}`
+                    : '';
+                newErrors.push(`人数が一致しません (登録: ${participants.length}人 / 検出: ${results.length}人)。コピー漏れがないか確認してください${undetectedSuffix}`);
             }
         }
 

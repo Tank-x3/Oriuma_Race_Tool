@@ -145,7 +145,9 @@ export class EmojiParser implements ParserStrategy {
                 // Step 2: Result Extraction (Multi-line Body)
                 // Look for "合計: N" (This is usually the DICE SUM, not the Final Score)
                 // Modified: Support negative total (e.g. "合計: -20")
-                const totalMatch = trimmed.match(/合計[:：]\s*(-?\d+)/);
+                // CR-17: 行頭アンカー `^` を追加し、文中の「合計: N」誤マッチを除去する。
+                //        `trimmed` は line.trim() 後のため `^` は実質的に「行頭が『合計』」を要求する。
+                const totalMatch = trimmed.match(/^合計[:：]\s*(-?\d+)/);
                 if (totalMatch) {
                     const diceSum = parseInt(totalMatch[1], 10);
                     // 減算フラグに応じてdiceResultの符号を決定

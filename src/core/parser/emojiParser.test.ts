@@ -292,6 +292,32 @@ describe('EmojiParser (88-ch Support)', () => {
         expect(result.results).toHaveLength(0);
     });
 
+    // CR-17: 合計行パターンの仕様外拡張除去
+    // 仕様: parser-system.md §B Step 2 Case B 「`合計[:：]\s*(-?\d+)` を検出した行で...」
+    // 実装側で `^合計` の行頭アンカーを追加し、文中の「合計: N」を誤検出しないこと。
+    it('should not detect 合計 in mid-line text (CR-17 strict header anchor)', () => {
+        const input = `
+            ウマ娘A 15+🎲 dice3d6=
+            この前のレース合計: 30 と書いてあった
+            1回目: 2
+            2回目: 2
+            3回目: 2
+            合計: 6
+        `;
+        const result = parser.parse(input, participants, 'RACE');
+
+        expect(result.errors).toHaveLength(0);
+        expect(result.results).toHaveLength(1);
+        // 「合計: 30」を誤検出すると diceResult=30 となるため、6 で正しく採用されていることを検証する。
+        expect(result.results[0]).toMatchObject({
+            name: 'ウマ娘A',
+            diceStr: '3d6',
+            diceResult: 6,
+            fixValue: 15,
+            total: 21,
+        });
+    });
+
     // CR-7 Part B: #3-3-G PACE コンテキスト委譲テスト
     // 仕様: docs/specs/architecture/parser-system.md §B "PACE コンテキストの委譲" (L209-211)
     // 委譲先: emojiParser.ts:6-9 → StandardParser.parse(text, participants, 'PACE')

@@ -1,9 +1,14 @@
 import React, { useState } from 'react';
 import { useRaceStore } from '../../../store/useRaceStore';
 import { ParserFactory } from '../../../core/parser/parserFactory';
+import {
+    getUndetectedDiceDetails,
+    formatUndetectedDiceDetail,
+} from '../../../core/parser/parserUtils';
 import { Calculator, getActivePhaseIds } from '../../../core/calculator';
 import { getPaceLabel } from '../../../core/strategies';
 import { useNotificationStore } from '../../../store/useNotificationStore';
+import { useRaceEngine } from '../../../hooks/useRaceEngine';
 import { Play, RotateCw, AlertTriangle } from 'lucide-react';
 import { clsx } from 'clsx';
 
@@ -28,6 +33,7 @@ export const PhaseInput: React.FC<PhaseInputProps> = ({ onErrors }) => {
 
     const [inputText, setInputText] = useState('');
     const { addNotification } = useNotificationStore();
+    const { getPhaseLabel } = useRaceEngine();
     const [isParsing, setIsParsing] = useState(false);
 
     const handleParse = async () => {
@@ -141,6 +147,22 @@ export const PhaseInput: React.FC<PhaseInputProps> = ({ onErrors }) => {
                 });
 
                 if (updatedCount > 0) {
+                    // CR-14 ENG21 ユーザーフィードバック反映:
+                    // pendingUpdates 反映後の participants 配列で「現フェーズで必要なダイス種別」を検証する。
+                    //   - パターンA: フェーズダイス / 固有ダイスのうち片方欠落も検出する
+                    //   - パターンB: 既に history に登録済みの参加者は missing 扱いされない（部分追加パース対応）
+                    const participantsAfterParse = participants.map(p => pendingUpdates.get(p.id) ?? p);
+                    const undetectedDetails = getUndetectedDiceDetails(
+                        participantsAfterParse,
+                        currentPhaseId,
+                        getPhaseLabel
+                    );
+                    if (undetectedDetails.length > 0) {
+                        addNotification(
+                            'info',
+                            `未検出: ${undetectedDetails.map(formatUndetectedDiceDetail).join(', ')}（${undetectedDetails.length} 件のダイス入力が漏れている可能性があります）`
+                        );
+                    }
                     addNotification('success', `${updatedCount} 名のスコアを更新しました。`);
                     setInputText('');
                     onErrors?.([]); // Clear errors on success
