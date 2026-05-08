@@ -318,6 +318,99 @@ describe('EmojiParser (88-ch Support)', () => {
         });
     });
 
+    // CR-SA-10-E1: 88ch (N) なし時の範囲チェック追加
+    // 仕様: parser-system.md §B Step 1 + Step 2 Case A 改訂版（CR-SA-10 / 2026-05-08 SA10）
+    // 改訂内容:
+    //   - Step 1: ヘッダー検出正規表現を `(?:🎲)?\s*(-)?dice(\d+)d(\d+)\s*=\s*(\d+)?` に変更し、
+    //     個数 X (Group 2) / 面数 Y (Group 3) を別キャプチャ化。
+    //   - Step 2 Case A: `(N)` なし時のフォールバックに `X ≤ |diceResult| ≤ X×Y` の範囲チェックを追加。
+    //     範囲外の場合は validChecksum=false + errors に範囲外文言を追加し、results には push しない
+    //     （下流のスコア計算へ異常値を流さないため）。
+    describe('CR-SA-10-E1: range check on Single Line Case A (no (N))', () => {
+        it('should accept value within range (1d100=50)', () => {
+            const input = `ウマ娘A 🎲 dice1d100= 50`;
+            const result = parser.parse(input, participants, 'RACE');
+
+            expect(result.errors).toHaveLength(0);
+            expect(result.results).toHaveLength(1);
+            expect(result.results[0]).toMatchObject({
+                name: 'ウマ娘A',
+                diceStr: '1d100',
+                diceResult: 50,
+                fixValue: 0,
+                total: 50,
+                validChecksum: true,
+            });
+        });
+
+        it('should reject value below lower bound (1d100=0)', () => {
+            const input = `ウマ娘A 🎲 dice1d100= 0`;
+            const result = parser.parse(input, participants, 'RACE');
+
+            // results 不追加（範囲外データを下流のスコア計算へ流さないため）
+            expect(result.results).toHaveLength(0);
+            // errors に範囲外文言（仕様書 §B Step 2 Case A 改訂版）
+            const rangeError = result.errors.find(e =>
+                e.includes('ダイス合計値が範囲外です') &&
+                e.includes('ウマ娘A') &&
+                e.includes('1d100') &&
+                e.includes('合計 0') &&
+                e.includes('1〜100 の範囲外')
+            );
+            expect(rangeError).toBeDefined();
+        });
+
+        it('should reject value above upper bound (1d100=101)', () => {
+            const input = `ウマ娘A 🎲 dice1d100= 101`;
+            const result = parser.parse(input, participants, 'RACE');
+
+            expect(result.results).toHaveLength(0);
+            const rangeError = result.errors.find(e =>
+                e.includes('ダイス合計値が範囲外です') &&
+                e.includes('ウマ娘A') &&
+                e.includes('1d100') &&
+                e.includes('合計 101') &&
+                e.includes('1〜100 の範囲外')
+            );
+            expect(rangeError).toBeDefined();
+        });
+
+        it('should reject multi-face dice value above X×Y (2d6=15, regression guard)', () => {
+            // 上限が個数 × 面数で算出されることを担保する regression guard。
+            // 改訂前の `(\d+d\d+)` は diceStr のみ取得していたため X / Y を分離できず、本検知は不可能だった。
+            const input = `ウマ娘A 🎲 dice2d6= 15`;
+            const result = parser.parse(input, participants, 'RACE');
+
+            expect(result.results).toHaveLength(0);
+            const rangeError = result.errors.find(e =>
+                e.includes('ダイス合計値が範囲外です') &&
+                e.includes('ウマ娘A') &&
+                e.includes('2d6') &&
+                e.includes('合計 15') &&
+                e.includes('2〜12 の範囲外')
+            );
+            expect(rangeError).toBeDefined();
+        });
+
+        it('should not apply range check when (N) is present (regression guard)', () => {
+            // (N) あり時は現行 validChecksum = (fixValue + diceResult === total) のみ実行され、
+            // 範囲チェックは適用しない（仕様書 §B Step 2 Case A の (N) あり/なし分岐を担保）。
+            const input = `ウマ娘A 15+🎲 dice3d6=18 (33)`;
+            const result = parser.parse(input, participants, 'RACE');
+
+            expect(result.errors).toHaveLength(0);
+            expect(result.results).toHaveLength(1);
+            expect(result.results[0]).toMatchObject({
+                name: 'ウマ娘A',
+                diceStr: '3d6',
+                diceResult: 18,
+                fixValue: 15,
+                total: 33,
+                validChecksum: true,
+            });
+        });
+    });
+
     // CR-7 Part B: #3-3-G PACE コンテキスト委譲テスト
     // 仕様: docs/specs/architecture/parser-system.md §B "PACE コンテキストの委譲" (L209-211)
     // 委譲先: emojiParser.ts:6-9 → StandardParser.parse(text, participants, 'PACE')

@@ -32,7 +32,9 @@ export class EmojiParser implements ParserStrategy {
             // Anchor: 'dice' followed by digits 'd' digits
             // Modified: Allow spaces around '=' (e.g., "dice1d12= 7")
             // Modified: Allow optional negative sign before dice (e.g., "-dice")
-            const diceMatch = trimmed.match(/(?:🎲)?\s*(-)?dice(\d+d\d+)\s*=\s*(\d+)?/);
+            // CR-SA-10 / 2026-05-08 SA 改訂（事項 #3-2-E 反映）:
+            //   個数 X / 面数 Y を別キャプチャ化し、Step 2 Case A の範囲チェック (X ≤ N ≤ X×Y) で利用する。
+            const diceMatch = trimmed.match(/(?:🎲)?\s*(-)?dice(\d+)d(\d+)\s*=\s*(\d+)?/);
 
             if (diceMatch) {
                 // 直前ブロックが合計行未到達のまま新ヘッダーに到達したケースを Critical 化（#3-2-C）
@@ -41,9 +43,11 @@ export class EmojiParser implements ParserStrategy {
                 }
 
                 // Parse Header
-                const negativeSign = diceMatch[1]; // Group 1 is now (-)
-                const diceStr = diceMatch[2];      // Group 2 is diceStr
-                const rawInlineResult = diceMatch[3] ? parseInt(diceMatch[3], 10) : undefined;
+                const negativeSign = diceMatch[1];                     // Group 1: (-) 減算マーカー
+                const diceCount = parseInt(diceMatch[2], 10);          // Group 2: ダイス個数 X
+                const diceFaces = parseInt(diceMatch[3], 10);          // Group 3: ダイス面数 Y
+                const diceStr = `${diceCount}d${diceFaces}`;           // 再構築（CR-SA-10 / 2026-05-08 SA 改訂）
+                const rawInlineResult = diceMatch[4] ? parseInt(diceMatch[4], 10) : undefined;
 
                 let inlineResult = rawInlineResult;
                 if (inlineResult !== undefined && negativeSign) {
@@ -133,11 +137,28 @@ export class EmojiParser implements ParserStrategy {
                         results.push(currentBlock as ParsedLine);
                         currentBlock = null; // Reset
                     } else {
-                        // Maybe calculate total?
-                        currentBlock.total = currentBlock.fixValue! + currentBlock.diceResult!;
-                        currentBlock.validChecksum = true; // Auto-calculated
-                        results.push(currentBlock as ParsedLine);
-                        currentBlock = null;
+                        // CR-SA-10 / 2026-05-08 SA 改訂（事項 #3-2-D 反映）:
+                        //   (N) なし時は X ≤ |diceResult| ≤ X×Y の範囲チェックを行う。
+                        //   範囲外の場合は validChecksum=false + errors に範囲外文言を追加し、
+                        //   results には push しない（下流のスコア計算へ異常値を流さないため）。
+                        //   減算ケース（diceResult が負数化済）は絶対値で範囲を判定する。
+                        const diceResultValue = currentBlock.diceResult!;
+                        const lowerBound = diceCount;
+                        const upperBound = diceCount * diceFaces;
+                        const valueForRangeCheck = Math.abs(diceResultValue);
+                        if (valueForRangeCheck < lowerBound || valueForRangeCheck > upperBound) {
+                            currentBlock.validChecksum = false;
+                            errors.push(
+                                `ダイス合計値が範囲外です: "${currentBlock.name}" (${diceStr}: 合計 ${diceResultValue} は ${lowerBound}〜${upperBound} の範囲外。コピー範囲を確認してください)`
+                            );
+                            currentBlock = null;
+                        } else {
+                            // 範囲内: 現行通り total 自動算出 + validChecksum=true で push
+                            currentBlock.total = currentBlock.fixValue! + currentBlock.diceResult!;
+                            currentBlock.validChecksum = true;
+                            results.push(currentBlock as ParsedLine);
+                            currentBlock = null;
+                        }
                     }
                 }
             }
