@@ -45,6 +45,9 @@ const installParticipant = (uma: Umamusume) => {
                 enableModifier: false,
                 enableSpecialStrategy: false,
                 enableCompositeUnique: false,
+                // Bundle-1 / D-5 / 2026-05-09: 型定義拡張に追従
+                enableExtendedUnique: false,
+                effectValue: 15,
             },
         },
         participants: [uma],
@@ -176,6 +179,9 @@ describe('useRaceStore.updateParticipant - CR-38 / basic-rules §6 Case 4', () =
                     enableModifier: false,
                     enableSpecialStrategy: false,
                     enableCompositeUnique: false,
+                    // Bundle-1 / D-5 / 2026-05-09: 型定義拡張に追従
+                    enableExtendedUnique: false,
+                    effectValue: 15,
                 },
             },
             participants: [initial],
@@ -274,6 +280,9 @@ describe('useRaceStore.setMidPhaseCount - CR-3 / scene1-setup.md §4 Soft Delete
                     enableModifier: false,
                     enableSpecialStrategy: false,
                     enableCompositeUnique: false,
+                    // Bundle-1 / D-5 / 2026-05-09: 型定義拡張に追従
+                    enableExtendedUnique: false,
+                    effectValue: 15,
                 },
             },
             participants: [initial],
@@ -580,6 +589,9 @@ describe('useRaceStore.revertPhaseHistory - CR-8 / scene3-race.md §6', () => {
                     enableModifier: false,
                     enableSpecialStrategy: false,
                     enableCompositeUnique: false,
+                    // Bundle-1 / D-5 / 2026-05-09: 型定義拡張に追従
+                    enableExtendedUnique: false,
+                    effectValue: 15,
                 },
             },
             participants: [uma],
@@ -705,5 +717,18 @@ describe('useRaceStore.revertPhaseHistory - CR-8 / scene3-race.md §6', () => {
         expect(updated.history['Mid']).toBeDefined();
         expect(state.paceResult.face).toBe(5);
         expect(updated.score).toBe(28);
+    });
+});
+
+describe('Bundle-1 / D-5 / 2026-05-09 houseRules 拡張フィールドの初期値検証', () => {
+    it('houseRules 初期値: enableExtendedUnique === false, effectValue === 15（houserule-features.md §3 デフォルト由来）', () => {
+        const houseRules = useRaceStore.getState().config.houseRules;
+        // Bundle-1 で追加された 2 フィールドの初期値検証
+        expect(houseRules.enableExtendedUnique).toBe(false);
+        expect(houseRules.effectValue).toBe(15);
+        // 既存 3 フィールドの regression guard
+        expect(houseRules.enableModifier).toBe(false);
+        expect(houseRules.enableSpecialStrategy).toBe(false);
+        expect(houseRules.enableCompositeUnique).toBe(false);
     });
 });

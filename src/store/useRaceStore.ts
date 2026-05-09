@@ -86,6 +86,10 @@ export const useRaceStore = create<RaceStoreState>()(
                     enableModifier: false,
                     enableSpecialStrategy: false,
                     enableCompositeUnique: false,
+                    // Bundle-1 / D-5 / 2026-05-09: 拡張固有タイプ ON/OFF
+                    enableExtendedUnique: false,
+                    // Bundle-1 / D-5 / 2026-05-09: 状態異常効果値 (N)（houserule-features.md §3 デフォルト 15）
+                    effectValue: 15,
                 },
             },
             participants: [],

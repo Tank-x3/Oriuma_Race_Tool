@@ -82,6 +82,10 @@ export interface RaceState {
             enableModifier: boolean;
             enableSpecialStrategy: boolean;
             enableCompositeUnique: boolean;
+            // Bundle-1 / D-5 / 2026-05-09: 拡張固有タイプ ON/OFF（houserule-features.md §2 [v]）
+            enableExtendedUnique: boolean;
+            // Bundle-1 / D-5 / 2026-05-09: 状態異常効果値 (N)（houserule-features.md §3 デフォルト 15）
+            effectValue: number;
         };
     };
     participants: Umamusume[];
