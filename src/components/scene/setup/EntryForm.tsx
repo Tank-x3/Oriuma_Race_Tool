@@ -3,13 +3,12 @@ import { useRaceStore } from '../../../store/useRaceStore';
 import { Trash2, AlertCircle, PlayCircle } from 'lucide-react';
 import type { StrategyName, UniqueSkillType } from '../../../types';
 import { NotificationArea } from '../../ui/NotificationArea';
+import { getUniqueSkillTypeOptions } from './entryForm.helpers';
 
 const STRATEGY_OPTIONS: StrategyName[] = ['大逃げ', '逃げ', '先行', '差し', '追込'];
-const UNIQUE_SKILL_TYPES: { type: UniqueSkillType; label: string }[] = [
-    { type: 'Stability', label: '安定 (5+1d10)' },
-    { type: 'Gamble', label: 'ギャンブル (1d20)' },
-    // { type: 'Persistent', label: '持続 (1d10)' }, // Only if enabled
-];
+// Bundle-2 / D-1, D-14 / 2026-05-09: 静的配列を廃止し、`enableExtendedUnique` 連動で
+// useMemo にて動的計算するよう変更（コンポーネント内で getUniqueSkillTypeOptions() を呼ぶ）。
+// 'Persistent' は Bundle-3（複合固有スキル `enableCompositeUnique` 連動）で別途扱う。
 
 export const EntryForm: React.FC = () => {
     const {
@@ -22,6 +21,12 @@ export const EntryForm: React.FC = () => {
 
     // UI State for validation
     const [isSubmitted, setIsSubmitted] = React.useState(false);
+
+    // Bundle-2 / D-1, D-14 / 2026-05-09: 固有タイプ選択肢を `enableExtendedUnique` 連動で動的生成
+    const uniqueSkillTypes = useMemo(
+        () => getUniqueSkillTypeOptions(config.houseRules.enableExtendedUnique),
+        [config.houseRules.enableExtendedUnique]
+    );
 
     // --- Validation Logic ---
     // #1-3a-5: 名前入力済み行のうち、trim 後に重複している名前の集合。
@@ -233,7 +238,7 @@ export const EntryForm: React.FC = () => {
                                                     }`}
                                             >
                                                 <option value="" disabled>---</option>
-                                                {UNIQUE_SKILL_TYPES.map(t => <option key={t.type} value={t.type}>{t.label}</option>)}
+                                                {uniqueSkillTypes.map(t => <option key={t.type} value={t.type}>{t.label}</option>)}
                                             </select>
                                         </td>
                                         <td className="px-4 py-3">

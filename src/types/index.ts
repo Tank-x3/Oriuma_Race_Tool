@@ -2,7 +2,9 @@ export type StrategyName = '大逃げ' | '逃げ' | '先行' | '差し' | '追�
 
 export type PhaseType = 'Start' | 'Pace' | 'Mid' | 'End';
 
-export type UniqueSkillType = 'Stability' | 'Gamble' | 'Persistent';
+// Bundle-2 / D-1, D-14 / 2026-05-09: 拡張固有タイプ ON 時にのみ Scene 1 選択肢へ追加
+// される 2 識別子（houserule-features.md §2 [v] 拡張固有タイプ §データ仕様 L96 例示準拠）
+export type UniqueSkillType = 'Stability' | 'Gamble' | 'Persistent' | 'SuperGamble' | 'SuperStability';
 
 // Represents "Start", "Pace", "Mid1", "Mid2", "End" etc.
 export interface PhaseConfig {

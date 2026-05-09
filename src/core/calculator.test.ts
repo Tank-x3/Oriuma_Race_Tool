@@ -177,6 +177,82 @@ describe('Calculator', () => {
         });
     });
 
+    describe('Bundle-2 / D-1, D-14 / 2026-05-09 拡張固有タイプ accumulated score', () => {
+        it('adds SuperGamble (-10 + diceSum) when phase matches', () => {
+            // 先行 (Fix 10), Start dice 9, SuperGamble 1d35 → 20
+            const startDice = { diceStr: '3d5', values: [3, 3, 3], sum: 9 };
+            const uniqueDice = { diceStr: '1d35', values: [20], sum: 20 };
+
+            const uma: Umamusume = {
+                ...mockUma,
+                uniqueSkill: { type: 'SuperGamble', phases: ['Start'] },
+                history: {
+                    'Start': { baseDice: startDice, uniqueDice: uniqueDice, computedScore: 0 }
+                }
+            };
+
+            const score = Calculator.calculateTotalScore(uma, DEFAULT_STRATEGIES, null);
+            // Fix 10 + Start 9 + Unique (-10 + 20) = 29
+            expect(score).toBe(29);
+        });
+
+        it('adds SuperStability (+8 + diceSum) when phase matches', () => {
+            // 先行 (Fix 10), Start dice 9, SuperStability 1d3 → 2
+            const startDice = { diceStr: '3d5', values: [3, 3, 3], sum: 9 };
+            const uniqueDice = { diceStr: '1d3', values: [2], sum: 2 };
+
+            const uma: Umamusume = {
+                ...mockUma,
+                uniqueSkill: { type: 'SuperStability', phases: ['Start'] },
+                history: {
+                    'Start': { baseDice: startDice, uniqueDice: uniqueDice, computedScore: 0 }
+                }
+            };
+
+            const score = Calculator.calculateTotalScore(uma, DEFAULT_STRATEGIES, null);
+            // Fix 10 + Start 9 + Unique (8 + 2) = 29
+            expect(score).toBe(29);
+        });
+
+        it('adds SuperGamble fixed value (-10) in Mid phase as well', () => {
+            // 先行 (Fix 10), Start dice 9, Mid dice 6, SuperGamble in Mid1
+            const startDice = { diceStr: '3d5', values: [3, 3, 3], sum: 9 };
+            const midDice = { diceStr: '3d5', values: [2, 2, 2], sum: 6 };
+            const uniqueDice = { diceStr: '1d35', values: [25], sum: 25 };
+
+            const uma: Umamusume = {
+                ...mockUma,
+                uniqueSkill: { type: 'SuperGamble', phases: ['Mid1'] },
+                history: {
+                    'Start': { baseDice: startDice, computedScore: 0 },
+                    'Mid1': { baseDice: midDice, uniqueDice: uniqueDice, computedScore: 0 }
+                }
+            };
+
+            const score = Calculator.calculateTotalScore(uma, DEFAULT_STRATEGIES, null);
+            // Fix 10 + Start 9 + Mid1 6 + Unique (-10 + 25) = 40
+            expect(score).toBe(40);
+        });
+
+        it('does NOT add SuperGamble fixed value when phase does not match', () => {
+            // SuperGamble の発動位置が Mid1 だが Start にダイス残存しているケース
+            const startDice = { diceStr: '3d5', values: [3, 3, 3], sum: 9 };
+            const startUnique = { diceStr: '1d35', values: [20], sum: 20 }; // 不正データ
+
+            const uma: Umamusume = {
+                ...mockUma,
+                uniqueSkill: { type: 'SuperGamble', phases: ['Mid1'] },
+                history: {
+                    'Start': { baseDice: startDice, uniqueDice: startUnique, computedScore: 0 }
+                }
+            };
+
+            const score = Calculator.calculateTotalScore(uma, DEFAULT_STRATEGIES, null);
+            // Fix 10 + Start 9 = 19 (Start は phases に含まれないので unique 無視)
+            expect(score).toBe(19);
+        });
+    });
+
     it('adds Unique Skill bonus if activated', () => {
         // 先行 (Fix 10)
         // Unique: Stability (5 + 1d10)

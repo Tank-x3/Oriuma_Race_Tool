@@ -65,7 +65,10 @@ export const GateScene: React.FC = () => {
         const typeMap: Record<string, string> = {
             'Stability': '安定',
             'Gamble': 'ギャンブル',
-            'Persistent': '持続'
+            'Persistent': '持続',
+            // Bundle-2 / D-1, D-14 / 2026-05-09: 拡張固有タイプの日本語ラベル追加
+            'SuperGamble': '超ギャンブル',
+            'SuperStability': '超安定'
         };
         const phaseMap: Record<string, string> = {
             'Start': '序盤',

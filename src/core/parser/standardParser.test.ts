@@ -194,4 +194,64 @@ describe('StandardParser', () => {
             expect(result.results[0].diceResult).toBe(5);
         });
     });
+
+    // Bundle-2 / D-1, D-14 / 2026-05-09 [ESCALATION 案 V Provisional 適用]:
+    // 拡張固有タイプ「超ギャンブル」(-10+dice1d35=N) / 「超安定」(8+dice1d3=N) の Single Line + (N) 形式が
+    // Parser で「Invalid dice format」エラーにならず正しく解析されることを保証する。
+    describe('Extended Unique Skill type Fix value (Bundle-2)', () => {
+        const participantsExt: Umamusume[] = [
+            { id: '1', name: 'RevivalSimon', strategy: '先行', entryIndex: 1, uniqueSkill: { type: 'SuperGamble', phases: ['Mid'] }, gate: 3, score: 0, history: {} },
+            { id: '2', name: 'マヨイゴメイズ', strategy: '差し', entryIndex: 2, uniqueSkill: { type: 'SuperStability', phases: ['Mid'] }, gate: 14, score: 0, history: {} },
+        ];
+
+        it('parses SuperGamble line "③　RevivalSimon　-10+dice1d35=28 (28)" without error', () => {
+            // 全角スペース区切りの Single Line + (N) 形式（ユーザー実機テスト由来 88ch コピペ形式）
+            const text = '③　RevivalSimon　-10+dice1d35=28 (28)';
+            const result = StandardParser.parse(text, participantsExt);
+
+            expect(result.errors).toHaveLength(0);
+            expect(result.results).toHaveLength(1);
+            expect(result.results[0]).toMatchObject({
+                name: 'RevivalSimon',
+                diceStr: '1d35',
+                fixValue: -10,
+                diceResult: 28,
+                total: 18, // -10 + 28
+                validChecksum: true
+            });
+        });
+
+        it('parses SuperStability line "Name 8+dice1d3=2 (2)" without error', () => {
+            const text = 'マヨイゴメイズ 8+dice1d3=2 (2)';
+            const result = StandardParser.parse(text, participantsExt);
+
+            expect(result.errors).toHaveLength(0);
+            expect(result.results).toHaveLength(1);
+            expect(result.results[0]).toMatchObject({
+                name: 'マヨイゴメイズ',
+                diceStr: '1d3',
+                fixValue: 8,
+                diceResult: 2,
+                total: 10, // 8 + 2
+                validChecksum: true
+            });
+        });
+
+        it('keeps existing positive Fix value behavior intact (regression guard)', () => {
+            // 既存の正の Fix value (30+dice3d8=...) が修正後も同じく解析されることを保証
+            const text = '①Special Week 30+dice3d8=5 5 5 (15)';
+            const result = StandardParser.parse(text, participants);
+
+            expect(result.errors).toHaveLength(0);
+            expect(result.results).toHaveLength(1);
+            expect(result.results[0]).toMatchObject({
+                name: 'Special Week',
+                diceStr: '3d8',
+                fixValue: 30,
+                diceResult: 15,
+                total: 45,
+                validChecksum: true
+            });
+        });
+    });
 });

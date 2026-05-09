@@ -66,7 +66,7 @@ export class StandardParser implements ParserStrategy {
             if (!cleanLine) continue;
 
             // Regex Updated (same as parseRace): supports Half/Full width Plus and Negative dice
-            const regex = /^(.*?)[\s\u3000🎲]+(?:(\d+)([+＋\-]))?\s*(-)?\s*dice(\d*d\d+?)\s*=\s*(.*?)(?:\s*\((-?\d+)\))?$/iu;
+            const regex = /^(.*?)[\s\u3000🎲]+(?:(-?\d+)([+＋\-]))?\s*(-)?\s*dice(\d*d\d+?)\s*=\s*(.*?)(?:\s*\((-?\d+)\))?$/iu;
             const match = cleanLine.match(regex);
 
             if (!match) {
@@ -134,18 +134,21 @@ export class StandardParser implements ParserStrategy {
             // 1. Full-width Plus "＋"
             // 2. Loose dice results "5 3 5 (13)"
             // 3. Negative dice (Great Escape) "62+-dice1d27=...", "-dice...", "58-dice..."
+            // 4. Bundle-2 / D-1, D-14 / 2026-05-09 [ESCALATION 案 V Provisional]:
+            //    拡張固有タイプ「超ギャンブル -10+dice1d35=」等の負の Fix value を
+            //    捕捉できるよう (\d+) → (-?\d+) に拡張。既存挙動は完全互換。
 
             // Regex Analysis:
             // ^(.*?)          -> Group 1: Name
             // [\s\u3000🎲]+   -> Separator
-            // (?:(\d+)([+＋\-]))? -> Group 2: Fix value, Group 3: Fix operator ('+' or '-')
+            // (?:(-?\d+)([+＋\-]))? -> Group 2: Fix value, Group 3: Fix operator ('+' or '-')
             // \s*(-)?         -> Group 4: Negative sign before 'dice' (Fixなし大逃げ用)
             // dice(\d*d\d+?)  -> Group 5: DiceStr
             // \s*=\s*         -> Equals
             // (.*?)           -> Group 6: Roll Result
             // (?:\s*\((-?\d+)\))?$ -> Group 7: Parens Value (Sum of dice, absolute)
 
-            const regex = /^(.*?)[\s\u3000🎲]+(?:(\d+)([+＋\-]))?\s*(-)?\s*dice(\d*d\d+?)\s*=\s*(.*?)(?:\s*\((-?\d+)\))?$/iu;
+            const regex = /^(.*?)[\s\u3000🎲]+(?:(-?\d+)([+＋\-]))?\s*(-)?\s*dice(\d*d\d+?)\s*=\s*(.*?)(?:\s*\((-?\d+)\))?$/iu;
 
             const match = cleanLine.match(regex);
 

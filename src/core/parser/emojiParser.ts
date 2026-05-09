@@ -69,7 +69,11 @@ export class EmojiParser implements ParserStrategy {
                 // Check if ends with "Fix+" or "Fix-"
                 // Modified: Capture operator (+ or -)
                 // Regex: (.*?)(\d+)([+-])\s*$
-                const fixMatch = preMatch.match(/^(.*?)(\d+)([+-])\s*$/);
+                // Bundle-2 / D-1, D-14 / 2026-05-09 [ESCALATION REQUIRED 案 V Provisional 適用]:
+                // 拡張固有タイプ「超ギャンブル (-10+dice1d35=)」等の負の Fix value を捕捉できるよう
+                // (\d+) → (-?\d+) に拡張。既存の正の Fix value 挙動は完全互換（-? は optional）。
+                // 仕様 SSoT (parser-system.md §B Step 1) は本 Bundle スコープ外、PM46/SA 判断委ね。
+                const fixMatch = preMatch.match(/^(.*?)(-?\d+)([+-])\s*$/);
 
                 let nameRaw = preMatch;
                 let fixValue = 0;
@@ -145,7 +149,14 @@ export class EmojiParser implements ParserStrategy {
                     const totalMatch = trimmed.match(/\((\d+)\)$/);
                     if (totalMatch) {
                         currentBlock.total = parseInt(totalMatch[1], 10);
-                        currentBlock.validChecksum = (currentBlock.fixValue! + currentBlock.diceResult!) === currentBlock.total;
+                        // Bundle-2 / D-1, D-14 / 2026-05-09 [ESCALATION 案 V Provisional / CR-SA-10-Followup-F2-E1 先取り実装]:
+                        // (N) はダイス出目の総和を表す（StandardParser §A / parser-system.md §B 改訂版 SA12 確定）。
+                        // 旧ロジック (fixValue + diceResult === total) は Stability/Gamble の偶然成立で動作していたが、
+                        // 拡張固有タイプ (-10+dice1d35=28 (28)) 等で破綻するため、StandardParser と検算式を統一する。
+                        // 減算ケース (N) は絶対値で比較（StandardParser:200-204 と同方針）。
+                        const absDiceResult = Math.abs(currentBlock.diceResult!);
+                        const absTotal = Math.abs(currentBlock.total);
+                        currentBlock.validChecksum = absDiceResult === absTotal;
                         results.push(currentBlock as ParsedLine);
                         currentBlock = null; // Reset
                     } else {

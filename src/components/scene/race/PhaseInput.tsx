@@ -11,6 +11,10 @@ import { useNotificationStore } from '../../../store/useNotificationStore';
 import { useRaceEngine } from '../../../hooks/useRaceEngine';
 import { Play, RotateCw, AlertTriangle } from 'lucide-react';
 import { clsx } from 'clsx';
+// Bundle-2 / D-1, D-14 / 2026-05-09 [ESCALATION 案 V Provisional 適用]:
+// 既存 d10/d20 ヒューリスティックでは SuperGamble (1d35) / SuperStability (1d3) を捕捉できないため、
+// 参加者の固有タイプから期待ダイス式を逆引きして判定する方式に拡張する（拡張固有タイプ含む 5 種網羅）。
+import { getExpectedUniqueDiceStr } from './phaseOutput.helpers';
 
 interface PhaseInputProps {
     onErrors?: (errors: string[]) => void;
@@ -94,8 +98,13 @@ export const PhaseInput: React.FC<PhaseInputProps> = ({ onErrors }) => {
                     const prevHistory = p.history[currentPhaseId] || {};
                     const diceStr = result.diceStr;
 
-                    // Heuristic: Check for unique skill dice (d10/d20)
-                    const isUnique = diceStr.includes('d10') || diceStr.includes('d20');
+                    // Bundle-2 / D-1, D-14 / 2026-05-09 [ESCALATION 案 V Provisional 適用]:
+                    // 参加者の固有タイプから期待ダイス式を逆引きし、解析結果と完全一致するかで判定。
+                    // SuperGamble (1d35) / SuperStability (1d3) を含む 5 種すべてに対応。
+                    // 既存の d10/d20 ヒューリスティックでは Stability/Gamble/Persistent (`X+dice1d10/dice1d20`)
+                    // のみ正しく分類されていたが、拡張固有タイプには対応できなかった。
+                    const expectedUniqueDiceStr = getExpectedUniqueDiceStr(p.uniqueSkill.type);
+                    const isUnique = expectedUniqueDiceStr !== '' && diceStr === expectedUniqueDiceStr;
 
                     const newHistoryEntry = {
                         ...prevHistory,

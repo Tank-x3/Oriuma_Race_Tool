@@ -393,9 +393,11 @@ describe('EmojiParser (88-ch Support)', () => {
         });
 
         it('should not apply range check when (N) is present (regression guard)', () => {
-            // (N) あり時は現行 validChecksum = (fixValue + diceResult === total) のみ実行され、
-            // 範囲チェックは適用しない（仕様書 §B Step 2 Case A の (N) あり/なし分岐を担保）。
-            const input = `ウマ娘A 15+🎲 dice3d6=18 (33)`;
+            // Bundle-2 / D-1, D-14 / 2026-05-09 [ESCALATION 案 V Provisional / CR-SA-10-Followup-F2-E1 先取り反映]:
+            // SA12 確定仕様により (N) はダイス出目の総和 (StandardParser §A 解釈) に統一。
+            // 旧 input `15+🎲 dice3d6=18 (33)` (N=fixValue+diceResult) → 新 input `15+🎲 dice3d6=18 (18)` (N=diceResult)。
+            // (N) あり時は範囲チェック非適用（既存仕様維持、仕様書 §B Step 2 Case A の分岐を担保）。
+            const input = `ウマ娘A 15+🎲 dice3d6=18 (18)`;
             const result = parser.parse(input, participants, 'RACE');
 
             expect(result.errors).toHaveLength(0);
@@ -405,7 +407,7 @@ describe('EmojiParser (88-ch Support)', () => {
                 diceStr: '3d6',
                 diceResult: 18,
                 fixValue: 15,
-                total: 33,
+                total: 18,
                 validChecksum: true,
             });
         });
@@ -560,6 +562,67 @@ describe('EmojiParser (88-ch Support)', () => {
 
             expect(result.results).toHaveLength(0);
             expect(result.errors[0]).toContain('ペースダイス');
+        });
+    });
+
+    // Bundle-2 / D-1, D-14 / 2026-05-09 [ESCALATION 案 V Provisional 適用]:
+    // 拡張固有タイプ「超ギャンブル」(-10+dice1d35=) の Single Line + (N) 形式を
+    // EmojiParser でも Invalid 化せず正しく解析できることを保証。fixMatch regex の
+    // (\d+) → (-?\d+) 拡張テスト。
+    describe('Extended Unique Skill type Fix value (Bundle-2)', () => {
+        const participantsExt: Umamusume[] = [
+            { id: '1', name: 'RevivalSimon', strategy: '先行', uniqueSkill: { type: 'SuperGamble', phases: [] }, uniqueSkillPhase: '中盤', speed: 0, stamina: 0, power: 0, guts: 0, wisdom: 0, score: 0 } as unknown as Umamusume,
+            { id: '2', name: 'マヨイゴメイズ', strategy: '差し', uniqueSkill: { type: 'SuperStability', phases: [] }, uniqueSkillPhase: '中盤', speed: 0, stamina: 0, power: 0, guts: 0, wisdom: 0, score: 0 } as unknown as Umamusume,
+        ];
+
+        it('parses SuperGamble line "RevivalSimon -10+🎲 dice1d35=28 (28)" without Invalid error', () => {
+            // 注: EmojiParser の total フィールドは (N) の値 = ダイス出目総和（StandardParser の total = fix+diceResult とは異なる既存設計）
+            const input = 'RevivalSimon -10+🎲 dice1d35=28 (28)';
+            const result = parser.parse(input, participantsExt, 'RACE');
+
+            expect(result.errors).toHaveLength(0);
+            expect(result.results).toHaveLength(1);
+            expect(result.results[0]).toMatchObject({
+                name: 'RevivalSimon',
+                diceStr: '1d35',
+                fixValue: -10,
+                diceResult: 28,
+                total: 28, // EmojiParser: total = (N) ダイス出目総和
+                validChecksum: true
+            });
+        });
+
+        it('parses SuperStability line "Name 8+🎲 dice1d3=2 (2)" without error (regression guard for positive Fix)', () => {
+            const input = 'マヨイゴメイズ 8+🎲 dice1d3=2 (2)';
+            const result = parser.parse(input, participantsExt, 'RACE');
+
+            expect(result.errors).toHaveLength(0);
+            expect(result.results).toHaveLength(1);
+            expect(result.results[0]).toMatchObject({
+                name: 'マヨイゴメイズ',
+                diceStr: '1d3',
+                fixValue: 8,
+                diceResult: 2,
+                total: 2, // EmojiParser: total = (N) ダイス出目総和
+                validChecksum: true
+            });
+        });
+
+        it('parses SuperGamble Multi-line format with negative Fix', () => {
+            // 88-ch ヘッダー (-10+🎲 dice1d35=) + 別行「合計: 28」のフォーマット
+            const input = `RevivalSimon -10+🎲 dice1d35=
+1回目: 28
+合計: 28`;
+            const result = parser.parse(input, participantsExt, 'RACE');
+
+            expect(result.errors).toHaveLength(0);
+            expect(result.results).toHaveLength(1);
+            expect(result.results[0]).toMatchObject({
+                name: 'RevivalSimon',
+                fixValue: -10,
+                diceResult: 28,
+                total: 18,
+            });
         });
     });
 });

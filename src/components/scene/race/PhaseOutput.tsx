@@ -3,6 +3,7 @@ import { useRaceStore } from '../../../store/useRaceStore';
 import { useRaceEngine } from '../../../hooks/useRaceEngine';
 import { Copy, Check, Dices } from 'lucide-react';
 import { clsx } from 'clsx';
+import { getUniqueDiceFormula, getExpectedUniqueDiceStr } from './phaseOutput.helpers';
 
 export const PhaseOutput: React.FC = () => {
     const {
@@ -93,10 +94,8 @@ export const PhaseOutput: React.FC = () => {
         if (shouldHaveUnique !== hasUnique) {
             needsUnique = true;
         } else if (shouldHaveUnique && hasUnique) {
-            let expectedUnique = "";
-            if (p.uniqueSkill.type === 'Stability') expectedUnique = "1d10";
-            if (p.uniqueSkill.type === 'Gamble') expectedUnique = "1d20";
-            if (p.uniqueSkill.type === 'Persistent') expectedUnique = "1d10";
+            // Bundle-2 / D-1, D-14 / 2026-05-09: 拡張固有タイプ含む 5 種の期待ダイス式を helpers から取得
+            const expectedUnique = getExpectedUniqueDiceStr(p.uniqueSkill.type);
 
             if (history.uniqueDice?.diceStr !== expectedUnique) {
                 needsUnique = true;
@@ -237,11 +236,8 @@ export const PhaseOutput: React.FC = () => {
             if (isMatch) {
                 // If filter is ON, only show if unique needs correction
                 if (!filterCorrection || status.unique) {
-                    let uDice = "";
-                    const uType = p.uniqueSkill.type;
-                    if (uType === 'Stability') uDice = `5+dice1d10=`;
-                    if (uType === 'Gamble') uDice = `dice1d20=`;
-                    if (uType === 'Persistent') uDice = `dice1d10=`;
+                    // Bundle-2 / D-1, D-14 / 2026-05-09: 拡張固有タイプ含む 5 種のダイス文字列を helpers から取得
+                    const uDice = getUniqueDiceFormula(p.uniqueSkill.type);
 
                     if (uDice) {
                         uniqueTextLines.push(`${gateSym} ${p.name}　${uDice}`);

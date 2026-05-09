@@ -8,6 +8,8 @@ import { PhaseOutput } from './race/PhaseOutput';
 import { PhaseInput } from './race/PhaseInput';
 import { RaceDashboard } from './race/RaceDashboard';
 import { NotificationArea } from '../ui/NotificationArea';
+// Bundle-2 / D-1, D-14 / 2026-05-09: 拡張固有タイプ含む 5 種すべての期待ダイス式を helpers から取得
+import { getExpectedUniqueDiceStr } from './race/phaseOutput.helpers';
 // import { HouseRuleModal } from './HouseRuleModal'; // To be implemented later
 
 export const RaceScene: React.FC = () => {
@@ -90,10 +92,8 @@ export const RaceScene: React.FC = () => {
                 const hasUnique = !!history.uniqueDice;
                 if (shouldHave !== hasUnique) return true;
                 if (shouldHave && hasUnique) {
-                    let expU = "";
-                    if (p.uniqueSkill.type === 'Stability') expU = "1d10";
-                    if (p.uniqueSkill.type === 'Gamble') expU = "1d20";
-                    if (p.uniqueSkill.type === 'Persistent') expU = "1d10";
+                    // Bundle-2 / D-1, D-14 / 2026-05-09: 拡張固有タイプ含む 5 種を helpers 経由で取得
+                    const expU = getExpectedUniqueDiceStr(p.uniqueSkill.type);
                     if (history.uniqueDice?.diceStr !== expU) return true;
                 }
 

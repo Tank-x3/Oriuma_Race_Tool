@@ -64,6 +64,9 @@ export class Calculator {
             if (startData.uniqueDice && participant.uniqueSkill.phases.includes('Start')) {
                 const skillType = participant.uniqueSkill.type;
                 if (skillType === 'Stability') total += 5;
+                // Bundle-2 / D-1, D-14 / 2026-05-09: 拡張固有タイプ（houserule-features.md §2 [v]）
+                if (skillType === 'SuperGamble') total += -10;
+                if (skillType === 'SuperStability') total += 8;
                 total += startData.uniqueDice.sum;
             }
         }
@@ -91,6 +94,9 @@ export class Calculator {
             if (data.uniqueDice && participant.uniqueSkill.phases.includes(phaseId)) {
                 const skillType = participant.uniqueSkill.type;
                 if (skillType === 'Stability') total += 5;
+                // Bundle-2 / D-1, D-14 / 2026-05-09: 拡張固有タイプ（houserule-features.md §2 [v]）
+                if (skillType === 'SuperGamble') total += -10;
+                if (skillType === 'SuperStability') total += 8;
                 total += data.uniqueDice.sum;
             }
             // Add Manual Modifier
