@@ -2,6 +2,14 @@ import { StandardParser } from './standardParser';
 import type { ParserStrategy, ParseResult, ParsedLine } from './interface';
 import type { Umamusume } from '../../types';
 
+// Multi-line Case B の合計行処理時にヘッダー由来情報（減算フラグ + 個数 X / 面数 Y）を
+// currentBlock 経由で参照するためのローカル拡張型（CR-SA-10-Followup-F1 / 2026-05-09）。
+type ParserBlock = Partial<ParsedLine> & {
+    _isSubtractive?: boolean;
+    _diceCount?: number;
+    _diceFaces?: number;
+};
+
 export class EmojiParser implements ParserStrategy {
     parse(text: string, participants: Umamusume[], context: 'RACE' | 'PACE'): ParseResult {
         // Delegate PACE parsing to StandardParser (Global search)
@@ -13,11 +21,11 @@ export class EmojiParser implements ParserStrategy {
         const errors: string[] = [];
         const lines = text.split(/\r?\n/);
 
-        let currentBlock: Partial<ParsedLine> | null = null;
+        let currentBlock: ParserBlock | null = null;
 
         // 未完了ブロック（合計行未到達）をエラーとして報告するヘルパー。
         // 新ヘッダー検出時 / ファイル末尾の両方で使用する（仕様: parser-system.md §B Step 3）。
-        const reportIncompleteBlock = (block: Partial<ParsedLine>) => {
+        const reportIncompleteBlock = (block: ParserBlock) => {
             if (block.total === undefined && block.diceResult === undefined) {
                 errors.push(`データの解析に失敗しました（合計行が見つかりません）: "${block.name}"`);
             }
@@ -124,7 +132,11 @@ export class EmojiParser implements ParserStrategy {
                     total: inlineResult ? (fixValue + inlineResult) : undefined,
                 };
                 // 複数行フォーマットで減算フラグを保持（合計行処理時に参照）
-                (currentBlock as any)._isSubtractive = !isFixPlus;
+                currentBlock._isSubtractive = !isFixPlus;
+                // CR-SA-10-Followup-F1 / 2026-05-09: Multi-line Case B の範囲チェック用に
+                // Step 1 で取得した個数 X / 面数 Y を currentBlock に保持する（合計行処理時に参照）。
+                currentBlock._diceCount = diceCount;
+                currentBlock._diceFaces = diceFaces;
 
                 // If inline result was present, it's a single line entry (Standard-ish mixed in)
                 if (inlineResult !== undefined) {
@@ -172,18 +184,37 @@ export class EmojiParser implements ParserStrategy {
                 if (totalMatch) {
                     const diceSum = parseInt(totalMatch[1], 10);
                     // 減算フラグに応じてdiceResultの符号を決定
-                    const isSubtractive = (currentBlock as any)._isSubtractive;
-                    currentBlock.diceResult = isSubtractive ? -Math.abs(diceSum) : diceSum;
+                    const isSubtractive = currentBlock._isSubtractive;
+                    const diceResultValue = isSubtractive ? -Math.abs(diceSum) : diceSum;
 
-                    // Calculate Total Score (Fix +/- Dice)
-                    currentBlock.total = (currentBlock.fixValue || 0) + currentBlock.diceResult;
+                    // CR-SA-10-Followup-F1 / 2026-05-09:
+                    //   Multi-line Case B にも Single Line Case A と同等の範囲チェックを適用する。
+                    //   X ≤ |diceResult| ≤ X×Y を検証し、範囲外の場合は validChecksum=false +
+                    //   errors に範囲外文言を追加し、results には push しない。
+                    //   減算ケース（diceResult が負数化済）は絶対値で範囲を判定する（Case A と同方針）。
+                    const diceCount = currentBlock._diceCount!;
+                    const diceFaces = currentBlock._diceFaces!;
+                    const lowerBound = diceCount;
+                    const upperBound = diceCount * diceFaces;
+                    const valueForRangeCheck = Math.abs(diceResultValue);
+                    if (valueForRangeCheck < lowerBound || valueForRangeCheck > upperBound) {
+                        currentBlock.validChecksum = false;
+                        errors.push(
+                            `ダイス合計値が範囲外です: "${currentBlock.name}" (${currentBlock.diceStr}: 合計 ${diceResultValue} は ${lowerBound}〜${upperBound} の範囲外。コピー範囲を確認してください)`
+                        );
+                        currentBlock = null;
+                    } else {
+                        currentBlock.diceResult = diceResultValue;
 
-                    // Checksum: We trust the bot's sum for now. 
-                    // (To be stricter, we could sum the individual lines, but that's complex)
-                    currentBlock.validChecksum = true;
+                        // Calculate Total Score (Fix +/- Dice)
+                        currentBlock.total = (currentBlock.fixValue || 0) + currentBlock.diceResult;
 
-                    results.push(currentBlock as ParsedLine);
-                    currentBlock = null; // Completed
+                        // Checksum: 範囲チェックを通過した bot 出力の `合計:` を信頼
+                        currentBlock.validChecksum = true;
+
+                        results.push(currentBlock as ParsedLine);
+                        currentBlock = null; // Completed
+                    }
                 }
             }
         }

@@ -411,6 +411,131 @@ describe('EmojiParser (88-ch Support)', () => {
         });
     });
 
+    // CR-SA-10-Followup-F1: 88ch Multi-line Case B 範囲チェック追加
+    // 仕様: parser-system.md §B Step 2 Case B 改訂版（CR-SA-10-Followup-F1 / 2026-05-09）
+    // 改訂内容:
+    //   - Single Line Case A 同等の範囲チェック (X ≤ |diceResult| ≤ X×Y) を Multi-line Case B にも適用。
+    //   - 範囲外の場合は validChecksum=false + errors に範囲外文言を追加し、results には push しない。
+    //   - 減算ケース（diceResult が負数化済）は絶対値で範囲を判定する。
+    describe('CR-SA-10-Followup-F1: range check on Multi-line Case B (合計行)', () => {
+        it('should accept value within range (1d100 + 合計: 50)', () => {
+            const input = `
+                ウマ娘A 🎲 dice1d100=
+                合計: 50
+            `;
+            const result = parser.parse(input, participants, 'RACE');
+
+            expect(result.errors).toHaveLength(0);
+            expect(result.results).toHaveLength(1);
+            expect(result.results[0]).toMatchObject({
+                name: 'ウマ娘A',
+                diceStr: '1d100',
+                diceResult: 50,
+                fixValue: 0,
+                total: 50,
+                validChecksum: true,
+            });
+        });
+
+        it('should reject value below lower bound (1d100 + 合計: 0)', () => {
+            const input = `
+                ウマ娘A 🎲 dice1d100=
+                合計: 0
+            `;
+            const result = parser.parse(input, participants, 'RACE');
+
+            // results 不追加（範囲外データを下流のスコア計算へ流さないため）
+            expect(result.results).toHaveLength(0);
+            const rangeError = result.errors.find(e =>
+                e.includes('ダイス合計値が範囲外です') &&
+                e.includes('ウマ娘A') &&
+                e.includes('1d100') &&
+                e.includes('合計 0') &&
+                e.includes('1〜100 の範囲外')
+            );
+            expect(rangeError).toBeDefined();
+        });
+
+        it('should reject value above upper bound (1d100 + 合計: 999)', () => {
+            const input = `
+                ウマ娘A 🎲 dice1d100=
+                合計: 999
+            `;
+            const result = parser.parse(input, participants, 'RACE');
+
+            expect(result.results).toHaveLength(0);
+            const rangeError = result.errors.find(e =>
+                e.includes('ダイス合計値が範囲外です') &&
+                e.includes('ウマ娘A') &&
+                e.includes('1d100') &&
+                e.includes('合計 999') &&
+                e.includes('1〜100 の範囲外')
+            );
+            expect(rangeError).toBeDefined();
+        });
+
+        it('should reject multi-face dice value above X×Y (2d6 + 合計: 15, regression guard)', () => {
+            // 上限が個数 × 面数 (2×6=12) で算出されることを担保する regression guard。
+            // currentBlock に _diceCount / _diceFaces を保持していないと上限計算が不可能になる。
+            const input = `
+                ウマ娘A 🎲 dice2d6=
+                合計: 15
+            `;
+            const result = parser.parse(input, participants, 'RACE');
+
+            expect(result.results).toHaveLength(0);
+            const rangeError = result.errors.find(e =>
+                e.includes('ダイス合計値が範囲外です') &&
+                e.includes('ウマ娘A') &&
+                e.includes('2d6') &&
+                e.includes('合計 15') &&
+                e.includes('2〜12 の範囲外')
+            );
+            expect(rangeError).toBeDefined();
+        });
+
+        it('should apply range check on subtraction with absolute value (-dice + 合計: -101)', () => {
+            // 減算ケース: 絶対値 101 で範囲外検知。エラー文言の合計値表示は元の符号付き (-101)。
+            const input = `
+                ウマ娘A -🎲 dice1d100=
+                合計: -101
+            `;
+            const result = parser.parse(input, participants, 'RACE');
+
+            expect(result.results).toHaveLength(0);
+            const rangeError = result.errors.find(e =>
+                e.includes('ダイス合計値が範囲外です') &&
+                e.includes('ウマ娘A') &&
+                e.includes('1d100') &&
+                e.includes('合計 -101') &&
+                e.includes('1〜100 の範囲外')
+            );
+            expect(rangeError).toBeDefined();
+        });
+
+        it('should preserve existing multi-line subtraction within range (regression guard)', () => {
+            // 範囲内 (1≤15≤100) の減算ケースは現行通り受理されること。
+            // 既存テスト 'should parse multi-line subtraction correctly (Critical Fix)' と
+            // 同等の挙動を別パラメータで確認する regression guard。
+            const input = `
+                ウマ娘A 73-🎲 dice3d6=
+                合計: 15
+            `;
+            const result = parser.parse(input, participants, 'RACE');
+
+            expect(result.errors).toHaveLength(0);
+            expect(result.results).toHaveLength(1);
+            expect(result.results[0]).toMatchObject({
+                name: 'ウマ娘A',
+                diceStr: '3d6',
+                diceResult: -15,
+                fixValue: 73,
+                total: 58,
+                validChecksum: true,
+            });
+        });
+    });
+
     // CR-7 Part B: #3-3-G PACE コンテキスト委譲テスト
     // 仕様: docs/specs/architecture/parser-system.md §B "PACE コンテキストの委譲" (L209-211)
     // 委譲先: emojiParser.ts:6-9 → StandardParser.parse(text, participants, 'PACE')
