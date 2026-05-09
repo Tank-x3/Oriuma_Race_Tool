@@ -14,6 +14,8 @@ interface RaceStoreState extends RaceState {
     // Actions
     setMidPhaseCount: (count: number) => void;
     setFullGateSize: (size: number) => void;
+    // Bundle-9 / 2026-05-10: ハウスルール 5 フィールドの部分更新 action
+    updateHouseRules: (updates: Partial<RaceState['config']['houseRules']>) => void;
     generateParticipants: (count: number) => void;
     addParticipant: (participant: Omit<Umamusume, 'score' | 'history'>) => void;
     removeParticipant: (id: string) => void;
@@ -140,6 +142,19 @@ export const useRaceStore = create<RaceStoreState>()(
                         ...state.config,
                         fullGateSize: size,
                     }
+                })),
+
+            // Bundle-9 / 2026-05-10: 5 フィールドのいずれか/複数を部分更新する。
+            // 既存値とマージするため、未指定のフィールドは現状維持される。
+            updateHouseRules: (updates) =>
+                set((state) => ({
+                    config: {
+                        ...state.config,
+                        houseRules: {
+                            ...state.config.houseRules,
+                            ...updates,
+                        },
+                    },
                 })),
 
             generateParticipants: (count: number) =>

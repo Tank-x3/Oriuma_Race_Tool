@@ -732,3 +732,57 @@ describe('Bundle-1 / D-5 / 2026-05-09 houseRules 拡張フィールドの初期�
         expect(houseRules.enableCompositeUnique).toBe(false);
     });
 });
+
+// Bundle-9 / 2026-05-10: updateHouseRules action（5 フィールド部分更新）
+describe('Bundle-9 / 2026-05-10 useRaceStore.updateHouseRules', () => {
+    beforeEach(() => {
+        // resetRace は houseRules を保持する設計（ハウスルールはレース間で維持される）ため、
+        // テスト間の状態リーク防止に明示的に初期値へ戻す
+        useRaceStore.getState().resetRace();
+        useRaceStore.getState().updateHouseRules({
+            enableModifier: false,
+            enableSpecialStrategy: false,
+            enableCompositeUnique: false,
+            enableExtendedUnique: false,
+            effectValue: 15,
+        });
+    });
+
+    it('単一フィールド更新: enableModifier のみ true、他 4 フィールドは初期値維持', () => {
+        useRaceStore.getState().updateHouseRules({ enableModifier: true });
+
+        const houseRules = useRaceStore.getState().config.houseRules;
+        expect(houseRules.enableModifier).toBe(true);
+        expect(houseRules.enableSpecialStrategy).toBe(false);
+        expect(houseRules.enableCompositeUnique).toBe(false);
+        expect(houseRules.enableExtendedUnique).toBe(false);
+        expect(houseRules.effectValue).toBe(15);
+    });
+
+    it('複数フィールド同時更新: enableSpecialStrategy + effectValue 同時変更、他 3 フィールドは初期値維持', () => {
+        useRaceStore.getState().updateHouseRules({
+            enableSpecialStrategy: true,
+            effectValue: 20,
+        });
+
+        const houseRules = useRaceStore.getState().config.houseRules;
+        expect(houseRules.enableSpecialStrategy).toBe(true);
+        expect(houseRules.effectValue).toBe(20);
+        expect(houseRules.enableModifier).toBe(false);
+        expect(houseRules.enableCompositeUnique).toBe(false);
+        expect(houseRules.enableExtendedUnique).toBe(false);
+    });
+
+    it('連続呼び出しで累積更新: enableModifier → enableExtendedUnique で 2 フィールドが両方 true', () => {
+        useRaceStore.getState().updateHouseRules({ enableModifier: true });
+        useRaceStore.getState().updateHouseRules({ enableExtendedUnique: true });
+
+        const houseRules = useRaceStore.getState().config.houseRules;
+        expect(houseRules.enableModifier).toBe(true);
+        expect(houseRules.enableExtendedUnique).toBe(true);
+        // 中間で更新されなかったフィールドは初期値維持
+        expect(houseRules.enableSpecialStrategy).toBe(false);
+        expect(houseRules.enableCompositeUnique).toBe(false);
+        expect(houseRules.effectValue).toBe(15);
+    });
+});
