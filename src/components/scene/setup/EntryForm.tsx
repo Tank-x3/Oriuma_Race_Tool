@@ -4,6 +4,7 @@ import { Trash2, AlertCircle, PlayCircle } from 'lucide-react';
 import type { StrategyName, UniqueSkillType } from '../../../types';
 import { NotificationArea } from '../../ui/NotificationArea';
 import { getUniqueSkillTypeOptions } from './entryForm.helpers';
+import { validatePersistentSkillPhases } from '../../../core/validator';
 
 const STRATEGY_OPTIONS: StrategyName[] = ['大逃げ', '逃げ', '先行', '差し', '追込'];
 // Bundle-2 / D-1, D-14 / 2026-05-09: 静的配列を廃止し、`enableExtendedUnique` 連動で
@@ -23,9 +24,13 @@ export const EntryForm: React.FC = () => {
     const [isSubmitted, setIsSubmitted] = React.useState(false);
 
     // Bundle-2 / D-1, D-14 / 2026-05-09: 固有タイプ選択肢を `enableExtendedUnique` 連動で動的生成
+    // Bundle-3 / D-2 / 2026-05-09: `enableCompositeUnique` 連動で `Persistent` 動的追加対応
     const uniqueSkillTypes = useMemo(
-        () => getUniqueSkillTypeOptions(config.houseRules.enableExtendedUnique),
-        [config.houseRules.enableExtendedUnique]
+        () => getUniqueSkillTypeOptions(
+            config.houseRules.enableExtendedUnique,
+            config.houseRules.enableCompositeUnique,
+        ),
+        [config.houseRules.enableExtendedUnique, config.houseRules.enableCompositeUnique]
     );
 
     // --- Validation Logic ---
@@ -65,9 +70,25 @@ export const EntryForm: React.FC = () => {
             if (!p.uniqueSkill.type) errors.push(`[#${rowNum}] 固有タイプが未選択です`);
             if (!p.uniqueSkill.phases || p.uniqueSkill.phases.length === 0) errors.push(`[#${rowNum}] 発動位置が未選択です`);
 
+            // Bundle-3 / D-4 / 2026-05-09: 持続型「連続 2 フェーズ」検証（Layer 2、
+            // validation-responsibilities.md §4 準拠）。
+            // phases.length === 0 は Layer 1「発動位置が未選択です」で補足されるため
+            // ここでは phases.length >= 1 のときのみ呼び出す（二重発火回避）。
+            if (
+                p.uniqueSkill.type === 'Persistent' &&
+                p.uniqueSkill.phases &&
+                p.uniqueSkill.phases.length > 0
+            ) {
+                const layer2Errors = validatePersistentSkillPhases(
+                    p.uniqueSkill.phases,
+                    config.midPhaseCount,
+                );
+                layer2Errors.forEach(msg => errors.push(`[#${rowNum}] ${msg}`));
+            }
+
             return { id: p.id, errors };
         }).filter(r => r.errors.length > 0);
-    }, [participants, duplicatedNames]);
+    }, [participants, duplicatedNames, config.midPhaseCount]);
 
     // #1-3a-3: 名前入力済みの行のみを有効エントリとして扱う。
     const activeParticipants = useMemo(
@@ -242,17 +263,58 @@ export const EntryForm: React.FC = () => {
                                             </select>
                                         </td>
                                         <td className="px-4 py-3">
-                                            <select
-                                                value={p.uniqueSkill.phases?.[0] || ''}
-                                                onChange={(e) => updateParticipant(p.id, { uniqueSkill: { ...p.uniqueSkill, phases: [e.target.value] } })}
-                                                className={`w-full h-8 bg-slate-50 dark:bg-slate-900 border rounded px-2 text-sm focus:outline-none focus:ring-1 transition-colors ${invalidPhase
-                                                    ? 'border-red-500 focus:ring-red-500'
-                                                    : 'border-slate-300 dark:border-slate-700 focus:border-primary-500 focus:ring-primary-500 text-slate-900 dark:text-white'
-                                                    }`}
-                                            >
-                                                <option value="" disabled>---</option>
-                                                {availablePhases.map(ph => <option key={ph.id} value={ph.id}>{ph.label}</option>)}
-                                            </select>
+                                            {/* Bundle-3 / D-3 / 2026-05-09: 持続型のみチェックボックス UI に切替
+                                                （houserule-features.md §2 [v] 複合固有スキル準拠、複数連続フェーズ選択用） */}
+                                            {p.uniqueSkill.type === 'Persistent' ? (
+                                                <div
+                                                    className={`flex flex-wrap items-center gap-2 bg-slate-50 dark:bg-slate-900 border rounded px-2 py-1 ${invalidPhase
+                                                        ? 'border-red-500'
+                                                        : 'border-slate-300 dark:border-slate-700'
+                                                        }`}
+                                                >
+                                                    {availablePhases.map(ph => {
+                                                        const currentPhases = p.uniqueSkill.phases ?? [];
+                                                        const checked = currentPhases.includes(ph.id);
+                                                        return (
+                                                            <label
+                                                                key={ph.id}
+                                                                className="flex items-center gap-1 text-xs cursor-pointer text-slate-700 dark:text-slate-200"
+                                                            >
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={checked}
+                                                                    onChange={(e) => {
+                                                                        const next = e.target.checked
+                                                                            ? [...currentPhases, ph.id]
+                                                                            : currentPhases.filter(x => x !== ph.id);
+                                                                        // availablePhases の順に整列（D-4 連続性検証との整合）
+                                                                        const sortedNext = availablePhases
+                                                                            .filter(ap => next.includes(ap.id))
+                                                                            .map(ap => ap.id);
+                                                                        updateParticipant(p.id, {
+                                                                            uniqueSkill: { ...p.uniqueSkill, phases: sortedNext },
+                                                                        });
+                                                                    }}
+                                                                    className="w-3.5 h-3.5 accent-indigo-600 cursor-pointer"
+                                                                />
+                                                                <span>{ph.label}</span>
+                                                            </label>
+                                                        );
+                                                    })}
+                                                </div>
+                                            ) : (
+                                                <select
+                                                    value={p.uniqueSkill.phases?.[0] || ''}
+                                                    onChange={(e) => updateParticipant(p.id, { uniqueSkill: { ...p.uniqueSkill, phases: [e.target.value] } })}
+                                                    className={`w-full h-8 bg-slate-50 dark:bg-slate-900 border rounded px-2 text-sm focus:outline-none focus:ring-1 transition-colors ${invalidPhase
+                                                        ? 'border-red-500 focus:ring-red-500'
+                                                        : 'border-slate-300 dark:border-slate-700 focus:border-primary-500 focus:ring-primary-500 text-slate-900 dark:text-white'
+                                                        }`}
+                                                >
+                                                    <option value="" disabled>---</option>
+                                                    {availablePhases.map(ph => <option key={ph.id} value={ph.id}>{ph.label}</option>)}
+                                                </select>
+                                            )}
                                         </td>
                                     </tr>
                                 );
