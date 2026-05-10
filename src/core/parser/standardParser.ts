@@ -1,9 +1,16 @@
 import type { Umamusume } from '../../types';
 import type { ParseResult, ParsedLine, ParserStrategy } from './interface';
+// Bundle-8-T5 / CR-SA-4 / 2026-05-10: 【絆スキル】セクション認識（scene3-race.md §2）
+import {
+    BOND_SKILL_SECTION_HEADER,
+    parseBondSkillLineFromText,
+    type BondParsedLine,
+    type ParseResultWithBond,
+} from './bondTypes';
 
 export class StandardParser implements ParserStrategy {
     // Implement as static for direct usage, but also satisfy interface logic if instantiated
-    static parse(text: string, participants: Umamusume[], context: 'RACE' | 'PACE' = 'RACE'): ParseResult {
+    static parse(text: string, participants: Umamusume[], context: 'RACE' | 'PACE' = 'RACE'): ParseResultWithBond {
         if (context === 'PACE') {
             return this.parsePace(text);
         }
@@ -11,7 +18,7 @@ export class StandardParser implements ParserStrategy {
     }
 
     // Adapt to interface method signature (instance method)
-    parse(text: string, participants: Umamusume[], context: 'RACE' | 'PACE'): ParseResult {
+    parse(text: string, participants: Umamusume[], context: 'RACE' | 'PACE'): ParseResultWithBond {
         return StandardParser.parse(text, participants, context);
     }
 
@@ -115,13 +122,32 @@ export class StandardParser implements ParserStrategy {
         return { results, errors };
     }
 
-    private static parseRace(text: string, participants: Umamusume[]): ParseResult {
+    private static parseRace(text: string, participants: Umamusume[]): ParseResultWithBond {
         const lines = text.split('\n').filter(l => l.trim() !== '');
         const results: ParsedLine[] = [];
+        const bondResults: BondParsedLine[] = [];
         const errors: string[] = [];
+
+        // Bundle-8-T5 / CR-SA-4 / 2026-05-10: 【絆スキル】セクション認識（scene3-race.md §2）
+        // 行を順次読み、`【絆スキル】` でセクション ON、別の `【XXX】` でセクション OFF。
+        // セクション内のダイス行は通常解析と同じ regex で抽出するが、結果は bondResults へ格納する。
+        // 終盤フェーズ抑制（仕様 §2「他フェーズでの非表示」）は呼び出し側 PhaseInput が currentPhaseId === 'End'
+        // のときのみ history.End.bondDice に格納することで実現する（Parser は phase 情報を持たない）。
+        let inBondSection = false;
 
         for (const line of lines) {
             const trimmed = line.trim();
+
+            // Bundle-8-T5 / CR-SA-4 / 2026-05-10: セクションヘッダー検出（前処理として最優先）
+            if (trimmed === BOND_SKILL_SECTION_HEADER) {
+                inBondSection = true;
+                continue;
+            }
+            // 別の `【...】` セクションヘッダー（例: `【序盤 ダイス】` `【固有スキル】`）でセクション終了
+            if (/^【[^】]+】$/u.test(trimmed)) {
+                inBondSection = false;
+                continue;
+            }
 
             // Ignore HTML tags if simple (though <p> usually implies new lines)
             // Pre-processing: Remove distinct HTML tags if any?
@@ -129,6 +155,18 @@ export class StandardParser implements ParserStrategy {
             // Simple replace first
             const cleanLine = trimmed.replace(/<[^>]*>?/gm, '');
             if (!cleanLine) continue;
+
+            // Bundle-8-T5 / CR-SA-4 / 2026-05-10: 【絆スキル】セクション内の行は共通 helper で処理し
+            // bondResults へ格納する（通常解析パスは経由しない）。種別ラベル抽出 + 検算は helper 内で完結。
+            if (inBondSection) {
+                const parsed = parseBondSkillLineFromText(cleanLine, participants);
+                if (parsed.error) {
+                    errors.push(parsed.error);
+                } else if (parsed.line) {
+                    bondResults.push(parsed.line);
+                }
+                continue;
+            }
 
             // Regex Updated to handle:
             // 1. Full-width Plus "＋"
@@ -245,6 +283,6 @@ export class StandardParser implements ParserStrategy {
 
         }
 
-        return { results, errors };
+        return { results, errors, bondResults };
     }
 }

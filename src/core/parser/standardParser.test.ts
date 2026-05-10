@@ -255,3 +255,125 @@ describe('StandardParser', () => {
         });
     });
 });
+
+// Bundle-8-T5 / CR-SA-4 / 2026-05-10:
+// 【絆スキル】セクション認識テスト群（scene3-race.md §2 SSoT 準拠）。
+// Parser は phase 情報を持たないため、終盤抑制（仕様 §2「他フェーズでの非表示」）の検証は
+// PhaseInput 側のガードで行う。本 describe は Parser 単体での抽出ロジックのみ検証する。
+describe('StandardParser - Bundle-8-T5 / 【絆スキル】セクション認識', () => {
+    const participants: Umamusume[] = [
+        { id: '1', name: 'ウマ娘A', strategy: '差し', entryIndex: 1, uniqueSkill: { type: 'Stability', phases: [] }, gate: 1, score: 0, history: {} },
+        { id: '3', name: 'ウマ娘C', strategy: '逃げ', entryIndex: 3, uniqueSkill: { type: 'Stability', phases: [] }, gate: 3, score: 0, history: {} },
+        { id: '5', name: 'ウマ娘E', strategy: '先行', entryIndex: 5, uniqueSkill: { type: 'Stability', phases: [] }, gate: 5, score: 0, history: {} },
+    ];
+
+    it('extracts a single bond skill (BondGamble) from 【絆スキル】 section', () => {
+        const text = '【絆スキル】\n① ウマ娘A　絆ギャンブル　dice1d15=12 (12)';
+        const result = StandardParser.parse(text, participants);
+        expect(result.errors).toHaveLength(0);
+        expect(result.bondResults).toHaveLength(1);
+        expect(result.bondResults![0]).toMatchObject({
+            participantId: '1',
+            name: 'ウマ娘A',
+            type: 'BondGamble',
+            diceStr: '1d15',
+            diceResult: 12,
+            sum: 12,
+        });
+    });
+
+    it('extracts multiple bond skills (BondGamble / BondStable mixed)', () => {
+        const text = [
+            '【絆スキル】',
+            '① ウマ娘A　絆ギャンブル　dice1d15=12 (12)',
+            '③ ウマ娘C　絆安定　5+dice1d5=3 (3)',
+            '⑤ ウマ娘E　絆ギャンブル　dice1d15=7 (7)',
+        ].join('\n');
+        const result = StandardParser.parse(text, participants);
+        expect(result.errors).toHaveLength(0);
+        expect(result.bondResults).toHaveLength(3);
+        expect(result.bondResults![0]).toMatchObject({ name: 'ウマ娘A', type: 'BondGamble', diceResult: 12, sum: 12 });
+        // 絆安定: fix=5 + dice 出目 3 → sum=8
+        expect(result.bondResults![1]).toMatchObject({ name: 'ウマ娘C', type: 'BondStable', diceResult: 3, sum: 8 });
+        expect(result.bondResults![2]).toMatchObject({ name: 'ウマ娘E', type: 'BondGamble', diceResult: 7, sum: 7 });
+    });
+
+    it('returns empty bondResults when 【絆スキル】 section is absent', () => {
+        const text = 'ウマ娘A 30+dice3d8=5 5 5 (15)';
+        const result = StandardParser.parse(text, participants);
+        expect(result.errors).toHaveLength(0);
+        expect(result.results).toHaveLength(1);
+        expect(result.bondResults).toHaveLength(0);
+    });
+
+    it('rejects unknown participant inside 【絆スキル】 section', () => {
+        const text = '【絆スキル】\n① 知らないウマ娘　絆ギャンブル　dice1d15=12 (12)';
+        const result = StandardParser.parse(text, participants);
+        expect(result.bondResults).toHaveLength(0);
+        expect(result.errors[0]).toContain('登録名と一致しないデータ');
+    });
+
+    it('rejects unrecognized bond skill type label', () => {
+        const text = '【絆スキル】\n① ウマ娘A　絆無限　dice1d15=12 (12)';
+        const result = StandardParser.parse(text, participants);
+        expect(result.bondResults).toHaveLength(0);
+        expect(result.errors[0]).toContain('絆スキル種別ラベルが認識できません');
+    });
+
+    it('accepts bond line without (N) when dice value is within range', () => {
+        // 仕様 §2 SSoT は (N) 必須化していない。範囲チェック (1〜15) で通過する。
+        const text = '【絆スキル】\n① ウマ娘A　絆ギャンブル　dice1d15=12';
+        const result = StandardParser.parse(text, participants);
+        expect(result.errors).toHaveLength(0);
+        expect(result.bondResults).toHaveLength(1);
+        expect(result.bondResults![0]).toMatchObject({ name: 'ウマ娘A', diceResult: 12, sum: 12 });
+    });
+
+    it('rejects bond line without (N) when dice value is out of range', () => {
+        // dice1d5 だが値 10 は範囲外（1〜5）→ 範囲外エラー
+        const text = '【絆スキル】\n③ ウマ娘C　絆安定　5+dice1d5=10';
+        const result = StandardParser.parse(text, participants);
+        expect(result.bondResults).toHaveLength(0);
+        expect(result.errors[0]).toContain('範囲外');
+    });
+
+    it('extracts bond results alongside normal race results in mixed input', () => {
+        const text = [
+            '【序盤 ダイス】',
+            '① ウマ娘A 30+dice3d8=5 5 5 (15)',
+            '【絆スキル】',
+            '① ウマ娘A　絆ギャンブル　dice1d15=12 (12)',
+        ].join('\n');
+        const result = StandardParser.parse(text, participants);
+        expect(result.errors).toHaveLength(0);
+        expect(result.results).toHaveLength(1);
+        expect(result.results[0].name).toBe('ウマ娘A');
+        expect(result.results[0].total).toBe(45);
+        expect(result.bondResults).toHaveLength(1);
+        expect(result.bondResults![0]).toMatchObject({ name: 'ウマ娘A', type: 'BondGamble', sum: 12 });
+    });
+
+    it('exits 【絆スキル】 section on next 【XXX】 header', () => {
+        const text = [
+            '【絆スキル】',
+            '① ウマ娘A　絆ギャンブル　dice1d15=12 (12)',
+            '【固有スキル】',
+            'ウマ娘C dice1d10=8 (8)',
+        ].join('\n');
+        const result = StandardParser.parse(text, participants);
+        expect(result.errors).toHaveLength(0);
+        expect(result.bondResults).toHaveLength(1);
+        expect(result.bondResults![0].name).toBe('ウマ娘A');
+        // 【固有スキル】ヘッダー行で inBondSection が解除され、次のダイス行は通常解析へ
+        expect(result.results).toHaveLength(1);
+        expect(result.results[0].name).toBe('ウマ娘C');
+    });
+
+    it('rejects bond line with checksum mismatch ((N) not matching dice sum)', () => {
+        // dice 出目 12 だが (5) と矛盾
+        const text = '【絆スキル】\n① ウマ娘A　絆ギャンブル　dice1d15=12 (5)';
+        const result = StandardParser.parse(text, participants);
+        expect(result.bondResults).toHaveLength(0);
+        expect(result.errors[0]).toContain('ダイス合計値が不正です');
+    });
+});

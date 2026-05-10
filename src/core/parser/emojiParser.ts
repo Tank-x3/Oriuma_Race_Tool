@@ -1,6 +1,13 @@
 import { StandardParser } from './standardParser';
-import type { ParserStrategy, ParseResult, ParsedLine } from './interface';
+import type { ParserStrategy, ParsedLine } from './interface';
 import type { Umamusume } from '../../types';
+// Bundle-8-T5 / CR-SA-4 / 2026-05-10: 【絆スキル】セクション認識（scene3-race.md §2 + parser-system.md §B）
+import {
+    BOND_SKILL_SECTION_HEADER,
+    parseBondSkillLineFromText,
+    type BondParsedLine,
+    type ParseResultWithBond,
+} from './bondTypes';
 
 // Multi-line Case B の合計行処理時にヘッダー由来情報（減算フラグ + 個数 X / 面数 Y）を
 // currentBlock 経由で参照するためのローカル拡張型（CR-SA-10-Followup-F1 / 2026-05-09）。
@@ -11,17 +18,21 @@ type ParserBlock = Partial<ParsedLine> & {
 };
 
 export class EmojiParser implements ParserStrategy {
-    parse(text: string, participants: Umamusume[], context: 'RACE' | 'PACE'): ParseResult {
+    parse(text: string, participants: Umamusume[], context: 'RACE' | 'PACE'): ParseResultWithBond {
         // Delegate PACE parsing to StandardParser (Global search)
         if (context === 'PACE') {
             return StandardParser.parse(text, participants, context);
         }
 
         const results: ParsedLine[] = [];
+        const bondResults: BondParsedLine[] = [];
         const errors: string[] = [];
         const lines = text.split(/\r?\n/);
 
         let currentBlock: ParserBlock | null = null;
+        // Bundle-8-T5 / CR-SA-4 / 2026-05-10: 【絆スキル】セクション認識フラグ
+        // セクション中は既存 currentBlock state machine をスキップし、helper 経由で bondResults に格納する。
+        let inBondSection = false;
 
         // 未完了ブロック（合計行未到達）をエラーとして報告するヘルパー。
         // 新ヘッダー検出時 / ファイル末尾の両方で使用する（仕様: parser-system.md §B Step 3）。
@@ -34,6 +45,36 @@ export class EmojiParser implements ParserStrategy {
         for (const line of lines) {
             const trimmed = line.trim();
             if (!trimmed) continue;
+
+            // Bundle-8-T5 / CR-SA-4 / 2026-05-10: 【絆スキル】セクションヘッダー検出（前処理として最優先）
+            // セクション境界に到達したら、未完了の currentBlock を errors へ報告してリセットする。
+            if (trimmed === BOND_SKILL_SECTION_HEADER) {
+                if (currentBlock) {
+                    reportIncompleteBlock(currentBlock);
+                    currentBlock = null;
+                }
+                inBondSection = true;
+                continue;
+            }
+            if (/^【[^】]+】$/u.test(trimmed)) {
+                if (currentBlock) {
+                    reportIncompleteBlock(currentBlock);
+                    currentBlock = null;
+                }
+                inBondSection = false;
+                continue;
+            }
+
+            // Bundle-8-T5 / CR-SA-4 / 2026-05-10: セクション中は既存 state machine 全体をスキップして helper 経由で抽出
+            if (inBondSection) {
+                const parsed = parseBondSkillLineFromText(trimmed, participants);
+                if (parsed.error) {
+                    errors.push(parsed.error);
+                } else if (parsed.line) {
+                    bondResults.push(parsed.line);
+                }
+                continue;
+            }
 
             // Step 1: Header Detection
             // Pattern: [Name] [Fix+]🎲 [-]dice[XdY]= [Result?]
@@ -243,6 +284,6 @@ export class EmojiParser implements ParserStrategy {
             reportIncompleteBlock(currentBlock);
         }
 
-        return { results, errors };
+        return { results, errors, bondResults };
     }
 }

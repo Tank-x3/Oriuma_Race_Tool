@@ -18,6 +18,10 @@ import { getExpectedUniqueDiceStr } from './phaseOutput.helpers';
 // Bundle-4 / P4-1, P4-5 / 2026-05-10 [ESCALATION 案 V Provisional 適用]:
 // 戦法併記（【捲り】±N / 【溜め】±N）を解析前に除去する純粋関数。
 import { stripStrategyAnnotations } from './specialStrategy.helpers';
+// Bundle-8-T5 / CR-SA-4 / 2026-05-10 [ESCALATION 案 V Provisional 適用]:
+// 終盤【絆スキル】セクション解析後の bondDice 格納分岐用拡張型
+// （scene3-race.md §2、houserule-features.md §2 [v] §データ仕様 L141）。
+import type { ParseResultWithBond } from '../../../core/parser/bondTypes';
 
 interface PhaseInputProps {
     onErrors?: (errors: string[]) => void;
@@ -61,7 +65,15 @@ export const PhaseInput: React.FC<PhaseInputProps> = ({ onErrors }) => {
 
             const context = isPacePhase ? 'PACE' : 'RACE';
             const parser = ParserFactory.getParser(sanitizedInput);
-            const { results, errors } = parser.parse(sanitizedInput, participants, context);
+            // Bundle-8-T5 / CR-SA-4 / 2026-05-10 [ESCALATION 案 V Provisional 適用]:
+            // ParserStrategy.parse() の戻り型は ParseResult（interface.ts 不変厳守）だが、StandardParser /
+            // EmojiParser 双方は内部で ParseResultWithBond を返す。bondResults プロパティを参照するため
+            // ここで構造的サブタイプとしてキャストする。
+            const { results, errors, bondResults } = parser.parse(
+                sanitizedInput,
+                participants,
+                context,
+            ) as ParseResultWithBond;
 
             // Validation Handling
             if (errors.length > 0) {
@@ -154,6 +166,36 @@ export const PhaseInput: React.FC<PhaseInputProps> = ({ onErrors }) => {
                         score: totalScore
                     });
                 });
+
+                // Bundle-8-T5 / CR-SA-4 / 2026-05-10 [ESCALATION 案 V Provisional 適用]:
+                // 終盤【絆スキル】セクション解析後の bondDice 格納分岐
+                // （scene3-race.md §2、houserule-features.md §2 [v] §データ仕様 L141）。
+                // 仕様 §2「他フェーズでの非表示」は本ガード（currentPhaseId === 'End'）で実現する。
+                // score 再計算は不要（calculator.ts は bondDice を見ない、最終加算は Bundle-8-T6 で実装）。
+                if (currentPhaseId === 'End' && bondResults && bondResults.length > 0) {
+                    bondResults.forEach((br) => {
+                        const originalP = participants.find((pp) => pp.id === br.participantId);
+                        if (!originalP) return;
+                        const p = pendingUpdates.get(originalP.id) || originalP;
+                        const prevEntry = p.history[currentPhaseId] || {};
+                        const newEntry = {
+                            ...prevEntry,
+                            bondDice: {
+                                diceStr: br.diceStr,
+                                values: [],
+                                sum: br.sum,
+                            },
+                        };
+                        const newHistory = {
+                            ...p.history,
+                            [currentPhaseId]: newEntry,
+                        };
+                        pendingUpdates.set(p.id, {
+                            ...p,
+                            history: newHistory,
+                        });
+                    });
+                }
 
                 // Commit all updates to store
                 let updatedCount = 0;
