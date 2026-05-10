@@ -1,8 +1,9 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { Umamusume, RaceState, GateAssignment } from '../types';
+import type { Umamusume, RaceState, GateAssignment, Strategy } from '../types';
 import { DEFAULT_STRATEGIES as STRATEGIES } from '../core/strategies';
 import { getActivePhaseIds } from '../core/calculator';
+import { isDefaultStrategy } from '../core/strategy.helpers';
 import { useNotificationStore } from './useNotificationStore';
 // Bundle-4 / P4-1, P4-5 / 2026-05-10: 特殊戦法（捲り/溜め）の score 補正計算を純粋関数に委譲。
 // calculator.ts は不変厳守エリアのため、Calculator 戻り値に上乗せする運用とする。
@@ -56,6 +57,13 @@ interface RaceStoreState extends RaceState {
         participantId: string,
         type: 'Makuri' | 'Tame' | null
     ) => void;
+    // Bundle-10-T1 / CR-SA-12 / 2026-05-11: 脚質エディタ Insert/Edit/Delete actions
+    // (houserule-features.md §1 / modal-houserule.md §2 SSoT)
+    // 名前重複・値域・ダイス式 validation はすべて UI / validator 層（T2/T3 スコープ）に委ねる。
+    // 本 actions は呼ばれた値をそのまま反映する（防御的判定なし、setSpecialStrategy / setManualModifier 同方針）。
+    addStrategy: (insertAfterName: string, strategy: Strategy) => void;
+    updateStrategy: (name: string, updates: Partial<Strategy>) => void;
+    removeStrategy: (name: string) => void;
     // Bundle-5 / P4-2, P4-3, CR-22 / 2026-05-10: 汎用補正の設定 / クリア + score 即時加減算。
     // value は整数、reason は trim 後非空（CR-22 統合）。バリデーション通過済の値が渡る前提で
     // 防御的判定はモーダル側で実施し、本 action は呼ばれた値をそのまま反映する。
@@ -446,6 +454,88 @@ export const useRaceStore = create<RaceStoreState>()(
                         return { ...p, specialStrategyType: type };
                     }),
                 })),
+
+            // Bundle-10-T1 / CR-SA-12 / 2026-05-11: 脚質エディタ Insert 用 action
+            // (houserule-features.md §1 Insert / modal-houserule.md §2 Insert)
+            // 既存配列内で `insertAfterName` の脚質を探し、その直後に新規 strategy を挿入。
+            // 該当 name 不在時は no-op（state 不変）。重複チェック / 値域チェックは UI / validator 層。
+            // strategies は persist 対象 (partialize に含まれる) のため、本 action 経由の追加で透過的に永続化される。
+            addStrategy: (insertAfterName, strategy) =>
+                set((state) => {
+                    const idx = state.strategies.findIndex((s) => s.name === insertAfterName);
+                    if (idx === -1) {
+                        return state;
+                    }
+                    const next = [...state.strategies];
+                    next.splice(idx + 1, 0, strategy);
+                    return { strategies: next };
+                }),
+
+            // Bundle-10-T1 / CR-SA-12 / 2026-05-11: 脚質エディタ Edit 用 action
+            // (houserule-features.md §1 Edit / modal-houserule.md §2 Edit)
+            // 既存配列内で `name` の脚質を `updates` でマージ更新。デフォルト 5 脚質も編集可能（仕様 §1 Edit）。
+            // 編集した脚質を選択している participant の score を再計算する（fixValue / dice / paceModifiers
+            // 変更時に Calculator が新値を参照するため、setSpecialStrategy / setManualModifier 同パターンで
+            // calculateScoreWithBondSkill 経由 score 再計算を組み込む）。
+            updateStrategy: (name, updates) =>
+                set((state) => {
+                    const idx = state.strategies.findIndex((s) => s.name === name);
+                    if (idx === -1) {
+                        return state;
+                    }
+                    const newStrategies = [...state.strategies];
+                    newStrategies[idx] = { ...newStrategies[idx], ...updates };
+                    const activePhaseIds = getActivePhaseIds(state.config.midPhaseCount);
+                    return {
+                        strategies: newStrategies,
+                        participants: state.participants.map((p) => ({
+                            ...p,
+                            score: calculateScoreWithBondSkill(
+                                p,
+                                newStrategies,
+                                state.paceResult.face,
+                                activePhaseIds,
+                                state.config.houseRules,
+                            ),
+                        })),
+                    };
+                }),
+
+            // Bundle-10-T1 / CR-SA-12 / 2026-05-11: 脚質エディタ Delete 用 action
+            // (houserule-features.md §1 Delete / modal-houserule.md §2 Delete)
+            // デフォルト 5 脚質名は no-op（仕様「カスタム脚質のみ削除可能」）。
+            // 削除実行時、当該脚質を選択していた participant の strategy を '' (未選択) に強制リセット +
+            // score を再計算（Calculator がベーススコア 0 扱いに復帰）。2 段階確認 / 警告ダイアログ表示は
+            // UI 層 (T2 スコープ) の責務、本 action は呼ばれた時点で削除を実行するのみ。
+            removeStrategy: (name) =>
+                set((state) => {
+                    if (isDefaultStrategy(name)) {
+                        return state;
+                    }
+                    const exists = state.strategies.some((s) => s.name === name);
+                    if (!exists) {
+                        return state;
+                    }
+                    const newStrategies = state.strategies.filter((s) => s.name !== name);
+                    const activePhaseIds = getActivePhaseIds(state.config.midPhaseCount);
+                    return {
+                        strategies: newStrategies,
+                        participants: state.participants.map((p) => {
+                            const next: Umamusume =
+                                p.strategy === name ? { ...p, strategy: '' } : p;
+                            return {
+                                ...next,
+                                score: calculateScoreWithBondSkill(
+                                    next,
+                                    newStrategies,
+                                    state.paceResult.face,
+                                    activePhaseIds,
+                                    state.config.houseRules,
+                                ),
+                            };
+                        }),
+                    };
+                }),
 
             generateParticipants: (count: number) =>
                 set((state) => {

@@ -10,8 +10,9 @@ import {
     type PersistedRaceState,
 } from './useRaceStore';
 import { useNotificationStore } from './useNotificationStore';
-import type { DiceResult, GateAssignment, Umamusume } from '../types';
+import type { DiceResult, GateAssignment, Strategy, Umamusume } from '../types';
 import { getActivePhaseIds } from '../core/calculator';
+import { DEFAULT_STRATEGIES } from '../core/strategies';
 
 // 固有ダイス DiceResult の生成ヘルパー
 const makeDice = (str: string, values: number[]): DiceResult => ({
@@ -1943,5 +1944,252 @@ describe('useRaceStore - Bundle-8-T6 / setBondSkill action score 再計算', () 
         useRaceStore.getState().setBondSkill('p1', null);
         const after = useRaceStore.getState().participants[0].score;
         expect(before - after).toBe(12);
+    });
+});
+
+// Bundle-10-T1 / CR-SA-12 / 2026-05-11: 脚質エディタ Insert/Edit/Delete actions
+// (houserule-features.md §1 / modal-houserule.md §2 SSoT)
+// Bundle-10-T1 用ヘルパー: resetRace は strategies をリセットしないため、各テスト前に
+// DEFAULT_STRATEGIES の deep copy で明示的に再初期化する。
+const resetStrategies = () => {
+    useRaceStore.setState({
+        strategies: DEFAULT_STRATEGIES.map((s) => ({
+            ...s,
+            dice: { ...s.dice },
+            paceModifiers: { ...s.paceModifiers },
+        })),
+    });
+};
+
+describe('useRaceStore - Bundle-10-T1 / addStrategy action', () => {
+    beforeEach(() => {
+        useRaceStore.getState().resetRace();
+        resetStrategies();
+    });
+
+    it('デフォルト 5 脚質「逃げ」直後にカスタム脚質を追加 → 配列順序が [大逃げ, 逃げ, カスタム1, 先行, 差し, 追込] に変化', () => {
+        const customA = {
+            name: 'カスタムA',
+            fixValue: 7,
+            dice: { start: '2d6', mid: '2d4', end: '1d10' },
+            paceModifiers: {},
+        };
+        useRaceStore.getState().addStrategy('逃げ', customA);
+        const names = useRaceStore.getState().strategies.map((s) => s.name);
+        expect(names).toEqual(['大逃げ', '逃げ', 'カスタムA', '先行', '差し', '追込']);
+    });
+
+    it('カスタム脚質の直後にさらに別カスタムを追加 → 既存カスタムの直後に挿入される', () => {
+        const customA = {
+            name: 'カスタムA',
+            fixValue: 7,
+            dice: { start: '2d6', mid: '2d4', end: '1d10' },
+            paceModifiers: {},
+        };
+        const customB = {
+            name: 'カスタムB',
+            fixValue: 3,
+            dice: { start: '1d6', mid: '1d4', end: '1d8' },
+            paceModifiers: {},
+        };
+        useRaceStore.getState().addStrategy('逃げ', customA);
+        useRaceStore.getState().addStrategy('カスタムA', customB);
+        const names = useRaceStore.getState().strategies.map((s) => s.name);
+        expect(names).toEqual(['大逃げ', '逃げ', 'カスタムA', 'カスタムB', '先行', '差し', '追込']);
+    });
+
+    it('末尾「追込」直後に追加 → 配列末尾に挿入される', () => {
+        const customZ = {
+            name: 'カスタムZ',
+            fixValue: 2,
+            dice: { start: '1d4', mid: '1d4', end: '1d4' },
+            paceModifiers: {},
+        };
+        useRaceStore.getState().addStrategy('追込', customZ);
+        const names = useRaceStore.getState().strategies.map((s) => s.name);
+        expect(names).toEqual(['大逃げ', '逃げ', '先行', '差し', '追込', 'カスタムZ']);
+    });
+
+    it('該当 insertAfterName 不在 → no-op（state 不変、配列順序維持）', () => {
+        const before = useRaceStore.getState().strategies;
+        const customX = {
+            name: 'カスタムX',
+            fixValue: 1,
+            dice: { start: '1d2', mid: '1d2', end: '1d2' },
+            paceModifiers: {},
+        };
+        useRaceStore.getState().addStrategy('存在しない名前', customX);
+        const after = useRaceStore.getState().strategies;
+        expect(after.map((s) => s.name)).toEqual(before.map((s) => s.name));
+        expect(after).toHaveLength(5);
+    });
+});
+
+describe('useRaceStore - Bundle-10-T1 / updateStrategy action', () => {
+    beforeEach(() => {
+        useRaceStore.getState().resetRace();
+        resetStrategies();
+    });
+
+    it('デフォルト 5 脚質「逃げ」の fixValue を編集 → strategies 配列に反映', () => {
+        useRaceStore.getState().updateStrategy('逃げ', { fixValue: 99 });
+        const updated = useRaceStore.getState().strategies.find((s) => s.name === '逃げ');
+        expect(updated?.fixValue).toBe(99);
+        // 他フィールドは不変
+        expect(updated?.dice.start).toBe('3d6');
+    });
+
+    it('デフォルト 5 脚質「先行」の dice を編集 → strategies 配列に反映', () => {
+        useRaceStore.getState().updateStrategy('先行', {
+            dice: { start: '5d10', mid: '5d10', end: '5d10' },
+        });
+        const updated = useRaceStore.getState().strategies.find((s) => s.name === '先行');
+        expect(updated?.dice).toEqual({ start: '5d10', mid: '5d10', end: '5d10' });
+    });
+
+    it('カスタム脚質の paceModifiers を編集 → strategies 配列に反映', () => {
+        const customA = {
+            name: 'カスタムA',
+            fixValue: 7,
+            dice: { start: '2d6', mid: '2d4', end: '1d10' },
+            paceModifiers: {},
+        };
+        useRaceStore.getState().addStrategy('逃げ', customA);
+        useRaceStore.getState().updateStrategy('カスタムA', {
+            paceModifiers: { 1: 8, 9: -8 },
+        });
+        const updated = useRaceStore.getState().strategies.find((s) => s.name === 'カスタムA');
+        expect(updated?.paceModifiers).toEqual({ 1: 8, 9: -8 });
+    });
+
+    // [ESCALATION REQUIRED 案 V V1 / 2026-05-11]: getStrategy は `[...DEFAULT_STRATEGIES, ...customStrategies]`
+    // を結合して find するため、state.strategies の DEFAULT 5 脚質編集が score 計算に反映されない（DEFAULT 不変版が優先取得）。
+    // 仕様 houserule-features.md §1 Edit「既存の 5 脚質のパラメータ（固定値・ダイス）を編集可能」との齟齬。
+    // 本 T1 では暫定的にカスタム脚質ベースで「score 再計算経路が走る」ことを確認する（DEFAULT 編集の score 反映解消は後続 SA 判断）。
+    it('編集した脚質を選択している participant の score が再計算される（カスタム脚質の fixValue 変更）', () => {
+        const customA: Strategy = {
+            name: 'カスタムA',
+            fixValue: 10,
+            dice: { start: '3d6', mid: '3d5', end: '1d10' },
+            paceModifiers: {},
+        };
+        useRaceStore.getState().addStrategy('逃げ', customA);
+        const startDice = makeDice('3d6', [2, 3, 4]); // sum 9
+        const p = setupParticipant({
+            strategy: 'カスタムA',
+            history: {
+                Start: { baseDice: startDice, computedScore: 0 },
+            },
+        });
+        installParticipant(p);
+        // installParticipant 直後は setState 注入で score=0。updateStrategy 経由で再計算をトリガー。
+        useRaceStore.getState().updateStrategy('カスタムA', { fixValue: 10 });
+        const before = useRaceStore.getState().participants[0].score;
+        useRaceStore.getState().updateStrategy('カスタムA', { fixValue: 40 }); // +30
+        const after = useRaceStore.getState().participants[0].score;
+        expect(after - before).toBe(30);
+    });
+
+    it('該当 name が存在しない場合 = no-op（strategies / participants 不変）', () => {
+        const startDice = makeDice('3d6', [2, 3, 4]);
+        const p = setupParticipant({
+            strategy: '逃げ',
+            history: { Start: { baseDice: startDice, computedScore: 0 } },
+        });
+        installParticipant(p);
+        const beforeStrategies = useRaceStore.getState().strategies;
+        const beforeScore = useRaceStore.getState().participants[0].score;
+        useRaceStore.getState().updateStrategy('存在しない名前', { fixValue: 999 });
+        const afterStrategies = useRaceStore.getState().strategies;
+        const afterScore = useRaceStore.getState().participants[0].score;
+        expect(afterStrategies).toEqual(beforeStrategies);
+        expect(afterScore).toBe(beforeScore);
+    });
+});
+
+describe('useRaceStore - Bundle-10-T1 / removeStrategy action', () => {
+    beforeEach(() => {
+        useRaceStore.getState().resetRace();
+        resetStrategies();
+    });
+
+    it('カスタム脚質の削除 → strategies 配列から消える', () => {
+        const customA = {
+            name: 'カスタムA',
+            fixValue: 7,
+            dice: { start: '2d6', mid: '2d4', end: '1d10' },
+            paceModifiers: {},
+        };
+        useRaceStore.getState().addStrategy('逃げ', customA);
+        expect(useRaceStore.getState().strategies).toHaveLength(6);
+        useRaceStore.getState().removeStrategy('カスタムA');
+        const names = useRaceStore.getState().strategies.map((s) => s.name);
+        expect(names).toEqual(['大逃げ', '逃げ', '先行', '差し', '追込']);
+    });
+
+    it('デフォルト 5 脚質の削除試行 = no-op（仕様 SSoT 準拠の保護）', () => {
+        const beforeNames = useRaceStore.getState().strategies.map((s) => s.name);
+        useRaceStore.getState().removeStrategy('逃げ');
+        useRaceStore.getState().removeStrategy('追込');
+        useRaceStore.getState().removeStrategy('大逃げ');
+        useRaceStore.getState().removeStrategy('先行');
+        useRaceStore.getState().removeStrategy('差し');
+        const afterNames = useRaceStore.getState().strategies.map((s) => s.name);
+        expect(afterNames).toEqual(beforeNames);
+    });
+
+    it('削除実行時、当該脚質を選択していた participant の strategy が空文字に強制リセット', () => {
+        const customA = {
+            name: 'カスタムA',
+            fixValue: 7,
+            dice: { start: '2d6', mid: '2d4', end: '1d10' },
+            paceModifiers: {},
+        };
+        useRaceStore.getState().addStrategy('逃げ', customA);
+        const p = setupParticipant({ strategy: 'カスタムA' });
+        installParticipant(p);
+        useRaceStore.getState().removeStrategy('カスタムA');
+        const after = useRaceStore.getState().participants[0];
+        expect(after.strategy).toBe('');
+    });
+
+    it('強制リセット後の participant の score が再計算される（脚質未選択 → ベーススコア 0 扱い）', () => {
+        const customA: Strategy = {
+            name: 'カスタムA',
+            fixValue: 50,
+            dice: { start: '3d6', mid: '3d5', end: '1d10' },
+            paceModifiers: {},
+        };
+        useRaceStore.getState().addStrategy('逃げ', customA);
+        const startDice = makeDice('3d6', [2, 3, 4]);
+        const p = setupParticipant({
+            strategy: 'カスタムA',
+            history: { Start: { baseDice: startDice, computedScore: 0 } },
+        });
+        installParticipant(p);
+        useRaceStore.getState().removeStrategy('カスタムA');
+        const after = useRaceStore.getState().participants[0];
+        // strategy = '' になり、getStrategy() が undefined を返す = ベーススコア 0
+        expect(after.strategy).toBe('');
+        expect(after.score).toBe(0);
+    });
+
+    it('該当 name が存在しない場合 = no-op（strategies / participants 不変）', () => {
+        const startDice = makeDice('3d6', [2, 3, 4]);
+        const p = setupParticipant({
+            strategy: '逃げ',
+            history: { Start: { baseDice: startDice, computedScore: 0 } },
+        });
+        installParticipant(p);
+        const beforeStrategies = useRaceStore.getState().strategies;
+        const beforeScore = useRaceStore.getState().participants[0].score;
+        const beforeStrategy = useRaceStore.getState().participants[0].strategy;
+        useRaceStore.getState().removeStrategy('存在しない名前');
+        const afterStrategies = useRaceStore.getState().strategies;
+        const afterScore = useRaceStore.getState().participants[0].score;
+        const afterStrategy = useRaceStore.getState().participants[0].strategy;
+        expect(afterStrategies).toEqual(beforeStrategies);
+        expect(afterScore).toBe(beforeScore);
+        expect(afterStrategy).toBe(beforeStrategy);
     });
 });
