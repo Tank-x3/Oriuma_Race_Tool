@@ -786,3 +786,222 @@ describe('Bundle-9 / 2026-05-10 useRaceStore.updateHouseRules', () => {
         expect(houseRules.effectValue).toBe(15);
     });
 });
+
+// Bundle-4 / P4-1, P4-5 / 2026-05-10: 特殊戦法 setSpecialStrategy + updateHouseRules effectValue 連動
+describe('Bundle-4 / P4-1, P4-5 / 2026-05-10 useRaceStore.setSpecialStrategy', () => {
+    beforeEach(() => {
+        useRaceStore.getState().resetRace();
+        useRaceStore.getState().updateHouseRules({
+            enableModifier: false,
+            enableSpecialStrategy: true,
+            enableCompositeUnique: false,
+            enableExtendedUnique: false,
+            effectValue: 15,
+        });
+    });
+
+    // setSpecialStrategy 専用の参加者注入ヘルパー（Mid1 まで進行している前提）
+    const installForStrategy = (history: Umamusume['history'] = {}) => {
+        const uma: Umamusume = {
+            id: 'p1',
+            entryIndex: 1,
+            name: 'Test',
+            strategy: '先行', // fixValue 10
+            uniqueSkill: { type: 'Stability', phases: [] },
+            gate: 1,
+            score: 0,
+            history,
+        };
+        useRaceStore.setState({
+            config: {
+                midPhaseCount: 1,
+                fullGateSize: null,
+                houseRules: {
+                    enableModifier: false,
+                    enableSpecialStrategy: true,
+                    enableCompositeUnique: false,
+                    enableExtendedUnique: false,
+                    effectValue: 15,
+                },
+            },
+            participants: [uma],
+            currentPhaseId: 'Mid',
+            paceResult: { face: 5, label: 'Test' }, // 先行 中立
+        });
+    };
+
+    it('(i) Makuri 設定 → score に +effectValue 加算 + history.specialStrategy === "Makuri"', () => {
+        // 先行 fix 10 + Start 10 + Mid 8 + paceMod 0 = 28
+        installForStrategy({
+            Start: { baseDice: makeDice('3d8', [3, 4, 3]), computedScore: 20 },
+            Mid: { baseDice: makeDice('3d5', [3, 3, 2]), computedScore: 28 },
+        });
+
+        useRaceStore.getState().setSpecialStrategy('p1', 'Mid', 'Makuri');
+
+        const updated = useRaceStore.getState().participants[0];
+        expect(updated.history['Mid']?.specialStrategy).toBe('Makuri');
+        // 28 + 15 (Makuri 即時) = 43
+        expect(updated.score).toBe(43);
+    });
+
+    it('(ii) Tame 設定 → score に -effectValue 減算', () => {
+        installForStrategy({
+            Start: { baseDice: makeDice('3d8', [3, 4, 3]), computedScore: 20 },
+            Mid: { baseDice: makeDice('3d5', [3, 3, 2]), computedScore: 28 },
+        });
+
+        useRaceStore.getState().setSpecialStrategy('p1', 'Mid', 'Tame');
+
+        const updated = useRaceStore.getState().participants[0];
+        expect(updated.history['Mid']?.specialStrategy).toBe('Tame');
+        // 28 + (-15) = 13
+        expect(updated.score).toBe(13);
+    });
+
+    it('(iii) null 設定（取り消し）→ score が元の値に戻る + specialStrategy === null', () => {
+        installForStrategy({
+            Start: { baseDice: makeDice('3d8', [3, 4, 3]), computedScore: 20 },
+            Mid: { baseDice: makeDice('3d5', [3, 3, 2]), computedScore: 28 },
+        });
+
+        // 一度 Makuri 設定 → 取り消し
+        useRaceStore.getState().setSpecialStrategy('p1', 'Mid', 'Makuri');
+        useRaceStore.getState().setSpecialStrategy('p1', 'Mid', null);
+
+        const updated = useRaceStore.getState().participants[0];
+        expect(updated.history['Mid']?.specialStrategy).toBeNull();
+        // 28（補正なし）
+        expect(updated.score).toBe(28);
+    });
+
+    it('(iv) 終盤到達後（history.End あり）の Makuri = 反動相殺で delta = 0', () => {
+        // Start 10 + Mid 8 + End 5 + paceMod 0 = 33
+        installForStrategy({
+            Start: { baseDice: makeDice('3d8', [3, 4, 3]), computedScore: 20 },
+            Mid: { baseDice: makeDice('3d5', [3, 3, 2]), computedScore: 28 },
+            End: { baseDice: makeDice('1d7', [5]), computedScore: 33 },
+        });
+        useRaceStore.setState({ currentPhaseId: 'End' });
+
+        useRaceStore.getState().setSpecialStrategy('p1', 'Mid', 'Makuri');
+
+        const updated = useRaceStore.getState().participants[0];
+        // 33 + 15 (Mid 即時) + (-15) (End 反動) = 33
+        expect(updated.score).toBe(33);
+        expect(updated.history['Mid']?.specialStrategy).toBe('Makuri');
+    });
+
+    it('(v-pre) ユーザーフィードバック regression: 解析未実行（baseDice なし）で Makuri 設定 → score = effectValue のみ（fixValue 等は加算しない）', () => {
+        // ユーザー報告（Round 2）: 「差し脚質で戦法 ON 時に +20 表示、ダイス出力は +15」
+        // 原因: setSpecialStrategy が history[Start] = { specialStrategy: Makuri, computedScore: 0 } を作成
+        // → Calculator が history.Start exists 判定で fixValue (差し: 0) + 安定型固有 5 等を加算してしまう
+        // 修正: 解析未実行（baseDice/uniqueDice/manualModifier いずれも未投入）の history は score 計算から除外
+        installForStrategy({}); // 解析未実行（history 全空）
+        useRaceStore.setState({ currentPhaseId: 'Start' });
+
+        useRaceStore.getState().setSpecialStrategy('p1', 'Start', 'Makuri');
+
+        const updated = useRaceStore.getState().participants[0];
+        expect(updated.history['Start']?.specialStrategy).toBe('Makuri');
+        // 期待: 0（解析未実行のため fixValue 加算なし）+ 15（Makuri 即時）= 15
+        // 修正前は 10（先行 fixValue）+ 15 = 25 になっていた
+        expect(updated.score).toBe(15);
+    });
+
+    it('(v) revertPhaseHistory("End") で終盤反動が消失 → score が即時加算のみに戻る', () => {
+        installForStrategy({
+            Start: { baseDice: makeDice('3d8', [3, 4, 3]), computedScore: 20 },
+            Mid: { baseDice: makeDice('3d5', [3, 3, 2]), computedScore: 28 },
+            End: { baseDice: makeDice('1d7', [5]), computedScore: 33 },
+        });
+        useRaceStore.setState({ currentPhaseId: 'End' });
+        useRaceStore.getState().setSpecialStrategy('p1', 'Mid', 'Makuri');
+        // この時点 score = 33（相殺）
+
+        // 戻る操作で End 削除
+        useRaceStore.getState().revertPhaseHistory('End', { resetPace: false });
+
+        const updated = useRaceStore.getState().participants[0];
+        // End 削除 → 反動消失。fix 10 + Start 10 + Mid 8 + paceMod 0 + Makuri 即時 15 = 43
+        expect(updated.score).toBe(43);
+        // Mid の specialStrategy は維持
+        expect(updated.history['Mid']?.specialStrategy).toBe('Makuri');
+        expect(updated.history['End']).toBeUndefined();
+    });
+});
+
+describe('Bundle-4 / P4-1, P4-5 / 2026-05-10 useRaceStore.updateHouseRules effectValue 連動再計算', () => {
+    beforeEach(() => {
+        useRaceStore.getState().resetRace();
+        useRaceStore.getState().updateHouseRules({
+            enableModifier: false,
+            enableSpecialStrategy: true,
+            enableCompositeUnique: false,
+            enableExtendedUnique: false,
+            effectValue: 15,
+        });
+    });
+
+    it('(i) effectValue 変更時、specialStrategy 設定済参加者の score が新値で再計算される', () => {
+        const uma: Umamusume = {
+            id: 'p1',
+            entryIndex: 1,
+            name: 'Test',
+            strategy: '先行',
+            uniqueSkill: { type: 'Stability', phases: [] },
+            gate: 1,
+            score: 0,
+            history: {
+                Start: { baseDice: makeDice('3d8', [3, 4, 3]), computedScore: 20 },
+                Mid: { baseDice: makeDice('3d5', [3, 3, 2]), specialStrategy: 'Makuri', computedScore: 28 },
+            },
+        };
+        useRaceStore.setState({
+            config: {
+                midPhaseCount: 1,
+                fullGateSize: null,
+                houseRules: {
+                    enableModifier: false,
+                    enableSpecialStrategy: true,
+                    enableCompositeUnique: false,
+                    enableExtendedUnique: false,
+                    effectValue: 15,
+                },
+            },
+            participants: [uma],
+            currentPhaseId: 'Mid',
+            paceResult: { face: 5, label: 'Test' },
+        });
+
+        // effectValue 15 → 30 に変更
+        useRaceStore.getState().updateHouseRules({ effectValue: 30 });
+
+        const updated = useRaceStore.getState().participants[0];
+        // fix 10 + Start 10 + Mid 8 + paceMod 0 + Makuri 即時 30 = 58
+        expect(updated.score).toBe(58);
+        expect(useRaceStore.getState().config.houseRules.effectValue).toBe(30);
+    });
+
+    it('(ii) effectValue 以外のフィールド変更時は score 再計算しない（最適化）', () => {
+        // specialStrategy 設定済かつ score が「正しくない」状態でも、effectValue が変わらなければ score は触らない
+        const uma: Umamusume = {
+            id: 'p1',
+            entryIndex: 1,
+            name: 'Test',
+            strategy: '先行',
+            uniqueSkill: { type: 'Stability', phases: [] },
+            gate: 1,
+            score: 999, // 意図的にズレた値
+            history: {
+                Mid: { specialStrategy: 'Makuri', computedScore: 0 },
+            },
+        };
+        useRaceStore.setState({ participants: [uma] });
+
+        useRaceStore.getState().updateHouseRules({ enableModifier: true });
+
+        // score は再計算されず 999 のまま
+        expect(useRaceStore.getState().participants[0].score).toBe(999);
+    });
+});

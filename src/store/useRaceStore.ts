@@ -2,8 +2,12 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Umamusume, RaceState, GateAssignment } from '../types';
 import { DEFAULT_STRATEGIES as STRATEGIES } from '../core/strategies';
-import { Calculator, getActivePhaseIds } from '../core/calculator';
+import { getActivePhaseIds } from '../core/calculator';
 import { useNotificationStore } from './useNotificationStore';
+// Bundle-4 / P4-1, P4-5 / 2026-05-10: 特殊戦法（捲り/溜め）の score 補正計算を純粋関数に委譲。
+// calculator.ts は不変厳守エリアのため、Calculator 戻り値に上乗せする運用とする。
+// Round 2 改修: 解析未実行 history を fixValue 加算から除外する一元化関数 `calculateScoreWithSpecialStrategy` を採用。
+import { calculateScoreWithSpecialStrategy } from '../components/scene/race/specialStrategy.helpers';
 
 interface RaceStoreState extends RaceState {
     uiState: {
@@ -14,8 +18,17 @@ interface RaceStoreState extends RaceState {
     // Actions
     setMidPhaseCount: (count: number) => void;
     setFullGateSize: (size: number) => void;
-    // Bundle-9 / 2026-05-10: ハウスルール 5 フィールドの部分更新 action
+    // Bundle-9 / 2026-05-10: ハウスルール 5 フィールドの部分更新 action。
+    // Bundle-4 / 2026-05-10: effectValue 変更時は specialStrategy 設定済参加者の score を自動再計算する。
     updateHouseRules: (updates: Partial<RaceState['config']['houseRules']>) => void;
+    // Bundle-4 / P4-1, P4-5 / 2026-05-10: 特殊戦法（捲り/溜め）の設定 + score 即時加減算。
+    // value === null で取り消し（未使用扱い）。1 レース 1 回制限の判定は UI 側で行い、
+    // 本 action は呼ばれた値をそのまま反映する（防御的判定なし）。
+    setSpecialStrategy: (
+        participantId: string,
+        phaseId: string,
+        value: 'Makuri' | 'Tame' | null
+    ) => void;
     generateParticipants: (count: number) => void;
     addParticipant: (participant: Omit<Umamusume, 'score' | 'history'>) => void;
     removeParticipant: (id: string) => void;
@@ -126,11 +139,14 @@ export const useRaceStore = create<RaceStoreState>()(
                         },
                         participants: state.participants.map(p => ({
                             ...p,
-                            score: Calculator.calculateTotalScore(
+                            // Bundle-4 Round 2 / 2026-05-10: 解析未実行 phase 除外 + specialStrategy delta 一元化
+                            score: calculateScoreWithSpecialStrategy(
                                 p,
                                 state.strategies,
                                 state.paceResult.face,
-                                activePhaseIds
+                                activePhaseIds,
+                                state.config.houseRules.effectValue,
+                                state.config.houseRules.enableSpecialStrategy,
                             ),
                         })),
                     };
@@ -146,16 +162,75 @@ export const useRaceStore = create<RaceStoreState>()(
 
             // Bundle-9 / 2026-05-10: 5 フィールドのいずれか/複数を部分更新する。
             // 既存値とマージするため、未指定のフィールドは現状維持される。
+            // Bundle-4 / P4-1, P4-5 / 2026-05-10: effectValue 変更時、specialStrategy 設定済の
+            // 参加者は score に effectValue が反映されているため、新値で再計算する。
             updateHouseRules: (updates) =>
-                set((state) => ({
-                    config: {
-                        ...state.config,
-                        houseRules: {
-                            ...state.config.houseRules,
-                            ...updates,
-                        },
-                    },
-                })),
+                set((state) => {
+                    const newHouseRules = {
+                        ...state.config.houseRules,
+                        ...updates,
+                    };
+                    const newConfig = { ...state.config, houseRules: newHouseRules };
+
+                    const effectValueChanged =
+                        updates.effectValue !== undefined &&
+                        updates.effectValue !== state.config.houseRules.effectValue;
+                    const enableChanged =
+                        updates.enableSpecialStrategy !== undefined &&
+                        updates.enableSpecialStrategy !==
+                            state.config.houseRules.enableSpecialStrategy;
+
+                    if (!effectValueChanged && !enableChanged) {
+                        return { config: newConfig };
+                    }
+
+                    const activePhaseIds = getActivePhaseIds(state.config.midPhaseCount);
+                    return {
+                        config: newConfig,
+                        participants: state.participants.map((p) => ({
+                            ...p,
+                            score: calculateScoreWithSpecialStrategy(
+                                p,
+                                state.strategies,
+                                state.paceResult.face,
+                                activePhaseIds,
+                                newHouseRules.effectValue,
+                                newHouseRules.enableSpecialStrategy,
+                            ),
+                        })),
+                    };
+                }),
+
+            // Bundle-4 / P4-1, P4-5 / 2026-05-10: 特殊戦法設定 + score 即時加減算。
+            // history[phaseId].specialStrategy を更新後、解析未実行 phase を除外した score を再計算。
+            setSpecialStrategy: (participantId, phaseId, value) =>
+                set((state) => {
+                    const activePhaseIds = getActivePhaseIds(state.config.midPhaseCount);
+                    return {
+                        participants: state.participants.map((p) => {
+                            if (p.id !== participantId) return p;
+
+                            const oldEntry = p.history[phaseId] ?? { computedScore: 0 };
+                            const newHistory = {
+                                ...p.history,
+                                [phaseId]: { ...oldEntry, specialStrategy: value },
+                            };
+                            const next: Umamusume = { ...p, history: newHistory };
+
+                            return {
+                                ...next,
+                                score: calculateScoreWithSpecialStrategy(
+                                    next,
+                                    state.strategies,
+                                    state.paceResult.face,
+                                    activePhaseIds,
+                                    state.config.houseRules.effectValue,
+                                    state.config.houseRules.enableSpecialStrategy,
+                                ),
+                            };
+                        }),
+                    };
+                }),
 
             generateParticipants: (count: number) =>
                 set((state) => {
@@ -231,11 +306,25 @@ export const useRaceStore = create<RaceStoreState>()(
                                 next.history = newHistory;
                             }
 
-                            next.score = Calculator.calculateTotalScore(
+                            // Bundle-4 / 2026-05-10: 解析未実行 phase 除外 + specialStrategy delta 上乗せの一元化関数
+                            next.score = calculateScoreWithSpecialStrategy(
                                 next,
                                 state.strategies,
                                 state.paceResult.face,
-                                getActivePhaseIds(state.config.midPhaseCount)
+                                getActivePhaseIds(state.config.midPhaseCount),
+                                state.config.houseRules.effectValue,
+                                state.config.houseRules.enableSpecialStrategy,
+                            );
+                        } else if (updates.history) {
+                            // Bundle-4 Round 2 / 2026-05-10: history 単独更新時も score 再計算（PhaseInput 解析実行経路で
+                            // specialStrategy delta が反映されるようにするための連動）。
+                            next.score = calculateScoreWithSpecialStrategy(
+                                next,
+                                state.strategies,
+                                state.paceResult.face,
+                                getActivePhaseIds(state.config.midPhaseCount),
+                                state.config.houseRules.effectValue,
+                                state.config.houseRules.enableSpecialStrategy,
                             );
                         }
 
@@ -266,11 +355,16 @@ export const useRaceStore = create<RaceStoreState>()(
                         const newHistory = { ...p.history };
                         delete newHistory[phaseId];
                         const next: Umamusume = { ...p, history: newHistory };
-                        next.score = Calculator.calculateTotalScore(
+                        // Bundle-4 / 2026-05-10: phaseId 削除で history が変わるため、specialStrategy
+                        // delta も再計算（例: End 削除で終盤反動が消える、specialStrategy 発動フェーズの
+                        // 削除で発動自体が取り消される）。Round 2: 解析未実行 phase 除外も一元化。
+                        next.score = calculateScoreWithSpecialStrategy(
                             next,
                             state.strategies,
                             newPaceFace,
-                            activePhaseIds
+                            activePhaseIds,
+                            state.config.houseRules.effectValue,
+                            state.config.houseRules.enableSpecialStrategy,
                         );
                         return next;
                     });

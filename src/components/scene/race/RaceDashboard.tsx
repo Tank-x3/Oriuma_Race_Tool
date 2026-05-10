@@ -3,11 +3,44 @@ import { useRaceStore } from '../../../store/useRaceStore';
 import { useRaceEngine } from '../../../hooks/useRaceEngine';
 import { Trophy, Check, TrendingUp, Edit3 } from 'lucide-react';
 import { clsx } from 'clsx';
+// Bundle-4 / P4-1, P4-5 / 2026-05-10: 戦法ボタンの 1 レース 1 回制限判定に使用
+import { findActivatedSpecialStrategy } from './specialStrategy.helpers';
+
+// Bundle-4 / P4-1, P4-5 / 2026-05-10: 未選択 → 捲り → 溜め → 未選択 の 3 状態循環
+const nextStrategyValue = (
+    current: 'Makuri' | 'Tame' | null | undefined
+): 'Makuri' | 'Tame' | null => {
+    if (current === 'Makuri') return 'Tame';
+    if (current === 'Tame') return null;
+    return 'Makuri';
+};
+
+const strategyButtonLabel = (current: 'Makuri' | 'Tame' | null | undefined): string => {
+    if (current === 'Makuri') return '戦法: 捲り';
+    if (current === 'Tame') return '戦法: 溜め';
+    return '戦法: ---';
+};
 
 export const RaceDashboard: React.FC = () => {
-    const { participants, currentPhaseId } = useRaceStore();
+    const {
+        participants,
+        currentPhaseId,
+        config,
+        setSpecialStrategy,
+    } = useRaceStore();
     const { getPhaseLabel } = useRaceEngine();
     const [copied, setCopied] = useState(false);
+
+    // Bundle-4 / P4-1, P4-5 / 2026-05-10: 戦法ボタン表示条件
+    // - houseRules.enableSpecialStrategy === true
+    // - 現在フェーズが終盤以外（houserule-features.md §3 Phase Restriction）
+    // - 進行中レースフェーズ（Start / Mid / Mid1..N）に限定（Pace / setup / gate_lottery 等は除外）
+    const isRaceMainPhase =
+        currentPhaseId === 'Start' ||
+        currentPhaseId === 'Mid' ||
+        currentPhaseId.startsWith('Mid');
+    const showSpecialStrategy =
+        config.houseRules.enableSpecialStrategy && isRaceMainPhase;
 
     // Sort by Score Descending
     const sorted = [...participants].sort((a, b) => {
@@ -126,6 +159,47 @@ export const RaceDashboard: React.FC = () => {
                                             </div>
                                             <div className="text-[10px] text-gray-400 uppercase tracking-wider">Total</div>
                                         </div>
+
+                                        {/* Bundle-4 / P4-1, P4-5 / 2026-05-10: 戦法ボタン（特殊戦法 ON + 中盤までのみ） */}
+                                        {showSpecialStrategy && (() => {
+                                            const currentValue = p.history[currentPhaseId]?.specialStrategy ?? null;
+                                            const activated = findActivatedSpecialStrategy(p);
+                                            // 1 レース 1 回制限: 他フェーズに発動済の場合は disabled
+                                            // 同フェーズ内なら未選択/捲り/溜めを切替可能
+                                            const lockedByOther =
+                                                activated !== null && activated.phaseId !== currentPhaseId;
+                                            return (
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        setSpecialStrategy(
+                                                            p.id,
+                                                            currentPhaseId,
+                                                            nextStrategyValue(currentValue),
+                                                        )
+                                                    }
+                                                    disabled={lockedByOther}
+                                                    aria-pressed={currentValue !== null}
+                                                    title={
+                                                        lockedByOther
+                                                            ? `他フェーズ (${activated?.phaseId}) で発動済のため変更できません`
+                                                            : '戦法: 未選択 → 捲り → 溜め → 未選択 を切り替え'
+                                                    }
+                                                    className={clsx(
+                                                        'px-2 py-1 rounded-md text-xs font-bold transition-all border',
+                                                        currentValue === 'Makuri' &&
+                                                            'bg-orange-100 text-orange-700 border-orange-300 dark:bg-orange-900/30 dark:text-orange-400 dark:border-orange-800',
+                                                        currentValue === 'Tame' &&
+                                                            'bg-blue-100 text-blue-700 border-blue-300 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-800',
+                                                        currentValue === null &&
+                                                            'bg-white text-gray-500 border-gray-200 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-600',
+                                                        lockedByOther && 'opacity-40 cursor-not-allowed',
+                                                    )}
+                                                >
+                                                    {strategyButtonLabel(currentValue)}
+                                                </button>
+                                            );
+                                        })()}
 
                                         {/* Edit/Modifier Button (Placeholder for House Rule) */}
                                         <button className="p-1.5 text-gray-300 hover:text-indigo-500 transition-colors opacity-0 group-hover:opacity-100">

@@ -4,13 +4,17 @@ import { useRaceEngine } from '../../../hooks/useRaceEngine';
 import { Copy, Check, Dices } from 'lucide-react';
 import { clsx } from 'clsx';
 import { getUniqueDiceFormula, getExpectedUniqueDiceStr } from './phaseOutput.helpers';
+// Bundle-4 / P4-1, P4-5 / 2026-05-10: 通常ダイス行末への特殊戦法併記
+import { getSpecialStrategyAnnotation } from './specialStrategy.helpers';
 
 export const PhaseOutput: React.FC = () => {
     const {
         participants,
         strategies,
         currentPhaseId,
-        paceResult
+        paceResult,
+        // Bundle-4 / P4-1, P4-5 / 2026-05-10: 効果値を併記文字列の生成に使用
+        config,
     } = useRaceStore();
     const { getPhaseLabel } = useRaceEngine();
     const [copied, setCopied] = useState(false);
@@ -222,7 +226,14 @@ export const PhaseOutput: React.FC = () => {
                 } else {
                     formula = `${base}+dice${dice}=`;
                 }
-                text += `${gateSym} ${p.name}　${formula}\n`;
+                // Bundle-4 / P4-1, P4-5 / 2026-05-10: 通常ダイス行末に特殊戦法併記
+                // （該当なしは空文字列、scene3-race.md §2 「特殊戦法併記」準拠）
+                const annotation = getSpecialStrategyAnnotation(
+                    p,
+                    currentPhaseId,
+                    config.houseRules.effectValue,
+                );
+                text += `${gateSym} ${p.name}　${formula}${annotation}\n`;
             }
 
             // Output Unique Dice logic

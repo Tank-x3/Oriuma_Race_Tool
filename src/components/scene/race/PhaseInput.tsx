@@ -15,6 +15,9 @@ import { clsx } from 'clsx';
 // 既存 d10/d20 ヒューリスティックでは SuperGamble (1d35) / SuperStability (1d3) を捕捉できないため、
 // 参加者の固有タイプから期待ダイス式を逆引きして判定する方式に拡張する（拡張固有タイプ含む 5 種網羅）。
 import { getExpectedUniqueDiceStr } from './phaseOutput.helpers';
+// Bundle-4 / P4-1, P4-5 / 2026-05-10 [ESCALATION 案 V Provisional 適用]:
+// 戦法併記（【捲り】±N / 【溜め】±N）を解析前に除去する純粋関数。
+import { stripStrategyAnnotations } from './specialStrategy.helpers';
 
 interface PhaseInputProps {
     onErrors?: (errors: string[]) => void;
@@ -49,9 +52,16 @@ export const PhaseInput: React.FC<PhaseInputProps> = ({ onErrors }) => {
         try {
             await new Promise(resolve => setTimeout(resolve, 50)); // UI flush
 
+            // Bundle-4 / P4-1, P4-5 / 2026-05-10 [ESCALATION 案 V Provisional 適用]:
+            // 仕様 houserule-features.md §3 Application Timing は「事後適用」前提だが、
+            // 実 GM 運用では掲示板投稿前に戦法を宣言（PhaseOutput 併記）する必要があり、
+            // 解析対象テキストに ` 【捲り】±N` / ` 【溜め】±N` 併記が含まれる。
+            // Parser を不変厳守エリアから外せないため、解析前処理として併記を除去する。
+            const sanitizedInput = stripStrategyAnnotations(inputText);
+
             const context = isPacePhase ? 'PACE' : 'RACE';
-            const parser = ParserFactory.getParser(inputText);
-            const { results, errors } = parser.parse(inputText, participants, context);
+            const parser = ParserFactory.getParser(sanitizedInput);
+            const { results, errors } = parser.parse(sanitizedInput, participants, context);
 
             // Validation Handling
             if (errors.length > 0) {
