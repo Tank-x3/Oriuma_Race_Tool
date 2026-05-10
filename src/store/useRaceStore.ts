@@ -8,6 +8,9 @@ import { useNotificationStore } from './useNotificationStore';
 // calculator.ts は不変厳守エリアのため、Calculator 戻り値に上乗せする運用とする。
 // Round 2 改修: 解析未実行 history を fixValue 加算から除外する一元化関数 `calculateScoreWithSpecialStrategy` を採用。
 import { calculateScoreWithSpecialStrategy } from '../components/scene/race/specialStrategy.helpers';
+// Bundle-7 / P4-6 / 2026-05-10: 永続化マイグレーションで houseRules を zod 検証する。
+// houserule-features.md §4 zod 検証範囲表に基づく検証 + Bundle-1 で追加された 2 フィールドの補完。
+import { houseRulesSchema, type HouseRulesData } from '../core/schema/houseRules';
 
 interface RaceStoreState extends RaceState {
     uiState: {
@@ -62,8 +65,21 @@ export type PersistedRaceState = Pick<
 
 // CR-5a: persist 設定値（テスト容易性のため module-level に分離して export）
 export const PERSIST_NAME = 'race-store';
-export const PERSIST_VERSION = 1;
+// Bundle-7 / P4-6 / 2026-05-10: PERSIST_VERSION 1 → 2 にバンプ。
+// version=1 旧データ（Bundle-1 D-5 で houseRules.enableExtendedUnique / effectValue 追加前）→
+// version=2 へのデフォルト補完を persistMigrate で実施する。
+export const PERSIST_VERSION = 2;
 export const RESTORE_ERROR_MESSAGE = '保存データの復元に失敗しました。新規セッションを開始します。';
+
+// Bundle-7 / 2026-05-10: マイグレーション時の houseRules デフォルト補完値。
+// 下記 create() の初期 state と同一値を保持。新規セッションと旧データ補完で同じ初期値が使われる。
+export const DEFAULT_HOUSE_RULES: HouseRulesData = {
+    enableModifier: false,
+    enableSpecialStrategy: false,
+    enableCompositeUnique: false,
+    enableExtendedUnique: false,
+    effectValue: 15,
+};
 
 export const persistPartialize = (state: RaceStoreState): PersistedRaceState => ({
     config: state.config,
@@ -77,16 +93,52 @@ export const persistPartialize = (state: RaceStoreState): PersistedRaceState => 
     },
 });
 
-// 当面 passthrough。将来のスキーマ変更時に version 分岐を追加する足場。
-export const persistMigrate = (persistedState: unknown, _version: number): PersistedRaceState => {
-    void _version;
-    return persistedState as PersistedRaceState;
+// Bundle-7 / P4-6 / 2026-05-10: 実マイグレーション化。
+// version=1 → 2 への補完: houseRules.enableExtendedUnique / effectValue が旧データには欠落しているため
+// DEFAULT_HOUSE_RULES でマージ補完。zod 検証で型不正・値域違反（effectValue 小数/負値/上限超等）を検知し、
+// 失敗時は throw → onRehydrateStorage の handleRehydrateError に合流（RESTORE_ERROR_MESSAGE 通知 +
+// デフォルト state 起動）。
+export const persistMigrate = (persistedState: unknown, version: number): PersistedRaceState => {
+    void version; // 現状全旧データ共通で同じ補完を行うため version 分岐は不要
+
+    if (persistedState === null || typeof persistedState !== 'object') {
+        throw new Error('persisted state is not an object');
+    }
+
+    const state = persistedState as Partial<PersistedRaceState> & {
+        config?: Partial<PersistedRaceState['config']> & {
+            houseRules?: Partial<HouseRulesData>;
+        };
+    };
+
+    const persistedHouseRules = state.config?.houseRules ?? {};
+    const mergedHouseRules: HouseRulesData = {
+        ...DEFAULT_HOUSE_RULES,
+        ...persistedHouseRules,
+    };
+
+    const validation = houseRulesSchema.safeParse(mergedHouseRules);
+    if (!validation.success) {
+        throw new Error(
+            `houseRules schema validation failed: ${validation.error.message}`
+        );
+    }
+
+    const baseConfig = state.config ?? { midPhaseCount: 1, fullGateSize: null };
+    return {
+        ...state,
+        config: {
+            ...baseConfig,
+            houseRules: validation.data,
+        },
+    } as PersistedRaceState;
 };
 
 export const handleRehydrateError = (error: unknown): void => {
     if (error) {
         // 破損データ復元失敗時: zustand persist はエラー時 rehydrate を skip するため
         // 初期 state（デフォルト値）が維持される。併せてユーザー通知を発行する。
+        // Bundle-7 / 2026-05-10: persistMigrate の zod 検証失敗 throw もここに合流する。
         useNotificationStore.getState().addNotification('error', RESTORE_ERROR_MESSAGE);
     }
 };

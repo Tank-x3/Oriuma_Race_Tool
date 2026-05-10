@@ -437,13 +437,25 @@ describe('CR-5a: zustand persist 設定', () => {
     });
 
     it('PERSIST_VERSION / PERSIST_NAME: 想定値が export されている', () => {
-        expect(PERSIST_VERSION).toBe(1);
+        // Bundle-7 / P4-6 / 2026-05-10: 1 → 2 にバンプ
+        expect(PERSIST_VERSION).toBe(2);
         expect(PERSIST_NAME).toBe('race-store');
     });
 
-    it('persistMigrate: 任意の persistedState を passthrough で返す（雛形動作）', () => {
-        const dummyPersisted = {
-            config: { midPhaseCount: 3, fullGateSize: 12, houseRules: {} },
+    it('persistMigrate: 完全な version=2 データはそのまま通過する（基本動作）', () => {
+        // Bundle-7 / 2026-05-10: 旧 passthrough テストを「正常な version=2 データの通過」テストに書き換え
+        const validPersisted = {
+            config: {
+                midPhaseCount: 3,
+                fullGateSize: 12,
+                houseRules: {
+                    enableModifier: true,
+                    enableSpecialStrategy: false,
+                    enableCompositeUnique: false,
+                    enableExtendedUnique: false,
+                    effectValue: 15,
+                },
+            },
             participants: [{ id: 'old', name: 'legacy' }],
             currentPhaseId: 'Mid1',
             paceResult: { face: 5, label: 'Slow' },
@@ -451,10 +463,13 @@ describe('CR-5a: zustand persist 設定', () => {
             uiState: { scene: 'race' },
         } as unknown as PersistedRaceState;
 
-        const result = persistMigrate(dummyPersisted, 0);
+        const result = persistMigrate(validPersisted, 2);
 
-        // passthrough 確認: 同じ参照が返る
-        expect(result).toBe(dummyPersisted);
+        // houseRules は補完なしで通過
+        expect(result.config.houseRules).toEqual(validPersisted.config.houseRules);
+        // その他フィールドも保持される
+        expect(result.config.midPhaseCount).toBe(3);
+        expect(result.currentPhaseId).toBe('Mid1');
     });
 
     it('handleRehydrateError: error 引数があれば useNotificationStore に error 通知を追加', () => {
@@ -1003,5 +1018,156 @@ describe('Bundle-4 / P4-1, P4-5 / 2026-05-10 useRaceStore.updateHouseRules effec
 
         // score は再計算されず 999 のまま
         expect(useRaceStore.getState().participants[0].score).toBe(999);
+    });
+});
+
+// Bundle-7 / P4-6 / 2026-05-10:
+// persistMigrate の version=1 → 2 デフォルト補完 + zod 検証統合の検証。
+// houserule-features.md §4 zod 検証範囲表に基づく検証経路と RESTORE_ERROR_MESSAGE 通知経路を担保。
+describe('Bundle-7 / P4-6 / 2026-05-10 persistMigrate (zod 検証 + デフォルト補完)', () => {
+    const baseValid = {
+        config: {
+            midPhaseCount: 1,
+            fullGateSize: null,
+            houseRules: {
+                enableModifier: false,
+                enableSpecialStrategy: false,
+                enableCompositeUnique: false,
+                enableExtendedUnique: false,
+                effectValue: 15,
+            },
+        },
+        participants: [],
+        currentPhaseId: 'setup',
+        paceResult: { face: null, label: null },
+        strategies: [],
+        gateAssignments: null,
+        uiState: { scene: 'setup' },
+    } as unknown as PersistedRaceState;
+
+    it('(i) version=1 旧データ（enableExtendedUnique / effectValue 欠落）→ デフォルト補完 + 既存 3 フィールド維持', () => {
+        const oldPersisted = {
+            ...baseValid,
+            config: {
+                midPhaseCount: 2,
+                fullGateSize: 18,
+                houseRules: {
+                    enableModifier: true,
+                    enableSpecialStrategy: true,
+                    enableCompositeUnique: false,
+                    // Bundle-1 で追加された 2 フィールドが旧データには存在しない
+                },
+            },
+        } as unknown as PersistedRaceState;
+
+        const result = persistMigrate(oldPersisted, 1);
+
+        // 補完済の 5 フィールド構造になる
+        expect(result.config.houseRules).toEqual({
+            enableModifier: true,
+            enableSpecialStrategy: true,
+            enableCompositeUnique: false,
+            enableExtendedUnique: false, // デフォルト補完
+            effectValue: 15, // デフォルト補完
+        });
+        // 既存フィールドは維持
+        expect(result.config.midPhaseCount).toBe(2);
+        expect(result.config.fullGateSize).toBe(18);
+    });
+
+    it('(ii) houseRules 自体が undefined → デフォルト 5 フィールドで補完', () => {
+        const noHouseRules = {
+            ...baseValid,
+            config: {
+                midPhaseCount: 1,
+                fullGateSize: null,
+                // houseRules フィールド自体が無い極端ケース
+            },
+        } as unknown as PersistedRaceState;
+
+        const result = persistMigrate(noHouseRules, 1);
+
+        expect(result.config.houseRules).toEqual({
+            enableModifier: false,
+            enableSpecialStrategy: false,
+            enableCompositeUnique: false,
+            enableExtendedUnique: false,
+            effectValue: 15,
+        });
+    });
+
+    it('(iii) effectValue が小数の不正データ → throw（破損データ経路）', () => {
+        const invalid = {
+            ...baseValid,
+            config: {
+                ...baseValid.config,
+                houseRules: {
+                    ...baseValid.config.houseRules,
+                    effectValue: 15.5,
+                },
+            },
+        } as unknown as PersistedRaceState;
+
+        expect(() => persistMigrate(invalid, 2)).toThrow();
+    });
+
+    it('(iv) effectValue が負値の不正データ → throw', () => {
+        const invalid = {
+            ...baseValid,
+            config: {
+                ...baseValid.config,
+                houseRules: {
+                    ...baseValid.config.houseRules,
+                    effectValue: -5,
+                },
+            },
+        } as unknown as PersistedRaceState;
+
+        expect(() => persistMigrate(invalid, 2)).toThrow();
+    });
+
+    it('(v) enableModifier 等が boolean 以外の不正データ → throw', () => {
+        const invalid = {
+            ...baseValid,
+            config: {
+                ...baseValid.config,
+                houseRules: {
+                    ...baseValid.config.houseRules,
+                    enableModifier: 'yes' as unknown as boolean,
+                },
+            },
+        } as unknown as PersistedRaceState;
+
+        expect(() => persistMigrate(invalid, 2)).toThrow();
+    });
+
+    it('(vi) persistedState が null/非オブジェクト → throw', () => {
+        expect(() => persistMigrate(null, 2)).toThrow();
+        expect(() => persistMigrate('garbage', 2)).toThrow();
+        expect(() => persistMigrate(42, 2)).toThrow();
+    });
+
+    it('(vii) 補完経路と handleRehydrateError 連動: throw 後の error が通知に変換される', () => {
+        // persistMigrate の throw を catch して handleRehydrateError に渡す統合経路の確認。
+        // 実際の zustand persist 内では migrate throw が onRehydrateStorage の error 引数に伝わる。
+        useNotificationStore.setState({ notifications: [] });
+
+        let caught: unknown = undefined;
+        try {
+            persistMigrate({ config: { houseRules: { effectValue: -1 } } }, 1);
+        } catch (e) {
+            caught = e;
+        }
+        // throw 自体は発生
+        expect(caught).toBeDefined();
+
+        // handleRehydrateError 経由で通知が出る
+        handleRehydrateError(caught);
+        const notifications = useNotificationStore.getState().notifications;
+        expect(notifications).toHaveLength(1);
+        expect(notifications[0].type).toBe('error');
+        expect(notifications[0].message).toBe(RESTORE_ERROR_MESSAGE);
+
+        useNotificationStore.setState({ notifications: [] });
     });
 });
