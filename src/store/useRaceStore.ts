@@ -32,6 +32,16 @@ interface RaceStoreState extends RaceState {
         phaseId: string,
         value: 'Makuri' | 'Tame' | null
     ) => void;
+    // Bundle-5 / P4-2, P4-3, CR-22 / 2026-05-10: 汎用補正の設定 / クリア + score 即時加減算。
+    // value は整数、reason は trim 後非空（CR-22 統合）。バリデーション通過済の値が渡る前提で
+    // 防御的判定はモーダル側で実施し、本 action は呼ばれた値をそのまま反映する。
+    setManualModifier: (
+        participantId: string,
+        phaseId: string,
+        value: number,
+        reason: string
+    ) => void;
+    clearManualModifier: (participantId: string, phaseId: string) => void;
     generateParticipants: (count: number) => void;
     addParticipant: (participant: Omit<Umamusume, 'score' | 'history'>) => void;
     removeParticipant: (id: string) => void;
@@ -267,6 +277,76 @@ export const useRaceStore = create<RaceStoreState>()(
                                 ...p.history,
                                 [phaseId]: { ...oldEntry, specialStrategy: value },
                             };
+                            const next: Umamusume = { ...p, history: newHistory };
+
+                            return {
+                                ...next,
+                                score: calculateScoreWithSpecialStrategy(
+                                    next,
+                                    state.strategies,
+                                    state.paceResult.face,
+                                    activePhaseIds,
+                                    state.config.houseRules.effectValue,
+                                    state.config.houseRules.enableSpecialStrategy,
+                                ),
+                            };
+                        }),
+                    };
+                }),
+
+            // Bundle-5 / P4-2, P4-3, CR-22 / 2026-05-10: 汎用補正の設定 + score 即時加減算。
+            // history[phaseId].manualModifier = { value, reason } を更新後、Bundle-4 の純粋関数
+            // calculateScoreWithSpecialStrategy 経由で score 再計算（manualModifier は Calculator 内
+            // で `.value` のみ加算されるため、戦法 delta との合算挙動も統一される）。
+            setManualModifier: (participantId, phaseId, value, reason) =>
+                set((state) => {
+                    const activePhaseIds = getActivePhaseIds(state.config.midPhaseCount);
+                    return {
+                        participants: state.participants.map((p) => {
+                            if (p.id !== participantId) return p;
+
+                            const oldEntry = p.history[phaseId] ?? { computedScore: 0 };
+                            const newHistory = {
+                                ...p.history,
+                                [phaseId]: {
+                                    ...oldEntry,
+                                    manualModifier: { value, reason },
+                                },
+                            };
+                            const next: Umamusume = { ...p, history: newHistory };
+
+                            return {
+                                ...next,
+                                score: calculateScoreWithSpecialStrategy(
+                                    next,
+                                    state.strategies,
+                                    state.paceResult.face,
+                                    activePhaseIds,
+                                    state.config.houseRules.effectValue,
+                                    state.config.houseRules.enableSpecialStrategy,
+                                ),
+                            };
+                        }),
+                    };
+                }),
+
+            // Bundle-5 / P4-2, P4-3, CR-22 / 2026-05-10: 汎用補正のクリア + score 復元。
+            // history[phaseId] から manualModifier フィールドを削除する（updateParticipant の
+            // uniqueDice クリア処理と同パターン: { ...entry } して delete）。
+            clearManualModifier: (participantId, phaseId) =>
+                set((state) => {
+                    const activePhaseIds = getActivePhaseIds(state.config.midPhaseCount);
+                    return {
+                        participants: state.participants.map((p) => {
+                            if (p.id !== participantId) return p;
+
+                            const oldEntry = p.history[phaseId];
+                            if (!oldEntry || oldEntry.manualModifier === undefined) {
+                                return p;
+                            }
+                            const cleared = { ...oldEntry };
+                            delete cleared.manualModifier;
+                            const newHistory = { ...p.history, [phaseId]: cleared };
                             const next: Umamusume = { ...p, history: newHistory };
 
                             return {

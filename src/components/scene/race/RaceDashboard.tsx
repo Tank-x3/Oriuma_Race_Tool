@@ -5,6 +5,10 @@ import { Trophy, Check, TrendingUp, Edit3 } from 'lucide-react';
 import { clsx } from 'clsx';
 // Bundle-4 / P4-1, P4-5 / 2026-05-10: 戦法ボタンの 1 レース 1 回制限判定に使用
 import { findActivatedSpecialStrategy } from './specialStrategy.helpers';
+// Bundle-5 / P4-2, P4-3, CR-22 / 2026-05-10: 汎用補正モーダル + ボタン併記フォーマット
+import { ModifierModal } from './ModifierModal';
+import { formatModifierAnnotation } from './modifier.helpers';
+import type { Umamusume } from '../../../types';
 
 // Bundle-4 / P4-1, P4-5 / 2026-05-10: 未選択 → 捲り → 溜め → 未選択 の 3 状態循環
 const nextStrategyValue = (
@@ -31,6 +35,12 @@ export const RaceDashboard: React.FC = () => {
     const { getPhaseLabel } = useRaceEngine();
     const [copied, setCopied] = useState(false);
 
+    // Bundle-5 / P4-2, P4-3, CR-22 / 2026-05-10: 補正モーダル開閉状態
+    const [modifierModalState, setModifierModalState] = useState<{
+        isOpen: boolean;
+        participant: Umamusume | null;
+    }>({ isOpen: false, participant: null });
+
     // Bundle-4 / P4-1, P4-5 / 2026-05-10: 戦法ボタン表示条件
     // - houseRules.enableSpecialStrategy === true
     // - 現在フェーズが終盤以外（houserule-features.md §3 Phase Restriction）
@@ -41,6 +51,17 @@ export const RaceDashboard: React.FC = () => {
         currentPhaseId.startsWith('Mid');
     const showSpecialStrategy =
         config.houseRules.enableSpecialStrategy && isRaceMainPhase;
+
+    // Bundle-5 / P4-2, P4-3, CR-22 / 2026-05-10: 補正ボタン表示条件
+    // - houseRules.enableModifier === true
+    // - 進行中レースフェーズ（Start / Mid / Mid1..N / End）= 戦法と異なり End 含む
+    const isModifierEligiblePhase =
+        currentPhaseId === 'Start' ||
+        currentPhaseId === 'Mid' ||
+        currentPhaseId.startsWith('Mid') ||
+        currentPhaseId === 'End';
+    const showModifier =
+        config.houseRules.enableModifier && isModifierEligiblePhase;
 
     // Sort by Score Descending
     const sorted = [...participants].sort((a, b) => {
@@ -201,10 +222,34 @@ export const RaceDashboard: React.FC = () => {
                                             );
                                         })()}
 
-                                        {/* Edit/Modifier Button (Placeholder for House Rule) */}
-                                        <button className="p-1.5 text-gray-300 hover:text-indigo-500 transition-colors opacity-0 group-hover:opacity-100">
-                                            <Edit3 className="w-4 h-4" />
-                                        </button>
+                                        {/* Bundle-5 / P4-2, P4-3, CR-22 / 2026-05-10: 補正ボタン（汎用補正 ON + 進行中フェーズで表示） */}
+                                        {showModifier && (() => {
+                                            const modifier = p.history[currentPhaseId]?.manualModifier;
+                                            const annotation = formatModifierAnnotation(modifier);
+                                            const hasModifier = modifier !== undefined;
+                                            return (
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        setModifierModalState({
+                                                            isOpen: true,
+                                                            participant: p,
+                                                        })
+                                                    }
+                                                    aria-label={hasModifier ? `補正: ${annotation}（編集）` : '補正を入力'}
+                                                    title={hasModifier ? `補正: ${annotation}（クリックで編集）` : '補正を入力'}
+                                                    className={clsx(
+                                                        'px-2 py-1 rounded-md text-xs font-bold transition-all border flex items-center gap-1',
+                                                        hasModifier
+                                                            ? 'bg-emerald-100 text-emerald-700 border-emerald-300 dark:bg-emerald-900/30 dark:text-emerald-400 dark:border-emerald-800'
+                                                            : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-600',
+                                                    )}
+                                                >
+                                                    <Edit3 className="w-3 h-3" />
+                                                    {hasModifier ? annotation : '補正'}
+                                                </button>
+                                            );
+                                        })()}
                                     </div>
                                 </div>
                             );
@@ -232,6 +277,23 @@ export const RaceDashboard: React.FC = () => {
             <p className="text-right text-xs text-gray-400 mt-2">
                 ※実況補助（バ身差）はコピーに含まれません。
             </p>
+
+            {/* Bundle-5 / P4-2, P4-3, CR-22 / 2026-05-10: 補正入力モーダル
+                key にモーダル開閉/対象参加者の組合せを与えて再マウント駆動とし、
+                ModifierModal 側の useState 初期値で既存補正値を毎回読み直させる。 */}
+            <ModifierModal
+                key={
+                    modifierModalState.isOpen && modifierModalState.participant
+                        ? `${modifierModalState.participant.id}-${currentPhaseId}`
+                        : 'closed'
+                }
+                isOpen={modifierModalState.isOpen}
+                participant={modifierModalState.participant}
+                phaseId={currentPhaseId}
+                onClose={() =>
+                    setModifierModalState({ isOpen: false, participant: null })
+                }
+            />
         </div>
     );
 };

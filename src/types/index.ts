@@ -57,7 +57,9 @@ export interface Umamusume {
     history: Record<string, {
         baseDice?: DiceResult;
         uniqueDice?: DiceResult;
-        manualModifier?: number; // From "Correct" button
+        // Bundle-5 / P4-2, P4-3, CR-22 / 2026-05-10: 汎用補正（GM が Scene 3 で任意に加減算する数値）。
+        // CR-22 統合で理由ラベル必須化、{ value, reason } 構造体に拡張。value は整数、reason は trim 後非空。
+        manualModifier?: { value: number; reason: string };
         specialStrategy?: 'Makuri' | 'Tame' | null; // 捲り/溜め
         computedScore: number; // Score at end of this phase
     }>;

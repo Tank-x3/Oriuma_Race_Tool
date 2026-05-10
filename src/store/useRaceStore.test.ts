@@ -132,7 +132,8 @@ describe('useRaceStore.updateParticipant - CR-38 / basic-rules §6 Case 4', () =
                 Mid2: {
                     baseDice: mid2Dice,
                     uniqueDice: uniqueMid2,
-                    manualModifier: 10,
+                    // Bundle-5 / P4-2, P4-3, CR-22 / 2026-05-10: 構造体化（{ value, reason }）
+                    manualModifier: { value: 10, reason: '妨害' },
                     specialStrategy: 'Makuri',
                     computedScore: 45,
                 },
@@ -149,9 +150,9 @@ describe('useRaceStore.updateParticipant - CR-38 / basic-rules §6 Case 4', () =
         const mid2 = updated.history['Mid2'];
         expect(mid2.uniqueDice).toBeUndefined();
         expect(mid2.baseDice).toEqual(mid2Dice);
-        expect(mid2.manualModifier).toBe(10);
+        expect(mid2.manualModifier).toEqual({ value: 10, reason: '妨害' });
         expect(mid2.specialStrategy).toBe('Makuri');
-        // score: fix 10 + Start 10 + Mid2 (baseDice 6 + manualModifier 10) = 36
+        // score: fix 10 + Start 10 + Mid2 (baseDice 6 + manualModifier.value 10) = 36
         expect(updated.score).toBe(36);
     });
 
@@ -1169,5 +1170,187 @@ describe('Bundle-7 / P4-6 / 2026-05-10 persistMigrate (zod 検証 + デフォル
         expect(notifications[0].message).toBe(RESTORE_ERROR_MESSAGE);
 
         useNotificationStore.setState({ notifications: [] });
+    });
+});
+
+describe('Bundle-5 / P4-2, P4-3, CR-22 / 2026-05-10 useRaceStore.setManualModifier / clearManualModifier', () => {
+    beforeEach(() => {
+        useRaceStore.getState().resetRace();
+        useRaceStore.getState().updateHouseRules({
+            enableModifier: true,
+            enableSpecialStrategy: false,
+            enableCompositeUnique: false,
+            enableExtendedUnique: false,
+            effectValue: 15,
+        });
+    });
+
+    // setManualModifier 専用の参加者注入ヘルパー（Mid1 まで進行している前提、Bundle-4 setSpecialStrategy 同パターン）
+    const installForModifier = (history: Umamusume['history'] = {}) => {
+        const uma: Umamusume = {
+            id: 'p1',
+            entryIndex: 1,
+            name: 'Test',
+            strategy: '先行', // fixValue 10
+            uniqueSkill: { type: 'Stability', phases: [] },
+            gate: 1,
+            score: 0,
+            history,
+        };
+        useRaceStore.setState({
+            config: {
+                midPhaseCount: 1,
+                fullGateSize: null,
+                houseRules: {
+                    enableModifier: true,
+                    enableSpecialStrategy: false,
+                    enableCompositeUnique: false,
+                    enableExtendedUnique: false,
+                    effectValue: 15,
+                },
+            },
+            participants: [uma],
+            currentPhaseId: 'Mid',
+            paceResult: { face: 5, label: 'Test' },
+        });
+    };
+
+    it('(i) setManualModifier 単独: history[phaseId].manualModifier 設定 + score 加算', () => {
+        // 先行 fix 10 + Start 10 + Mid 8 + paceMod 0 = 28
+        installForModifier({
+            Start: { baseDice: makeDice('3d8', [3, 4, 3]), computedScore: 20 },
+            Mid: { baseDice: makeDice('3d5', [3, 3, 2]), computedScore: 28 },
+        });
+
+        useRaceStore.getState().setManualModifier('p1', 'Mid', 5, '妨害');
+
+        const updated = useRaceStore.getState().participants[0];
+        expect(updated.history['Mid']?.manualModifier).toEqual({
+            value: 5,
+            reason: '妨害',
+        });
+        // 28 + 5 = 33
+        expect(updated.score).toBe(33);
+    });
+
+    it('(ii) setManualModifier 上書き: 既存値を新値で上書き + score 再計算', () => {
+        installForModifier({
+            Start: { baseDice: makeDice('3d8', [3, 4, 3]), computedScore: 20 },
+            Mid: { baseDice: makeDice('3d5', [3, 3, 2]), computedScore: 28 },
+        });
+
+        useRaceStore.getState().setManualModifier('p1', 'Mid', 5, '妨害');
+        useRaceStore.getState().setManualModifier('p1', 'Mid', -3, 'ファンブル');
+
+        const updated = useRaceStore.getState().participants[0];
+        expect(updated.history['Mid']?.manualModifier).toEqual({
+            value: -3,
+            reason: 'ファンブル',
+        });
+        // 28 + (-3) = 25
+        expect(updated.score).toBe(25);
+    });
+
+    it('(iii) clearManualModifier: 既存補正クリア + score 復元', () => {
+        installForModifier({
+            Start: { baseDice: makeDice('3d8', [3, 4, 3]), computedScore: 20 },
+            Mid: { baseDice: makeDice('3d5', [3, 3, 2]), computedScore: 28 },
+        });
+
+        useRaceStore.getState().setManualModifier('p1', 'Mid', 5, '妨害');
+        useRaceStore.getState().clearManualModifier('p1', 'Mid');
+
+        const updated = useRaceStore.getState().participants[0];
+        expect(updated.history['Mid']?.manualModifier).toBeUndefined();
+        // 補正消失で 28 に復元
+        expect(updated.score).toBe(28);
+    });
+
+    it('(iv) setManualModifier + 戦法併用: Bundle-4 setSpecialStrategy との同居挙動（独立加減算）', () => {
+        // 戦法 ON にする
+        useRaceStore.getState().updateHouseRules({ enableSpecialStrategy: true });
+        installForModifier({
+            Start: { baseDice: makeDice('3d8', [3, 4, 3]), computedScore: 20 },
+            Mid: { baseDice: makeDice('3d5', [3, 3, 2]), computedScore: 28 },
+        });
+        // installForModifier が houseRules を上書きするため、再度 ON
+        useRaceStore.setState((state) => ({
+            config: {
+                ...state.config,
+                houseRules: { ...state.config.houseRules, enableSpecialStrategy: true },
+            },
+        }));
+
+        // 捲り発動 + 補正 +5
+        useRaceStore.getState().setSpecialStrategy('p1', 'Mid', 'Makuri');
+        useRaceStore.getState().setManualModifier('p1', 'Mid', 5, '妨害');
+
+        const updated = useRaceStore.getState().participants[0];
+        // 28 + 15 (Makuri 即時) + 5 (補正) = 48
+        expect(updated.score).toBe(48);
+        expect(updated.history['Mid']?.specialStrategy).toBe('Makuri');
+        expect(updated.history['Mid']?.manualModifier).toEqual({
+            value: 5,
+            reason: '妨害',
+        });
+    });
+
+    it('(v) 複数 phase に補正設定 + score 累積', () => {
+        installForModifier({
+            Start: { baseDice: makeDice('3d8', [3, 4, 3]), computedScore: 20 },
+            Mid: { baseDice: makeDice('3d5', [3, 3, 2]), computedScore: 28 },
+        });
+
+        useRaceStore.getState().setManualModifier('p1', 'Start', 3, '初動');
+        useRaceStore.getState().setManualModifier('p1', 'Mid', 5, '妨害');
+
+        const updated = useRaceStore.getState().participants[0];
+        // 28 + 3 (Start 補正) + 5 (Mid 補正) = 36
+        expect(updated.score).toBe(36);
+        expect(updated.history['Start']?.manualModifier).toEqual({
+            value: 3,
+            reason: '初動',
+        });
+        expect(updated.history['Mid']?.manualModifier).toEqual({
+            value: 5,
+            reason: '妨害',
+        });
+    });
+
+    it('(vi) revertPhaseHistory で当該フェーズの補正値が消える connection 確認', () => {
+        installForModifier({
+            Start: { baseDice: makeDice('3d8', [3, 4, 3]), computedScore: 20 },
+            Mid: { baseDice: makeDice('3d5', [3, 3, 2]), computedScore: 28 },
+        });
+
+        useRaceStore.getState().setManualModifier('p1', 'Mid', 5, '妨害');
+        // この時点 score = 33
+
+        useRaceStore.getState().revertPhaseHistory('Mid', { resetPace: false });
+
+        const updated = useRaceStore.getState().participants[0];
+        // Mid 削除 → 補正も history ごと消失。fix 10 + Start 10 = 20（paceMod は中盤以降に適用、Mid 削除で適用対象なし）
+        expect(updated.history['Mid']).toBeUndefined();
+        expect(updated.score).toBe(20);
+    });
+
+    it('(vii) clearManualModifier: 存在しない participant ID には no-op（防御的、設定済 score は不変）', () => {
+        installForModifier({
+            Start: { baseDice: makeDice('3d8', [3, 4, 3]), computedScore: 20 },
+            Mid: { baseDice: makeDice('3d5', [3, 3, 2]), computedScore: 28 },
+        });
+        // 設定済 score を確定させる
+        useRaceStore.getState().setManualModifier('p1', 'Mid', 5, '妨害');
+        // この時点 score = 33
+
+        // 存在しない ID に対する clear は participants.map 内で early return → 副作用なし
+        useRaceStore.getState().clearManualModifier('nonexistent', 'Mid');
+
+        const updated = useRaceStore.getState().participants[0];
+        expect(updated.history['Mid']?.manualModifier).toEqual({
+            value: 5,
+            reason: '妨害',
+        });
+        expect(updated.score).toBe(33);
     });
 });

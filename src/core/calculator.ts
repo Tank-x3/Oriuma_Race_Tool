@@ -57,8 +57,10 @@ export class Calculator {
             if (startData.baseDice) {
                 total += startData.baseDice.sum;
             }
+            // Bundle-5 / P4-2, P4-3, CR-22 / 2026-05-10: manualModifier 構造体化（{ value, reason }）。
+            // 加算判定 (undefined チェック) は維持し、`.value` のみ加算する。
             if (startData.manualModifier) {
-                total += startData.manualModifier;
+                total += startData.manualModifier.value;
             }
             // Unique skill in Start? Allowed if configured.
             if (startData.uniqueDice && participant.uniqueSkill.phases.includes('Start')) {
@@ -100,8 +102,9 @@ export class Calculator {
                 total += data.uniqueDice.sum;
             }
             // Add Manual Modifier
+            // Bundle-5 / P4-2, P4-3, CR-22 / 2026-05-10: manualModifier 構造体化（{ value, reason }）。
             if (data.manualModifier) {
-                total += data.manualModifier;
+                total += data.manualModifier.value;
             }
 
             // Add Pace Modifier calculation
