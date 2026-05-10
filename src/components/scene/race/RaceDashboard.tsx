@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRaceStore } from '../../../store/useRaceStore';
 import { useRaceEngine } from '../../../hooks/useRaceEngine';
 import { Trophy, Check, TrendingUp, Edit3 } from 'lucide-react';
@@ -62,6 +62,36 @@ export const RaceDashboard: React.FC = () => {
         currentPhaseId === 'End';
     const showModifier =
         config.houseRules.enableModifier && isModifierEligiblePhase;
+
+    // Bundle-8-T4 / CR-SA-4 (CR-SA-11 Sub-A 連動) / 2026-05-10: 戦法ボタン初期値 Scene 1 事前申告連動
+    // （scene3-race.md §5 + scene1-setup.md §2）
+    // 当該フェーズ到達時、Scene 1 で specialStrategyType + specialStrategyPhase を申告した
+    // participant の history[currentPhase].specialStrategy が未操作（undefined）であれば
+    // setSpecialStrategy で自動 ON 化する。null（GM 取消後）/ 値あり（GM 操作済）はいずれも skip し
+    // 既存 Bundle-4 の手動操作経路を温存する。Bundle-6 戻る操作後も history が保持されるため、
+    // 戻り先で再度自動 ON 化されることはない。
+    useEffect(() => {
+        if (!config.houseRules.enableSpecialStrategy) return;
+        if (!isRaceMainPhase) return;
+
+        participants.forEach((p) => {
+            const strategyType = p.specialStrategyType;
+            const strategyPhase = p.specialStrategyPhase;
+            if (!strategyType || !strategyPhase) return;
+            if (strategyPhase !== currentPhaseId) return;
+
+            const existing = p.history[currentPhaseId]?.specialStrategy;
+            if (existing !== undefined) return;
+
+            setSpecialStrategy(p.id, currentPhaseId, strategyType);
+        });
+    }, [
+        currentPhaseId,
+        participants,
+        config.houseRules.enableSpecialStrategy,
+        isRaceMainPhase,
+        setSpecialStrategy,
+    ]);
 
     // Sort by Score Descending
     const sorted = [...participants].sort((a, b) => {

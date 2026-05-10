@@ -6,6 +6,8 @@ import { clsx } from 'clsx';
 import { getUniqueDiceFormula, getExpectedUniqueDiceStr } from './phaseOutput.helpers';
 // Bundle-4 / P4-1, P4-5 / 2026-05-10: 通常ダイス行末への特殊戦法併記
 import { getSpecialStrategyAnnotation } from './specialStrategy.helpers';
+// Bundle-8-T4 / CR-SA-4 / 2026-05-10: 終盤【絆スキル】セクション自動生成（scene3-race.md §2）
+import { getBondSkillSection } from './bondSkill.helpers';
 
 export const PhaseOutput: React.FC = () => {
     const {
@@ -260,6 +262,19 @@ export const PhaseOutput: React.FC = () => {
         if (uniqueTextLines.length > 0) {
             text += `\n【${getPhaseLabel(currentPhaseId)}固有ダイス】\n`;
             text += uniqueTextLines.join('\n');
+        }
+
+        // Bundle-8-T4 / CR-SA-4 / 2026-05-10: 終盤【絆スキル】セクション自動生成（scene3-race.md §2）
+        const bondSection = getBondSkillSection(
+            sortedParticipants,
+            currentPhaseId,
+            config.houseRules,
+        );
+        if (bondSection) {
+            // 通常ダイス末尾には改行が残り、固有ダイスありの場合は join で末尾改行なし。
+            // 仕様 §2 + ワイヤフレーム整合: 既存セクションとの間に空行 1 行を挟む。
+            const separator = uniqueTextLines.length > 0 ? '\n\n' : '\n';
+            text += `${separator}${bondSection}`;
         }
 
         return text;
