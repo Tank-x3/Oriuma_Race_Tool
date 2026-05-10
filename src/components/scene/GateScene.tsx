@@ -5,6 +5,8 @@ import { ParserFactory } from '../../core/parser/parserFactory';
 import { getUndetectedParticipantNames } from '../../core/parser/parserUtils';
 import { NotificationArea } from '../ui/NotificationArea';
 import type { GateAssignment } from '../../types';
+// Bundle-8-T3 / CR-SA-4 / 2026-05-10: HR 連動事前申告併記（scene2-gate.md §2）
+import { getEntryListAnnotations } from './gateScene.helpers';
 
 // Helper for Circle Numbers (①, ②...)
 const getCircleNumber = (num: number): string => {
@@ -22,7 +24,10 @@ export const GateScene: React.FC = () => {
         moveToSetup,
         gateAssignments,
         setGateAssignments,
+        config,
     } = useRaceStore();
+    // Bundle-8-T3 / CR-SA-4 / 2026-05-10: HR 連動併記用（enableSpecialStrategy / enableBondSkill）
+    const houseRules = config.houseRules;
     const [inputText, setInputText] = useState('');
     const [parseErrors, setParseErrors] = useState<string[]>([]);
     const [copiedSection, setCopiedSection] = useState<string | null>(null);
@@ -86,9 +91,11 @@ export const GateScene: React.FC = () => {
             const index = i + 1;
             const typeLabel = typeMap[p.uniqueSkill.type] || p.uniqueSkill.type;
             const phaseStr = p.uniqueSkill.phases.map(getPhaseLabel).join(',') || '---';
-            return `${index}. ${p.name} (${p.strategy} / ${typeLabel} / ${phaseStr})`;
+            // Bundle-8-T3 / CR-SA-4 / 2026-05-10: HR 連動事前申告併記（scene2-gate.md §2）
+            const annotations = getEntryListAnnotations(p, houseRules, getPhaseLabel);
+            return `${index}. ${p.name} (${p.strategy} / ${typeLabel} / ${phaseStr})${annotations}`;
         }).join('\n');
-    }, [participants]);
+    }, [participants, houseRules]);
 
     // [2] Main Dice Output Template
     const diceOutputTemplate = useMemo(() => {
