@@ -60,6 +60,75 @@ export const validatePersistentSkillPhases = (
     return [];
 };
 
+// Bundle-8-T2 / CR-SA-4 (CR-SA-11 Sub-A 連動) / 2026-05-10: 絆スキル + 特殊戦法 Scene 1 事前申告バリデーション
+// （scene1-setup.md §2 + houserule-features.md §2 [v] 絆スキル + §3 §捲り 前 cross-reference SSoT）。
+// 既存 validatePersistentSkillPhases と同パターン（Layer 2 純粋関数、行番号 prefix なし、呼び出し側で付与）。
+
+/**
+ * 絆スキル種別の値域検証（houserule-features.md §2 [v] 絆スキル SSoT）。
+ * 値域: `'BondGamble' | 'BondStable' | null`。`enableBondSkill === true` 時のみ呼び出される想定。
+ *
+ * @returns 妥当なら `[]`、エラーなら 1 件のエラーメッセージ配列。
+ */
+export const validateBondSkillType = (
+    type: 'BondGamble' | 'BondStable' | null | undefined,
+): string[] => {
+    if (type === null || type === undefined) return [];
+    if (type === 'BondGamble' || type === 'BondStable') return [];
+    return ['絆スキル種別の値が不正です'];
+};
+
+/**
+ * 特殊戦法発動位置の値域検証（houserule-features.md §3 §捲り 前 cross-reference SSoT、`'End'` 除外）。
+ * 値域: `'Start' | 'Mid' | 'Mid1' | ... | 'Mid{midPhaseCount}' | null`。
+ * `enableSpecialStrategy === true` 時のみ呼び出される想定。
+ *
+ * @returns 妥当なら `[]`、エラーなら 1 件のエラーメッセージ配列。
+ */
+export const validateSpecialStrategyPhase = (
+    phaseId: string | null | undefined,
+    midPhaseCount: number,
+): string[] => {
+    if (phaseId === null || phaseId === undefined) return [];
+
+    const validPhaseIds = new Set<string>(['Start']);
+    if (midPhaseCount === 1) {
+        validPhaseIds.add('Mid');
+    } else if (midPhaseCount >= 2) {
+        for (let i = 1; i <= midPhaseCount; i++) {
+            validPhaseIds.add(`Mid${i}`);
+        }
+    }
+
+    if (validPhaseIds.has(phaseId)) return [];
+    return ['特殊戦法の発動位置が不正です（終盤・現在の中盤回数外は選択不可）'];
+};
+
+/**
+ * 特殊戦法 種別 + 発動位置のセット必須性検証
+ * （scene1-setup.md §2 + houserule-features.md §3 §捲り 前 cross-reference SSoT）。
+ *
+ * - 種別 `'Makuri' | 'Tame'` + 発動位置 phaseId（任意の値）→ ok
+ * - 種別 `null` + 発動位置 `null` → ok
+ * - 種別 `'Makuri' | 'Tame'` + 発動位置 `null` → エラー
+ * - 種別 `null` + 発動位置 phaseId → エラー
+ */
+export const validateSpecialStrategyTypeAndPhase = (
+    type: 'Makuri' | 'Tame' | null | undefined,
+    phaseId: string | null | undefined,
+): string[] => {
+    const hasType = type === 'Makuri' || type === 'Tame';
+    const hasPhase = phaseId !== null && phaseId !== undefined;
+
+    if (hasType && !hasPhase) {
+        return ['特殊戦法を選択した場合、発動位置の指定が必須です'];
+    }
+    if (!hasType && hasPhase) {
+        return ['発動位置を選択した場合、特殊戦法種別の指定が必須です'];
+    }
+    return [];
+};
+
 export class Validator {
     /**
      * Validates if the line count matches the expected number of participants.

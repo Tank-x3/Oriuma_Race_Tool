@@ -1,10 +1,22 @@
-import React, { useMemo } from 'react';
+import React, { Fragment, useMemo } from 'react';
 import { useRaceStore } from '../../../store/useRaceStore';
 import { Trash2, AlertCircle, PlayCircle } from 'lucide-react';
 import type { StrategyName, UniqueSkillType } from '../../../types';
 import { NotificationArea } from '../../ui/NotificationArea';
-import { getUniqueSkillTypeOptions } from './entryForm.helpers';
-import { validatePersistentSkillPhases } from '../../../core/validator';
+import {
+    getUniqueSkillTypeOptions,
+    shouldUseTwoRowLayout,
+    getSecondRowFields,
+    getSpecialStrategyPhaseOptions,
+    getBondSkillTypeOptions,
+    getSpecialStrategyTypeOptions,
+} from './entryForm.helpers';
+import {
+    validatePersistentSkillPhases,
+    validateBondSkillType,
+    validateSpecialStrategyPhase,
+    validateSpecialStrategyTypeAndPhase,
+} from '../../../core/validator';
 
 const STRATEGY_OPTIONS: StrategyName[] = ['大逃げ', '逃げ', '先行', '差し', '追込'];
 // Bundle-2 / D-1, D-14 / 2026-05-09: 静的配列を廃止し、`enableExtendedUnique` 連動で
@@ -16,9 +28,39 @@ export const EntryForm: React.FC = () => {
         participants,
         config,
         updateParticipant,
+        // Bundle-8-T2 / CR-SA-4 (CR-SA-11 Sub-A 連動) / 2026-05-10: Scene 1 事前申告 actions
+        setBondSkill,
+        setSpecialStrategyType,
+        setSpecialStrategyPhase,
         moveToGate, // Updated action
         resetRace
     } = useRaceStore();
+
+    const houseRules = config.houseRules;
+    // Bundle-8-T2 / CR-SA-4 / 2026-05-10: 2 行レイアウト切替 + 2 行目フィールド構成 (scene1-setup.md §2)
+    // React Compiler との整合のため、useMemo の deps と helper への引数フィールドを一致させる。
+    const useTwoRow = useMemo(
+        () =>
+            shouldUseTwoRowLayout({
+                enableBondSkill: houseRules.enableBondSkill,
+                enableSpecialStrategy: houseRules.enableSpecialStrategy,
+            }),
+        [houseRules.enableBondSkill, houseRules.enableSpecialStrategy],
+    );
+    const secondRowFields = useMemo(
+        () =>
+            getSecondRowFields({
+                enableBondSkill: houseRules.enableBondSkill,
+                enableSpecialStrategy: houseRules.enableSpecialStrategy,
+            }),
+        [houseRules.enableBondSkill, houseRules.enableSpecialStrategy],
+    );
+    const specialStrategyPhaseOptions = useMemo(
+        () => getSpecialStrategyPhaseOptions(config.midPhaseCount),
+        [config.midPhaseCount],
+    );
+    const bondSkillOptions = useMemo(() => getBondSkillTypeOptions(), []);
+    const specialStrategyTypeOptions = useMemo(() => getSpecialStrategyTypeOptions(), []);
 
     // UI State for validation
     const [isSubmitted, setIsSubmitted] = React.useState(false);
@@ -86,9 +128,33 @@ export const EntryForm: React.FC = () => {
                 layer2Errors.forEach(msg => errors.push(`[#${rowNum}] ${msg}`));
             }
 
+            // Bundle-8-T2 / CR-SA-4 (CR-SA-11 Sub-A 連動) / 2026-05-10: 絆スキル + 特殊戦法 Scene 1 事前申告 (scene1-setup.md §2)
+            if (houseRules.enableBondSkill) {
+                const bondErrors = validateBondSkillType(p.bondSkill?.type);
+                bondErrors.forEach((msg) => errors.push(`[#${rowNum}] ${msg}`));
+            }
+            if (houseRules.enableSpecialStrategy) {
+                const phaseErrors = validateSpecialStrategyPhase(
+                    p.specialStrategyPhase,
+                    config.midPhaseCount,
+                );
+                phaseErrors.forEach((msg) => errors.push(`[#${rowNum}] ${msg}`));
+                const setErrors = validateSpecialStrategyTypeAndPhase(
+                    p.specialStrategyType,
+                    p.specialStrategyPhase,
+                );
+                setErrors.forEach((msg) => errors.push(`[#${rowNum}] ${msg}`));
+            }
+
             return { id: p.id, errors };
         }).filter(r => r.errors.length > 0);
-    }, [participants, duplicatedNames, config.midPhaseCount]);
+    }, [
+        participants,
+        duplicatedNames,
+        config.midPhaseCount,
+        houseRules.enableBondSkill,
+        houseRules.enableSpecialStrategy,
+    ]);
 
     // #1-3a-3: 名前入力済みの行のみを有効エントリとして扱う。
     const activeParticipants = useMemo(
@@ -135,7 +201,16 @@ export const EntryForm: React.FC = () => {
     };
 
     // Helper to check if a specific field is invalid for a row
-    const isFieldInvalid = (id: string, fieldType: 'name' | 'strategy' | 'uniqueType' | 'uniquePhase') => {
+    // Bundle-8-T2 / 2026-05-10: 'bondSkill' / 'specialStrategyType' / 'specialStrategyPhase' を追加。
+    type FieldType =
+        | 'name'
+        | 'strategy'
+        | 'uniqueType'
+        | 'uniquePhase'
+        | 'bondSkill'
+        | 'specialStrategyType'
+        | 'specialStrategyPhase';
+    const isFieldInvalid = (id: string, fieldType: FieldType) => {
         if (!isSubmitted) return false; // Only show errors after submit attempt
 
         const entry = invalidEntries.find(e => e.id === id);
@@ -145,7 +220,20 @@ export const EntryForm: React.FC = () => {
             case 'name': return entry.errors.some(e => e.includes('名前'));
             case 'strategy': return entry.errors.some(e => e.includes('脚質'));
             case 'uniqueType': return entry.errors.some(e => e.includes('固有タイプ'));
-            case 'uniquePhase': return entry.errors.some(e => e.includes('発動位置'));
+            case 'uniquePhase':
+                // 「発動位置」を含むが「特殊戦法」を含まない = 固有スキル発動位置エラー
+                return entry.errors.some(e => e.includes('発動位置') && !e.includes('特殊戦法'));
+            case 'bondSkill':
+                return entry.errors.some(e => e.includes('絆スキル'));
+            case 'specialStrategyType':
+                return entry.errors.some(e => e.includes('特殊戦法を選択した場合') || e.includes('特殊戦法種別'));
+            case 'specialStrategyPhase':
+                return entry.errors.some(
+                    e =>
+                        e.includes('特殊戦法の発動位置') ||
+                        e.includes('発動位置を選択した場合') ||
+                        e.includes('特殊戦法を選択した場合'),
+                );
         }
     };
 
@@ -170,18 +258,35 @@ export const EntryForm: React.FC = () => {
     // Force reset phase if selected phase becomes invalid (e.g. reducing mid count)
     React.useEffect(() => {
         const availableIds = new Set(availablePhases.map(p => p.id));
-        
+
         participants.forEach(p => {
             if (p.uniqueSkill.phases && p.uniqueSkill.phases.length > 0) {
                  const hasInvalid = p.uniqueSkill.phases.some(ph => !availableIds.has(ph));
                  if (hasInvalid) {
-                     updateParticipant(p.id, { 
-                         uniqueSkill: { ...p.uniqueSkill, phases: [] } 
+                     updateParticipant(p.id, {
+                         uniqueSkill: { ...p.uniqueSkill, phases: [] }
                      });
                  }
             }
         });
     }, [availablePhases, participants, updateParticipant]);
+
+    // Bundle-8-T2 / CR-SA-4 (CR-SA-11 Sub-A 連動) / 2026-05-10: 中盤回数縮小時の特殊戦法発動位置整合性強制
+    // (scene1-setup.md §2「発動位置プルダウンの動的連動」SSoT、既存 uniqueSkill.phases リセットと同方針)
+    React.useEffect(() => {
+        if (!houseRules.enableSpecialStrategy) return;
+        const validIds = new Set(specialStrategyPhaseOptions.map(o => o.id));
+        participants.forEach(p => {
+            if (p.specialStrategyPhase && !validIds.has(p.specialStrategyPhase)) {
+                setSpecialStrategyPhase(p.id, null);
+            }
+        });
+    }, [
+        specialStrategyPhaseOptions,
+        participants,
+        setSpecialStrategyPhase,
+        houseRules.enableSpecialStrategy,
+    ]);
 
     return (
         <div className="bg-white/80 dark:bg-slate-800/50 backdrop-blur-sm border border-slate-200 dark:border-slate-700/50 rounded-xl p-6 shadow-xl space-y-6 transition-colors">
@@ -211,21 +316,34 @@ export const EntryForm: React.FC = () => {
                                 <th scope="col" className="px-4 py-3 w-32">発動位置 (Phase)</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-200 dark:divide-slate-700 bg-white/50 dark:bg-slate-800/20">
-                            {participants.map((p, idx) => {
-                                const invalidName = isFieldInvalid(p.id, 'name');
-                                const invalidStrat = isFieldInvalid(p.id, 'strategy');
-                                const invalidType = isFieldInvalid(p.id, 'uniqueType');
-                                const invalidPhase = isFieldInvalid(p.id, 'uniquePhase');
-                                const displayedIndex = p.entryIndex ?? (idx + 1);
+                        {/* Bundle-8-T2 / CR-SA-4 (CR-SA-11 Sub-A 連動) / 2026-05-10:
+                            2 行レイアウト + 絆スキル列 + 特殊戦法 2 列（scene1-setup.md §2）。
+                            1 出走者 = 1 tbody（role="group" + aria-labelledby）でアクセシビリティ要件を満たす。 */}
+                        {participants.map((p, idx) => {
+                            const invalidName = isFieldInvalid(p.id, 'name');
+                            const invalidStrat = isFieldInvalid(p.id, 'strategy');
+                            const invalidType = isFieldInvalid(p.id, 'uniqueType');
+                            const invalidPhase = isFieldInvalid(p.id, 'uniquePhase');
+                            const invalidBond = isFieldInvalid(p.id, 'bondSkill');
+                            const invalidStratType = isFieldInvalid(p.id, 'specialStrategyType');
+                            const invalidStratPhase = isFieldInvalid(p.id, 'specialStrategyPhase');
+                            const displayedIndex = p.entryIndex ?? (idx + 1);
+                            const nameInputId = `participant-${p.id}-name`;
 
-                                return (
-                                    <tr key={p.id} className="hover:bg-slate-100/50 dark:hover:bg-slate-700/30 transition-colors">
+                            return (
+                                <tbody
+                                    key={p.id}
+                                    role="group"
+                                    aria-labelledby={nameInputId}
+                                    className="bg-white/50 dark:bg-slate-800/20 border-b border-slate-200 dark:border-slate-700 last:border-b-0"
+                                >
+                                    <tr className="hover:bg-slate-100/50 dark:hover:bg-slate-700/30 transition-colors">
                                         <td className="px-4 py-3 text-center font-mono font-bold text-slate-500">
                                             {displayedIndex}
                                         </td>
                                         <td className="px-4 py-3">
                                             <input
+                                                id={nameInputId}
                                                 type="text"
                                                 value={p.name}
                                                 onChange={(e) => updateParticipant(p.id, { name: e.target.value })}
@@ -317,9 +435,81 @@ export const EntryForm: React.FC = () => {
                                             )}
                                         </td>
                                     </tr>
-                                );
-                            })}
-                        </tbody>
+                                    {useTwoRow && secondRowFields.length > 0 && (
+                                        <tr className="hover:bg-slate-100/50 dark:hover:bg-slate-700/30 transition-colors">
+                                            <td className="px-4 pb-3"></td>
+                                            <td colSpan={4} className="px-4 pb-3">
+                                                <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-600 dark:text-slate-300">
+                                                    {secondRowFields.includes('specialStrategyType') && (
+                                                        <Fragment>
+                                                            <label className="flex items-center gap-1.5">
+                                                                <span className="font-medium whitespace-nowrap">特殊戦法種別:</span>
+                                                                <select
+                                                                    value={p.specialStrategyType ?? ''}
+                                                                    onChange={(e) => {
+                                                                        const v = e.target.value;
+                                                                        setSpecialStrategyType(p.id, v === '' ? null : (v as 'Makuri' | 'Tame'));
+                                                                    }}
+                                                                    className={`h-7 bg-slate-50 dark:bg-slate-900 border rounded px-2 focus:outline-none focus:ring-1 transition-colors ${invalidStratType
+                                                                        ? 'border-red-500 focus:ring-red-500'
+                                                                        : 'border-slate-300 dark:border-slate-700 focus:border-primary-500 focus:ring-primary-500 text-slate-900 dark:text-white'
+                                                                        }`}
+                                                                >
+                                                                    <option value="">---</option>
+                                                                    {specialStrategyTypeOptions.map(o => (
+                                                                        <option key={o.type} value={o.type}>{o.label}</option>
+                                                                    ))}
+                                                                </select>
+                                                            </label>
+                                                            <label className="flex items-center gap-1.5">
+                                                                <span className="font-medium whitespace-nowrap">発動位置:</span>
+                                                                <select
+                                                                    value={p.specialStrategyPhase ?? ''}
+                                                                    onChange={(e) => {
+                                                                        const v = e.target.value;
+                                                                        setSpecialStrategyPhase(p.id, v === '' ? null : v);
+                                                                    }}
+                                                                    className={`h-7 bg-slate-50 dark:bg-slate-900 border rounded px-2 focus:outline-none focus:ring-1 transition-colors ${invalidStratPhase
+                                                                        ? 'border-red-500 focus:ring-red-500'
+                                                                        : 'border-slate-300 dark:border-slate-700 focus:border-primary-500 focus:ring-primary-500 text-slate-900 dark:text-white'
+                                                                        }`}
+                                                                >
+                                                                    <option value="">---</option>
+                                                                    {specialStrategyPhaseOptions.map(o => (
+                                                                        <option key={o.id} value={o.id}>{o.label}</option>
+                                                                    ))}
+                                                                </select>
+                                                            </label>
+                                                        </Fragment>
+                                                    )}
+                                                    {secondRowFields.includes('bondSkill') && (
+                                                        <label className="flex items-center gap-1.5">
+                                                            <span className="font-medium whitespace-nowrap">絆スキル:</span>
+                                                            <select
+                                                                value={p.bondSkill?.type ?? ''}
+                                                                onChange={(e) => {
+                                                                    const v = e.target.value;
+                                                                    setBondSkill(p.id, v === '' ? null : (v as 'BondGamble' | 'BondStable'));
+                                                                }}
+                                                                className={`h-7 bg-slate-50 dark:bg-slate-900 border rounded px-2 focus:outline-none focus:ring-1 transition-colors ${invalidBond
+                                                                    ? 'border-red-500 focus:ring-red-500'
+                                                                    : 'border-slate-300 dark:border-slate-700 focus:border-primary-500 focus:ring-primary-500 text-slate-900 dark:text-white'
+                                                                    }`}
+                                                            >
+                                                                <option value="">---</option>
+                                                                {bondSkillOptions.map(o => (
+                                                                    <option key={o.type} value={o.type}>{o.label}</option>
+                                                                ))}
+                                                            </select>
+                                                        </label>
+                                                    )}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            );
+                        })}
                     </table>
                 </div>
             )}

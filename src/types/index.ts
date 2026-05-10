@@ -56,6 +56,10 @@ export interface Umamusume {
     // Bundle-8-T1 / CR-SA-4 (CR-SA-11 Sub-A 連動) / 2026-05-10: 特殊戦法発動位置 Scene 1 事前申告 (scene1-setup.md §2)
     // 値域: 'Start' | 'Mid' | 'Mid1' | 'Mid2' | 'Mid3' | 'Mid4' | null（'End' は含めない）。
     specialStrategyPhase?: string | null;
+    // Bundle-8-T2 / CR-SA-4 (CR-SA-11 Sub-A 連動) / 2026-05-10: 特殊戦法種別 Scene 1 事前申告 (scene1-setup.md §2)
+    // フェーズ非依存で参加者直下に配置。Bundle-4 の history[phaseId].specialStrategy（Scene 3 戦法ボタン操作専用、フェーズ単位）
+    // とは責務を完全分離する。Scene 3 戦法ボタンの初期値は本フィールドから供給される（T4 で実装、T2 では値の保存のみ）。
+    specialStrategyType?: 'Makuri' | 'Tame' | null;
     gate: number | null;
     score: number;
     // History of score/dice input

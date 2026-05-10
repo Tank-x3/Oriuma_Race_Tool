@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { getUniqueSkillTypeOptions } from './entryForm.helpers';
+import {
+    getUniqueSkillTypeOptions,
+    shouldUseTwoRowLayout,
+    getSecondRowFields,
+    getSpecialStrategyPhaseOptions,
+    getBondSkillTypeOptions,
+    getSpecialStrategyTypeOptions,
+} from './entryForm.helpers';
 
 describe('entryForm.helpers - Bundle-2 / D-1, D-14 / 2026-05-09', () => {
     describe('getUniqueSkillTypeOptions (Bundle-3 / D-2 で 2 引数化)', () => {
@@ -75,6 +82,102 @@ describe('entryForm.helpers - Bundle-2 / D-1, D-14 / 2026-05-09', () => {
             const options = getUniqueSkillTypeOptions(false, true);
             expect(options[2].type).toBe('Persistent');
             expect(options[2].label).toBe('持続型 (1d10)');
+        });
+    });
+});
+
+// Bundle-8-T2 / CR-SA-4 / 2026-05-10: 2 行レイアウト判定 + HR 拡張入力 UI 生成
+// scene1-setup.md §2「HR 連動レイアウト『2 行 = 1 出走者』構成」SSoT
+describe('entryForm.helpers - Bundle-8-T2 / 2 行レイアウト判定', () => {
+    describe('shouldUseTwoRowLayout', () => {
+        it('両方 OFF なら false（従来 1 行レイアウト）', () => {
+            expect(shouldUseTwoRowLayout({ enableBondSkill: false, enableSpecialStrategy: false })).toBe(false);
+        });
+
+        it('絆スキル ON のみで true', () => {
+            expect(shouldUseTwoRowLayout({ enableBondSkill: true, enableSpecialStrategy: false })).toBe(true);
+        });
+
+        it('特殊戦法 ON のみで true', () => {
+            expect(shouldUseTwoRowLayout({ enableBondSkill: false, enableSpecialStrategy: true })).toBe(true);
+        });
+
+        it('両方 ON で true', () => {
+            expect(shouldUseTwoRowLayout({ enableBondSkill: true, enableSpecialStrategy: true })).toBe(true);
+        });
+    });
+
+    describe('getSecondRowFields', () => {
+        it('両方 OFF で空配列', () => {
+            expect(getSecondRowFields({ enableBondSkill: false, enableSpecialStrategy: false })).toEqual([]);
+        });
+
+        it('絆スキル ON のみで [bondSkill]', () => {
+            expect(getSecondRowFields({ enableBondSkill: true, enableSpecialStrategy: false })).toEqual([
+                'bondSkill',
+            ]);
+        });
+
+        it('特殊戦法 ON のみで [specialStrategyType, specialStrategyPhase]', () => {
+            expect(getSecondRowFields({ enableBondSkill: false, enableSpecialStrategy: true })).toEqual([
+                'specialStrategyType',
+                'specialStrategyPhase',
+            ]);
+        });
+
+        it('両方 ON で [specialStrategyType, specialStrategyPhase, bondSkill]（並び順固定 = Scene 2 出力順整合）', () => {
+            expect(getSecondRowFields({ enableBondSkill: true, enableSpecialStrategy: true })).toEqual([
+                'specialStrategyType',
+                'specialStrategyPhase',
+                'bondSkill',
+            ]);
+        });
+    });
+
+    describe('getSpecialStrategyPhaseOptions', () => {
+        it('midPhaseCount = 0 で [Start] のみ', () => {
+            expect(getSpecialStrategyPhaseOptions(0).map(o => o.id)).toEqual(['Start']);
+        });
+
+        it('midPhaseCount = 1 で [Start, Mid]', () => {
+            expect(getSpecialStrategyPhaseOptions(1).map(o => o.id)).toEqual(['Start', 'Mid']);
+        });
+
+        it('midPhaseCount = 2 で [Start, Mid1, Mid2]', () => {
+            expect(getSpecialStrategyPhaseOptions(2).map(o => o.id)).toEqual(['Start', 'Mid1', 'Mid2']);
+        });
+
+        it('midPhaseCount = 4 で [Start, Mid1, Mid2, Mid3, Mid4]（仕様上限）', () => {
+            expect(getSpecialStrategyPhaseOptions(4).map(o => o.id)).toEqual([
+                'Start',
+                'Mid1',
+                'Mid2',
+                'Mid3',
+                'Mid4',
+            ]);
+        });
+
+        it('"End" を一切含めない（houserule-features.md §3 終盤発動禁止）', () => {
+            for (const count of [0, 1, 2, 3, 4]) {
+                const ids = getSpecialStrategyPhaseOptions(count).map(o => o.id);
+                expect(ids).not.toContain('End');
+            }
+        });
+    });
+
+    describe('getBondSkillTypeOptions', () => {
+        it('絆ギャンブル / 絆安定 の 2 件を返す（houserule-features.md §2 [v] 絆スキル SSoT）', () => {
+            const options = getBondSkillTypeOptions();
+            expect(options.map(o => o.type)).toEqual(['BondGamble', 'BondStable']);
+            expect(options.map(o => o.label)).toEqual(['絆ギャンブル', '絆安定']);
+        });
+    });
+
+    describe('getSpecialStrategyTypeOptions', () => {
+        it('捲り / 溜め の 2 件を返す（houserule-features.md §3 SSoT）', () => {
+            const options = getSpecialStrategyTypeOptions();
+            expect(options.map(o => o.type)).toEqual(['Makuri', 'Tame']);
+            expect(options.map(o => o.label)).toEqual(['捲り', '溜め']);
         });
     });
 });

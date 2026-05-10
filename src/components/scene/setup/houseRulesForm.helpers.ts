@@ -14,11 +14,14 @@ export interface HouseRuleCheckboxMeta {
 }
 
 // modal-houserule.md §1 基本オプションの記載順かつ文言（変更不可）
+// Bundle-8-T2 / CR-SA-4 / 2026-05-10: 5 つ目「絆スキル」を追加（scene1-setup.md §2 ワイヤーフレーム L28 SSoT、
+// houserule-features.md §2 [v] 絆スキル）。
 export const getHouseRuleCheckboxes = (): HouseRuleCheckboxMeta[] => [
     { key: 'enableModifier', label: '汎用補正(Modifier)ボタンを表示', order: 1 },
     { key: 'enableSpecialStrategy', label: '特殊戦法(ステータス変化: 捲り/溜め)を使用', order: 2 },
     { key: 'enableCompositeUnique', label: '複合固有スキル(発動位置複数選択)を許可', order: 3 },
     { key: 'enableExtendedUnique', label: '拡張固有タイプ(超ギャンブル/超安定)を使用', order: 4 },
+    { key: 'enableBondSkill', label: '絆スキル(連続企画用 絆ギャンブル/絆安定)を使用', order: 5 },
 ];
 
 export const EFFECT_VALUE_MIN = 1;

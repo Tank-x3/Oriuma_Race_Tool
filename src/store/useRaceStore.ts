@@ -46,6 +46,13 @@ interface RaceStoreState extends RaceState {
         participantId: string,
         phaseId: string | null
     ) => void;
+    // Bundle-8-T2 / CR-SA-4 (CR-SA-11 Sub-A 連動) / 2026-05-10: 特殊戦法種別 Scene 1 事前申告 (scene1-setup.md §2)。
+    // 既存 setSpecialStrategy（history 配下、Scene 3 戦法ボタン操作専用）とは責務分離。本 action は participants 直下フィールドを更新のみ。
+    // 値域チェックは UI / validator 層に委ねる（防御的判定なし）。score 再計算は T6 で実装。
+    setSpecialStrategyType: (
+        participantId: string,
+        type: 'Makuri' | 'Tame' | null
+    ) => void;
     // Bundle-5 / P4-2, P4-3, CR-22 / 2026-05-10: 汎用補正の設定 / クリア + score 即時加減算。
     // value は整数、reason は trim 後非空（CR-22 統合）。バリデーション通過済の値が渡る前提で
     // 防御的判定はモーダル側で実施し、本 action は呼ばれた値をそのまま反映する。
@@ -404,6 +411,17 @@ export const useRaceStore = create<RaceStoreState>()(
                     participants: state.participants.map((p) => {
                         if (p.id !== participantId) return p;
                         return { ...p, specialStrategyPhase: phaseId };
+                    }),
+                })),
+
+            // Bundle-8-T2 / CR-SA-4 (CR-SA-11 Sub-A 連動) / 2026-05-10: 特殊戦法種別 Scene 1 事前申告 (scene1-setup.md §2)。
+            // 既存 setSpecialStrategy（history 配下、Scene 3 戦法ボタン操作専用）と責務分離。
+            // 値域チェックは UI / validator 層に委ねる（防御的判定なし）。score 再計算は T6 で追加。
+            setSpecialStrategyType: (participantId, type) =>
+                set((state) => ({
+                    participants: state.participants.map((p) => {
+                        if (p.id !== participantId) return p;
+                        return { ...p, specialStrategyType: type };
                     }),
                 })),
 

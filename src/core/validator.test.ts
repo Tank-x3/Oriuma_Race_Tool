@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { Validator, validatePersistentSkillPhases } from './validator';
+import {
+    Validator,
+    validatePersistentSkillPhases,
+    validateBondSkillType,
+    validateSpecialStrategyPhase,
+    validateSpecialStrategyTypeAndPhase,
+} from './validator';
 
 describe('Validator', () => {
     describe('validateLineCount', () => {
@@ -110,5 +116,107 @@ describe('validatePersistentSkillPhases - Bundle-3 / D-4 / 2026-05-09', () => {
     // 追加 regression guard: midPhaseCount=1 で [Start, End] は非連続（中盤を間に挟む）
     it('returns error for [Start, End] when midPhaseCount=1 (非連続、間に Mid)', () => {
         expect(validatePersistentSkillPhases(['Start', 'End'], 1)).toEqual([expectedError]);
+    });
+});
+
+// Bundle-8-T2 / CR-SA-4 / 2026-05-10: 絆スキル種別バリデーション
+// scene1-setup.md §2 + houserule-features.md §2 [v] 絆スキル SSoT 準拠
+describe('validateBondSkillType - Bundle-8-T2', () => {
+    it('returns no error for "BondGamble"', () => {
+        expect(validateBondSkillType('BondGamble')).toEqual([]);
+    });
+
+    it('returns no error for "BondStable"', () => {
+        expect(validateBondSkillType('BondStable')).toEqual([]);
+    });
+
+    it('returns no error for null (未獲得)', () => {
+        expect(validateBondSkillType(null)).toEqual([]);
+    });
+
+    it('returns no error for undefined (フィールド未設定)', () => {
+        expect(validateBondSkillType(undefined)).toEqual([]);
+    });
+
+    it('returns error for invalid string value', () => {
+        // @ts-expect-error 不正値テスト
+        expect(validateBondSkillType('InvalidValue')).toEqual(['絆スキル種別の値が不正です']);
+    });
+});
+
+// Bundle-8-T2 / CR-SA-4 (CR-SA-11 Sub-A 連動) / 2026-05-10: 特殊戦法発動位置バリデーション
+// scene1-setup.md §2 + houserule-features.md §3 §捲り 前 cross-reference SSoT 準拠（'End' 除外）
+describe('validateSpecialStrategyPhase - Bundle-8-T2', () => {
+    const phaseError = '特殊戦法の発動位置が不正です（終盤・現在の中盤回数外は選択不可）';
+
+    it('returns no error for "Start" (midPhaseCount = 2)', () => {
+        expect(validateSpecialStrategyPhase('Start', 2)).toEqual([]);
+    });
+
+    it('returns no error for "Mid1" (midPhaseCount = 2)', () => {
+        expect(validateSpecialStrategyPhase('Mid1', 2)).toEqual([]);
+    });
+
+    it('returns no error for "Mid2" (midPhaseCount = 2)', () => {
+        expect(validateSpecialStrategyPhase('Mid2', 2)).toEqual([]);
+    });
+
+    it('returns error for "Mid3" (midPhaseCount = 2、範囲外)', () => {
+        expect(validateSpecialStrategyPhase('Mid3', 2)).toEqual([phaseError]);
+    });
+
+    it('returns error for "End" (除外、終盤発動禁止)', () => {
+        expect(validateSpecialStrategyPhase('End', 2)).toEqual([phaseError]);
+    });
+
+    it('returns no error for null (未設定)', () => {
+        expect(validateSpecialStrategyPhase(null, 2)).toEqual([]);
+    });
+
+    it('returns no error for "Mid" when midPhaseCount = 1 (単一中盤)', () => {
+        expect(validateSpecialStrategyPhase('Mid', 1)).toEqual([]);
+    });
+
+    it('returns error for "Mid1" when midPhaseCount = 1 (Mid1 は不在)', () => {
+        expect(validateSpecialStrategyPhase('Mid1', 1)).toEqual([phaseError]);
+    });
+
+    it('returns no error for "Mid4" when midPhaseCount = 4 (上限値)', () => {
+        expect(validateSpecialStrategyPhase('Mid4', 4)).toEqual([]);
+    });
+
+    it('returns error for "Mid5" when midPhaseCount = 4 (上限超)', () => {
+        expect(validateSpecialStrategyPhase('Mid5', 4)).toEqual([phaseError]);
+    });
+});
+
+// Bundle-8-T2 / CR-SA-4 (CR-SA-11 Sub-A 連動) / 2026-05-10: 種別 + 発動位置セット必須性
+// scene1-setup.md §2「種別と発動位置はセット入力が必須」SSoT
+describe('validateSpecialStrategyTypeAndPhase - Bundle-8-T2', () => {
+    const typeMissingError = '発動位置を選択した場合、特殊戦法種別の指定が必須です';
+    const phaseMissingError = '特殊戦法を選択した場合、発動位置の指定が必須です';
+
+    it('returns no error when both null (両方未設定)', () => {
+        expect(validateSpecialStrategyTypeAndPhase(null, null)).toEqual([]);
+    });
+
+    it('returns no error when both undefined', () => {
+        expect(validateSpecialStrategyTypeAndPhase(undefined, undefined)).toEqual([]);
+    });
+
+    it('returns no error for type=Makuri + phase=Mid1', () => {
+        expect(validateSpecialStrategyTypeAndPhase('Makuri', 'Mid1')).toEqual([]);
+    });
+
+    it('returns no error for type=Tame + phase=Start', () => {
+        expect(validateSpecialStrategyTypeAndPhase('Tame', 'Start')).toEqual([]);
+    });
+
+    it('returns error for type=Makuri + phase=null (発動位置未設定)', () => {
+        expect(validateSpecialStrategyTypeAndPhase('Makuri', null)).toEqual([phaseMissingError]);
+    });
+
+    it('returns error for type=null + phase=Mid1 (種別未設定)', () => {
+        expect(validateSpecialStrategyTypeAndPhase(null, 'Mid1')).toEqual([typeMissingError]);
     });
 });

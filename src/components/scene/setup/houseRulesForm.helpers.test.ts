@@ -8,25 +8,28 @@ import {
 } from './houseRulesForm.helpers';
 
 describe('Bundle-9 / 2026-05-10 getHouseRuleCheckboxes', () => {
-    it('4 件の項目を仕様書 §1 記載順で返す', () => {
+    // Bundle-8-T2 / CR-SA-4 / 2026-05-10: 5 つ目「絆スキル」を追加（scene1-setup.md §2 ワイヤーフレーム L28 SSoT）。
+    it('5 件の項目を仕様書 §1 + scene1-setup.md §2 記載順で返す', () => {
         const items = getHouseRuleCheckboxes();
-        expect(items).toHaveLength(4);
+        expect(items).toHaveLength(5);
         expect(items.map((i) => i.key)).toEqual([
             'enableModifier',
             'enableSpecialStrategy',
             'enableCompositeUnique',
             'enableExtendedUnique',
+            'enableBondSkill',
         ]);
-        expect(items.map((i) => i.order)).toEqual([1, 2, 3, 4]);
+        expect(items.map((i) => i.order)).toEqual([1, 2, 3, 4, 5]);
     });
 
-    it('ラベル文言が modal-houserule.md §1 と完全一致（変更不可）', () => {
+    it('ラベル文言が modal-houserule.md §1 + scene1-setup.md §2 と完全一致（変更不可）', () => {
         const items = getHouseRuleCheckboxes();
         const labels = Object.fromEntries(items.map((i) => [i.key, i.label]));
         expect(labels.enableModifier).toBe('汎用補正(Modifier)ボタンを表示');
         expect(labels.enableSpecialStrategy).toBe('特殊戦法(ステータス変化: 捲り/溜め)を使用');
         expect(labels.enableCompositeUnique).toBe('複合固有スキル(発動位置複数選択)を許可');
         expect(labels.enableExtendedUnique).toBe('拡張固有タイプ(超ギャンブル/超安定)を使用');
+        expect(labels.enableBondSkill).toBe('絆スキル(連続企画用 絆ギャンブル/絆安定)を使用');
     });
 });
 
