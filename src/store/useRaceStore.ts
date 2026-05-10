@@ -7,7 +7,10 @@ import { useNotificationStore } from './useNotificationStore';
 // Bundle-4 / P4-1, P4-5 / 2026-05-10: 特殊戦法（捲り/溜め）の score 補正計算を純粋関数に委譲。
 // calculator.ts は不変厳守エリアのため、Calculator 戻り値に上乗せする運用とする。
 // Round 2 改修: 解析未実行 history を fixValue 加算から除外する一元化関数 `calculateScoreWithSpecialStrategy` を採用。
-import { calculateScoreWithSpecialStrategy } from '../components/scene/race/specialStrategy.helpers';
+// Bundle-8-T6 / CR-SA-4 / 2026-05-10: 絆スキルの最終加算を上乗せした統合 score 計算関数
+// `calculateScoreWithBondSkill` に切り替え。calculator.ts 不変厳守は維持し、
+// `bondSkill.helpers` 内で `calculateScoreWithSpecialStrategy` をラップする構造に改修。
+import { calculateScoreWithBondSkill } from '../components/scene/race/bondSkill.helpers';
 // Bundle-7 / P4-6 / 2026-05-10: 永続化マイグレーションで houseRules を zod 検証する。
 // houserule-features.md §4 zod 検証範囲表に基づく検証 + Bundle-1 で追加された 2 フィールドの補完。
 import { houseRulesSchema, type HouseRulesData } from '../core/schema/houseRules';
@@ -232,13 +235,13 @@ export const useRaceStore = create<RaceStoreState>()(
                         participants: state.participants.map(p => ({
                             ...p,
                             // Bundle-4 Round 2 / 2026-05-10: 解析未実行 phase 除外 + specialStrategy delta 一元化
-                            score: calculateScoreWithSpecialStrategy(
+                            // Bundle-8-T6 / CR-SA-4 / 2026-05-10: 絆スキル最終加算統合
+                            score: calculateScoreWithBondSkill(
                                 p,
                                 state.strategies,
                                 state.paceResult.face,
                                 activePhaseIds,
-                                state.config.houseRules.effectValue,
-                                state.config.houseRules.enableSpecialStrategy,
+                                state.config.houseRules,
                             ),
                         })),
                     };
@@ -271,8 +274,14 @@ export const useRaceStore = create<RaceStoreState>()(
                         updates.enableSpecialStrategy !== undefined &&
                         updates.enableSpecialStrategy !==
                             state.config.houseRules.enableSpecialStrategy;
+                    // Bundle-8-T6 / CR-SA-4 / 2026-05-10: enableBondSkill OFF→ON / ON→OFF 切替時にも
+                    // 絆スキル分の delta が score へ加減されるよう再計算をトリガーする。
+                    const bondSkillChanged =
+                        updates.enableBondSkill !== undefined &&
+                        updates.enableBondSkill !==
+                            state.config.houseRules.enableBondSkill;
 
-                    if (!effectValueChanged && !enableChanged) {
+                    if (!effectValueChanged && !enableChanged && !bondSkillChanged) {
                         return { config: newConfig };
                     }
 
@@ -281,13 +290,12 @@ export const useRaceStore = create<RaceStoreState>()(
                         config: newConfig,
                         participants: state.participants.map((p) => ({
                             ...p,
-                            score: calculateScoreWithSpecialStrategy(
+                            score: calculateScoreWithBondSkill(
                                 p,
                                 state.strategies,
                                 state.paceResult.face,
                                 activePhaseIds,
-                                newHouseRules.effectValue,
-                                newHouseRules.enableSpecialStrategy,
+                                newHouseRules,
                             ),
                         })),
                     };
@@ -311,13 +319,12 @@ export const useRaceStore = create<RaceStoreState>()(
 
                             return {
                                 ...next,
-                                score: calculateScoreWithSpecialStrategy(
+                                score: calculateScoreWithBondSkill(
                                     next,
                                     state.strategies,
                                     state.paceResult.face,
                                     activePhaseIds,
-                                    state.config.houseRules.effectValue,
-                                    state.config.houseRules.enableSpecialStrategy,
+                                    state.config.houseRules,
                                 ),
                             };
                         }),
@@ -347,13 +354,12 @@ export const useRaceStore = create<RaceStoreState>()(
 
                             return {
                                 ...next,
-                                score: calculateScoreWithSpecialStrategy(
+                                score: calculateScoreWithBondSkill(
                                     next,
                                     state.strategies,
                                     state.paceResult.face,
                                     activePhaseIds,
-                                    state.config.houseRules.effectValue,
-                                    state.config.houseRules.enableSpecialStrategy,
+                                    state.config.houseRules,
                                 ),
                             };
                         }),
@@ -381,13 +387,12 @@ export const useRaceStore = create<RaceStoreState>()(
 
                             return {
                                 ...next,
-                                score: calculateScoreWithSpecialStrategy(
+                                score: calculateScoreWithBondSkill(
                                     next,
                                     state.strategies,
                                     state.paceResult.face,
                                     activePhaseIds,
-                                    state.config.houseRules.effectValue,
-                                    state.config.houseRules.enableSpecialStrategy,
+                                    state.config.houseRules,
                                 ),
                             };
                         }),
@@ -395,14 +400,31 @@ export const useRaceStore = create<RaceStoreState>()(
                 }),
 
             // Bundle-8-T1 / CR-SA-4 / 2026-05-10: 絆スキル種別の設定 (houserule-features.md §2 [v] 絆スキル)。
-            // フェーズ非依存で participants[*] 直下に配置。score 再計算は行わない（T6 でスコア計算統合時に追加）。
+            // フェーズ非依存で participants[*] 直下に配置。
+            // Bundle-8-T6 / CR-SA-4 / 2026-05-10: 種別変更時に score 再計算を追加。
+            // 終盤後に既に bondDice が格納されている状態で種別を切り替えた場合（種別 null → BondGamble、
+            // BondGamble → null 等）、calculateBondSkillDelta が新しい種別判定で 0/sum を返すため
+            // score へ即時反映される。bondDice 不在時（Scene 1 段階）は delta = 0 で score 変動なし。
             setBondSkill: (participantId, type) =>
-                set((state) => ({
-                    participants: state.participants.map((p) => {
-                        if (p.id !== participantId) return p;
-                        return { ...p, bondSkill: { type } };
-                    }),
-                })),
+                set((state) => {
+                    const activePhaseIds = getActivePhaseIds(state.config.midPhaseCount);
+                    return {
+                        participants: state.participants.map((p) => {
+                            if (p.id !== participantId) return p;
+                            const next: Umamusume = { ...p, bondSkill: { type } };
+                            return {
+                                ...next,
+                                score: calculateScoreWithBondSkill(
+                                    next,
+                                    state.strategies,
+                                    state.paceResult.face,
+                                    activePhaseIds,
+                                    state.config.houseRules,
+                                ),
+                            };
+                        }),
+                    };
+                }),
 
             // Bundle-8-T1 / CR-SA-4 (CR-SA-11 Sub-A 連動) / 2026-05-10: 特殊戦法発動位置 Scene 1 事前申告 (scene1-setup.md §2)。
             // 値域チェックは UI / validator 層に委ねる（防御的判定なし）。score 再計算は行わない（T4 で戦法ボタン連動時に追加）。
@@ -500,24 +522,25 @@ export const useRaceStore = create<RaceStoreState>()(
                             }
 
                             // Bundle-4 / 2026-05-10: 解析未実行 phase 除外 + specialStrategy delta 上乗せの一元化関数
-                            next.score = calculateScoreWithSpecialStrategy(
+                            // Bundle-8-T6 / CR-SA-4 / 2026-05-10: 絆スキル最終加算統合
+                            next.score = calculateScoreWithBondSkill(
                                 next,
                                 state.strategies,
                                 state.paceResult.face,
                                 getActivePhaseIds(state.config.midPhaseCount),
-                                state.config.houseRules.effectValue,
-                                state.config.houseRules.enableSpecialStrategy,
+                                state.config.houseRules,
                             );
                         } else if (updates.history) {
                             // Bundle-4 Round 2 / 2026-05-10: history 単独更新時も score 再計算（PhaseInput 解析実行経路で
                             // specialStrategy delta が反映されるようにするための連動）。
-                            next.score = calculateScoreWithSpecialStrategy(
+                            // Bundle-8-T6 / CR-SA-4 / 2026-05-10: PhaseInput が history.End.bondDice を
+                            // 格納する経路（T5 で実装）にも本分岐が反応し、絆スキル分が score へ即時反映される。
+                            next.score = calculateScoreWithBondSkill(
                                 next,
                                 state.strategies,
                                 state.paceResult.face,
                                 getActivePhaseIds(state.config.midPhaseCount),
-                                state.config.houseRules.effectValue,
-                                state.config.houseRules.enableSpecialStrategy,
+                                state.config.houseRules,
                             );
                         }
 

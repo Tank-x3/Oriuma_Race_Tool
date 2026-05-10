@@ -1581,11 +1581,16 @@ describe('useRaceStore - Bundle-8-T1 / 絆スキル基盤', () => {
         expect(updated.bondSkill?.type).toBeNull();
     });
 
-    it('(v) setBondSkill 呼び出し時に score は変更されない（T1 はスコア計算統合なし、T6 で実装）', () => {
+    it('(v) setBondSkill: bondDice 不在 + HR フラグ OFF → score 変動なし（Bundle-8-T6 で score 再計算経路を追加するも delta=0）', () => {
+        // Bundle-8-T6 / 2026-05-10: T6 で setBondSkill action 内に score 再計算を追加した。
+        // installBondParticipant は houseRules.enableBondSkill デフォルト false + history 空なので
+        // bondDice 不在 → calculateBondSkillDelta が 0 を返し、再計算後の score は baseScore（=0）になる。
+        // T1 期間の「score 100 を維持」期待は T6 仕様変更（採用案 a 例外、TASK_INSTRUCTION §4 案 X1 正常範囲）で改訂。
         installBondParticipant({ score: 100 });
         useRaceStore.getState().setBondSkill('p1', 'BondGamble');
         const updated = useRaceStore.getState().participants[0];
-        expect(updated.score).toBe(100);
+        // baseScore（history 空 + 戦法情報なし）= 0、絆スキル delta = 0（フラグ OFF + bondDice 不在）
+        expect(updated.score).toBe(0);
     });
 
     it('(vi) setBondSkill: 存在しない participant ID には no-op（防御的、他参加者は不変）', () => {
@@ -1743,5 +1748,200 @@ describe('useRaceStore.persistMigrate - Bundle-8-T1 / v2→v3 マイグレーシ
         } as unknown as PersistedRaceState;
 
         expect(() => persistMigrate(v2Invalid, 2)).toThrow();
+    });
+});
+
+// Bundle-8-T6 / CR-SA-4 / 2026-05-10: 絆スキル スコア最終加算のストア統合テスト。
+// 仕様根拠: basic-rules.md §5 末尾「絆スキルの最終加算」+ houserule-features.md §2 [v] §計算仕様。
+describe('useRaceStore - Bundle-8-T6 / 絆スキル スコア最終加算', () => {
+    beforeEach(() => {
+        useRaceStore.getState().resetRace();
+    });
+
+    const setupBondParticipant = (
+        bondType: 'BondGamble' | 'BondStable' | null,
+        bondDiceSum: number | null,
+        opts: { enableBondSkill: boolean; midPhaseCount?: number; reachEnd?: boolean } = {
+            enableBondSkill: true,
+        },
+    ) => {
+        const midPhaseCount = opts.midPhaseCount ?? 1;
+        const history: Umamusume['history'] = {
+            Start: { baseDice: makeDice('3d8', [3, 3, 4]), computedScore: 0 },
+            Mid: { baseDice: makeDice('3d5', [5, 5, 5]), computedScore: 0 },
+        };
+        if (opts.reachEnd !== false) {
+            history.End = {
+                baseDice: makeDice('3d6', [7, 7, 6]),
+                computedScore: 0,
+            };
+            if (bondDiceSum !== null) {
+                history.End.bondDice = {
+                    diceStr: bondType === 'BondStable' ? '1d5' : '1d15',
+                    values: [bondDiceSum],
+                    sum: bondDiceSum,
+                };
+            }
+        }
+        const p = setupParticipant({
+            strategy: '先行',
+            bondSkill: { type: bondType },
+            history,
+        });
+        useRaceStore.setState({
+            config: {
+                midPhaseCount,
+                fullGateSize: null,
+                houseRules: {
+                    enableModifier: false,
+                    enableSpecialStrategy: false,
+                    enableCompositeUnique: false,
+                    enableExtendedUnique: false,
+                    enableBondSkill: opts.enableBondSkill,
+                    effectValue: 15,
+                },
+            },
+            participants: [p],
+        });
+        // setMidPhaseCount で score 再計算をトリガー（既存値と同じだが unconditional に再計算する仕様を活用）
+        useRaceStore.getState().setMidPhaseCount(midPhaseCount);
+        return p;
+    };
+
+    it('(1) HR 絆スキル ON + 絆ギャンブル + bondDice.sum=12 → score に +12 反映', () => {
+        setupBondParticipant('BondGamble', 12, { enableBondSkill: true });
+        const scoreOn = useRaceStore.getState().participants[0].score;
+        useRaceStore.getState().updateHouseRules({ enableBondSkill: false });
+        const scoreOff = useRaceStore.getState().participants[0].score;
+        expect(scoreOn - scoreOff).toBe(12);
+    });
+
+    it('(2) HR 絆スキル ON + 絆安定 + bondDice.sum=8（fix 5 込み）→ score に +8 反映', () => {
+        setupBondParticipant('BondStable', 8, { enableBondSkill: true });
+        const scoreOn = useRaceStore.getState().participants[0].score;
+        useRaceStore.getState().updateHouseRules({ enableBondSkill: false });
+        const scoreOff = useRaceStore.getState().participants[0].score;
+        expect(scoreOn - scoreOff).toBe(8);
+    });
+
+    it('(3) HR 絆スキル ON + 種別 null → 加算なし', () => {
+        setupBondParticipant(null, 12, { enableBondSkill: true });
+        const scoreOn = useRaceStore.getState().participants[0].score;
+        useRaceStore.getState().updateHouseRules({ enableBondSkill: false });
+        const scoreOff = useRaceStore.getState().participants[0].score;
+        expect(scoreOn).toBe(scoreOff); // 種別未指定 = フラグ ON/OFF ともに加算なし
+    });
+
+    it('(4) HR 絆スキル OFF + 種別指定済 → 加算なし（フラグ OFF 抑制）', () => {
+        setupBondParticipant('BondGamble', 12, { enableBondSkill: false });
+        const score = useRaceStore.getState().participants[0].score;
+        // 同条件 + フラグ ON にすると +12 されるはず
+        useRaceStore.getState().updateHouseRules({ enableBondSkill: true });
+        const scoreOn = useRaceStore.getState().participants[0].score;
+        expect(scoreOn - score).toBe(12);
+    });
+
+    it('(5) 終盤 bondDice 不在（解析未実行）→ 加算なし', () => {
+        const history: Umamusume['history'] = {
+            Start: { baseDice: makeDice('3d8', [3, 3, 4]), computedScore: 0 },
+            Mid: { baseDice: makeDice('3d5', [5, 5, 5]), computedScore: 0 },
+            End: { baseDice: makeDice('3d6', [7, 7, 6]), computedScore: 0 },
+        };
+        const p = setupParticipant({
+            strategy: '先行',
+            bondSkill: { type: 'BondGamble' },
+            history,
+        });
+        installParticipant(p);
+        useRaceStore.getState().updateHouseRules({ enableBondSkill: true });
+        const scoreOn = useRaceStore.getState().participants[0].score;
+        useRaceStore.getState().updateHouseRules({ enableBondSkill: false });
+        const scoreOff = useRaceStore.getState().participants[0].score;
+        expect(scoreOn).toBe(scoreOff); // bondDice 不在 = フラグ ON/OFF ともに加算なし
+    });
+
+    it('(6) 終盤未到達（中盤フェーズまで）→ 加算なし', () => {
+        const history: Umamusume['history'] = {
+            Start: { baseDice: makeDice('3d8', [3, 3, 4]), computedScore: 0 },
+            Mid: { baseDice: makeDice('3d5', [5, 5, 5]), computedScore: 0 },
+        };
+        const p = setupParticipant({
+            strategy: '先行',
+            bondSkill: { type: 'BondGamble' },
+            history,
+        });
+        installParticipant(p);
+        useRaceStore.getState().updateHouseRules({ enableBondSkill: true });
+        const scoreOn = useRaceStore.getState().participants[0].score;
+        useRaceStore.getState().updateHouseRules({ enableBondSkill: false });
+        const scoreOff = useRaceStore.getState().participants[0].score;
+        expect(scoreOn).toBe(scoreOff);
+    });
+});
+
+describe('useRaceStore - Bundle-8-T6 / setBondSkill action score 再計算', () => {
+    beforeEach(() => {
+        useRaceStore.getState().resetRace();
+    });
+
+    it('(7) bondDice 既存 + setBondSkill(p1, BondGamble) → score 即時加算', () => {
+        const history: Umamusume['history'] = {
+            Start: { baseDice: makeDice('3d8', [3, 3, 4]), computedScore: 0 },
+            End: {
+                baseDice: makeDice('3d6', [7, 7, 6]),
+                bondDice: makeDice('1d15', [12]),
+                computedScore: 0,
+            },
+        };
+        const p = setupParticipant({
+            strategy: '先行',
+            bondSkill: { type: null },
+            history,
+        });
+        installParticipant(p);
+        useRaceStore.getState().updateHouseRules({ enableBondSkill: true });
+        const before = useRaceStore.getState().participants[0].score;
+        useRaceStore.getState().setBondSkill('p1', 'BondGamble');
+        const after = useRaceStore.getState().participants[0].score;
+        expect(after - before).toBe(12);
+    });
+
+    it('(8) bondDice 不在 + setBondSkill(p1, BondGamble) → score 変動なし', () => {
+        const history: Umamusume['history'] = {
+            Start: { baseDice: makeDice('3d8', [3, 3, 4]), computedScore: 0 },
+        };
+        const p = setupParticipant({
+            strategy: '先行',
+            bondSkill: { type: null },
+            history,
+        });
+        installParticipant(p);
+        useRaceStore.getState().updateHouseRules({ enableBondSkill: true });
+        const before = useRaceStore.getState().participants[0].score;
+        useRaceStore.getState().setBondSkill('p1', 'BondGamble');
+        const after = useRaceStore.getState().participants[0].score;
+        expect(after).toBe(before);
+    });
+
+    it('(9) BondGamble 状態 → setBondSkill(p1, null) で加算分が減じられる', () => {
+        const history: Umamusume['history'] = {
+            Start: { baseDice: makeDice('3d8', [3, 3, 4]), computedScore: 0 },
+            End: {
+                baseDice: makeDice('3d6', [7, 7, 6]),
+                bondDice: makeDice('1d15', [12]),
+                computedScore: 0,
+            },
+        };
+        const p = setupParticipant({
+            strategy: '先行',
+            bondSkill: { type: 'BondGamble' },
+            history,
+        });
+        installParticipant(p);
+        useRaceStore.getState().updateHouseRules({ enableBondSkill: true });
+        const before = useRaceStore.getState().participants[0].score;
+        useRaceStore.getState().setBondSkill('p1', null);
+        const after = useRaceStore.getState().participants[0].score;
+        expect(before - after).toBe(12);
     });
 });

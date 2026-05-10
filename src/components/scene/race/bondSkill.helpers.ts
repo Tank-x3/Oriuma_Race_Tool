@@ -1,7 +1,12 @@
 // Bundle-8-T4 / CR-SA-4 / 2026-05-10: 絆スキル PhaseOutput 用 helpers（scene3-race.md §2）。
 // Scene 1 で事前申告した絆スキル種別を、終盤フェーズの「投稿用ダイス出力」末尾に
 // 【絆スキル】セクションとして自動生成するための純粋関数群。
-import type { RaceState, Umamusume } from '../../../types';
+// Bundle-8-T6 / CR-SA-4 / 2026-05-10: 絆スキルの最終加算（basic-rules.md §5 末尾 +
+// houserule-features.md §2 [v] §計算仕様）を担う純粋関数を本ファイルに追加配置する。
+// calculator.ts は不変厳守エリアのため、Bundle-4 の `calculateScoreWithSpecialStrategy`
+// と同パターンで「Calculator 戻り値に上乗せする」運用を踏襲する。
+import type { RaceState, Strategy, Umamusume } from '../../../types';
+import { calculateScoreWithSpecialStrategy } from './specialStrategy.helpers';
 
 type HouseRules = RaceState['config']['houseRules'];
 
@@ -104,4 +109,65 @@ export const getBondSkillSection = (
     if (lines.length === 0) return '';
 
     return `【絆スキル】\n${lines.join('\n')}`;
+};
+
+// Bundle-8-T6 / CR-SA-4 / 2026-05-10: 絆スキルの最終加算ロジック。
+// 仕様根拠: basic-rules.md §5 累積加算方式 末尾「絆スキルの最終加算」+
+//          houserule-features.md §2 [v] §計算仕様 SSoT。
+//
+// Parser 仕様（src/core/parser/bondTypes.ts L19-23）により、`history.End.bondDice.sum` には
+// 既に「絆スキルとして加算すべき値（fix value 込みの total）」が格納されている:
+//   - 絆ギャンブル `dice1d15=12` → bondDice.sum = 12
+//   - 絆安定 `5+dice1d5=` 出目 3 → bondDice.sum = 5 + 3 = 8
+// したがって本 helper は種別分岐せず単純に sum を返すだけで、仕様 §計算仕様 SSoT
+// （絆ギャンブル: `+ 出目` / 絆安定: `+ (出目 + 5)`）と完全一致する。
+
+/**
+ * 当該参加者の score に最終加算すべき絆スキル分の delta を返す純粋関数。
+ *
+ * 抑制条件 (OR、いずれか成立で delta = 0):
+ *  - houseRules.enableBondSkill === false（HR フラグ OFF）
+ *  - participant.bondSkill?.type が `null` / `undefined`（種別未指定）
+ *  - participant.history.End?.bondDice 不在（Parser 未解析、終盤未到達含む）
+ *
+ * 上記いずれにも該当しない場合 → `participant.history.End.bondDice.sum` を返す。
+ * Parser 側で fix value 込みの total が格納されているため、種別による式分岐は不要。
+ */
+export const calculateBondSkillDelta = (
+    p: Umamusume,
+    houseRules: Pick<HouseRules, 'enableBondSkill'>,
+): number => {
+    if (!houseRules.enableBondSkill) return 0;
+    const type = p.bondSkill?.type;
+    if (!type) return 0;
+    const bondDice = p.history['End']?.bondDice;
+    if (!bondDice) return 0;
+    return bondDice.sum;
+};
+
+/**
+ * 特殊戦法 delta + 絆スキル delta を含めた完全 score を返す。
+ * 既存 `calculateScoreWithSpecialStrategy`（Bundle-4 ENG28 確立、解析未実行 phase 除外 +
+ * specialStrategy delta 一元化）の戻り値に `calculateBondSkillDelta` を加算する。
+ *
+ * useRaceStore の score 再計算経路すべて（setMidPhaseCount / updateHouseRules /
+ * setSpecialStrategy / setManualModifier / clearManualModifier / updateParticipant /
+ * setBondSkill）で本関数を呼ぶことで、絆スキル統合後の score 計算ロジックを一元化する。
+ */
+export const calculateScoreWithBondSkill = (
+    p: Umamusume,
+    strategies: Strategy[],
+    paceFace: number | null,
+    activePhaseIds: readonly string[],
+    houseRules: Pick<HouseRules, 'effectValue' | 'enableSpecialStrategy' | 'enableBondSkill'>,
+): number => {
+    const baseScore = calculateScoreWithSpecialStrategy(
+        p,
+        strategies,
+        paceFace,
+        activePhaseIds,
+        houseRules.effectValue,
+        houseRules.enableSpecialStrategy,
+    );
+    return baseScore + calculateBondSkillDelta(p, houseRules);
 };
