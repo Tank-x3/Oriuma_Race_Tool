@@ -53,10 +53,10 @@ interface RaceStoreState extends RaceState {
     startRace: () => void;
     setCurrentPhase: (phaseId: string) => void;
     setPaceResult: (face: number, label: string) => void;
-    // CR-8: prevPhase() からの呼び出し用。指定 phaseId の participants[].history を削除し、
-    // score を再計算する。options.resetPace=true の場合は paceResult も { face: null, label: null }
-    // にリセットし、その状態で score 再計算する（ペース戻り時の再投擲フロー成立条件）。
-    revertPhaseHistory: (phaseId: string, options: { resetPace: boolean }) => void;
+    // Bundle-6 / P4-4 + CR-19 / 2026-05-10: 仕様 scene3-race.md §6「完全な状態復元」準拠。
+    // CR-8 (2026-04) で導入された revertPhaseHistory action は本 Bundle で完全削除した。
+    // 戻る操作（useRaceEngine.prevPhase）は setCurrentPhase で前フェーズに戻すのみで、
+    // history / paceResult / specialStrategy / manualModifier すべて保持する。
     moveToJudgment: () => void;
     moveToResult: () => void;
     moveToSetup: () => void;
@@ -474,40 +474,10 @@ export const useRaceStore = create<RaceStoreState>()(
 
             setGateAssignments: (value) => set({ gateAssignments: value }),
 
-            // CR-8: 戻り元フェーズの history を削除し、score を再計算する。
-            // resetPace=true の場合は paceResult を null にリセットし、再計算もその前提で行う
-            // （Mid 以降のフェーズスコアから paceModifier が外れる）。
-            // 仕様根拠: scene3-race.md §6 「内容修正へ(Back)」 / CODE_REVIEW_BOARD #4-1-4
-            revertPhaseHistory: (phaseId, options) =>
-                set((state) => {
-                    const activePhaseIds = getActivePhaseIds(state.config.midPhaseCount);
-                    const newPaceFace = options.resetPace ? null : state.paceResult.face;
-
-                    const newParticipants = state.participants.map((p) => {
-                        const newHistory = { ...p.history };
-                        delete newHistory[phaseId];
-                        const next: Umamusume = { ...p, history: newHistory };
-                        // Bundle-4 / 2026-05-10: phaseId 削除で history が変わるため、specialStrategy
-                        // delta も再計算（例: End 削除で終盤反動が消える、specialStrategy 発動フェーズの
-                        // 削除で発動自体が取り消される）。Round 2: 解析未実行 phase 除外も一元化。
-                        next.score = calculateScoreWithSpecialStrategy(
-                            next,
-                            state.strategies,
-                            newPaceFace,
-                            activePhaseIds,
-                            state.config.houseRules.effectValue,
-                            state.config.houseRules.enableSpecialStrategy,
-                        );
-                        return next;
-                    });
-
-                    return options.resetPace
-                        ? {
-                              participants: newParticipants,
-                              paceResult: { face: null, label: null },
-                          }
-                        : { participants: newParticipants };
-                }),
+            // Bundle-6 / P4-4 + CR-19 / 2026-05-10: CR-8 由来の revertPhaseHistory action は
+            // 仕様 scene3-race.md §6「完全な状態復元」準拠のため本 Bundle で完全削除した。
+            // 戻る操作で消したい場合は戻り先で個別 action（clearManualModifier / setSpecialStrategy(null) /
+            // ダイス再貼付けによる history 上書き）を使用する。
 
             // #1-3a-3: エントリー確定時に名前空欄行を除外し、以降の Scene では
             // 名前入力済みの有効参加者のみを扱う。仕様: scene1-setup.md ワイヤーフレーム

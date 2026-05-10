@@ -1,31 +1,25 @@
 import { useMemo } from 'react';
 import { useRaceStore } from '../store/useRaceStore';
 
-// CR-8: prevPhase() の副作用部分（store 操作）から純粋な計画決定ロジックを切り出した関数。
-// 戻り元フェーズ・戻り先フェーズ・ペース判定リセット要否を決定する。
-// no-op（序盤 / 不正フェーズ / レースループ外）の場合は null を返す。
-// ペース判定リセット条件: 戻り元が 'Pace'、または戻り元が phaseSequence の最初の Mid
-// （midPhaseCount=1 なら 'Mid'、>=2 なら 'Mid1'、いずれも phaseSequence[2]）。
+// Bundle-6 / P4-4 + CR-19 / 2026-05-10: 仕様 scene3-race.md §6「完全な状態復元」準拠。
+// CR-8 (2026-04) で導入された削除型設計（{ revertPhaseId, resetPace, prevPhaseId } を返し
+// useRaceStore.revertPhaseHistory で history 削除 + paceResult リセットを行う）は本 Bundle で
+// 廃止した。本関数は単に戻り先 phaseId を決定するのみで、history / paceResult / specialStrategy /
+// manualModifier はすべて保持される。no-op（序盤 / 不正フェーズ / レースループ外）の場合は null。
 export const computePrevPhasePlan = (
     currentPhaseId: string,
     phaseSequence: readonly string[]
-): { revertPhaseId: string; resetPace: boolean; prevPhaseId: string } | null => {
+): { prevPhaseId: string } | null => {
     const currentIndex = phaseSequence.indexOf(currentPhaseId);
     if (currentIndex <= 0) return null;
 
-    const prevPhaseId = phaseSequence[currentIndex - 1];
-    const firstMidId = phaseSequence[2];
-    const shouldResetPace = currentPhaseId === 'Pace' || currentPhaseId === firstMidId;
-
     return {
-        revertPhaseId: currentPhaseId,
-        resetPace: shouldResetPace,
-        prevPhaseId,
+        prevPhaseId: phaseSequence[currentIndex - 1],
     };
 };
 
 export const useRaceEngine = () => {
-    const { config, currentPhaseId, setCurrentPhase, revertPhaseHistory } = useRaceStore();
+    const { config, currentPhaseId, setCurrentPhase } = useRaceStore();
 
     // Determine phase sequence based on config
     const phaseSequence = useMemo(() => {
@@ -67,12 +61,13 @@ export const useRaceEngine = () => {
     };
 
     const prevPhase = () => {
-        // CR-8: 戻り元フェーズの history を削除 + score 再計算 + 必要なら paceResult リセット。
-        // 序盤からの戻り（Scene 2 への遷移）は RaceScene.tsx:153-160 の handleBack() が担う。
+        // Bundle-6 / P4-4 + CR-19 / 2026-05-10: 仕様 scene3-race.md §6「完全な状態復元」準拠。
+        // 単に戻り先 phaseId に setCurrentPhase するのみ。history / paceResult / specialStrategy /
+        // manualModifier は保持される。序盤からの戻り（Scene 2 への遷移）は RaceScene.tsx の
+        // handleBack() が担う（本関数は null を返して no-op）。
         const plan = computePrevPhasePlan(currentPhaseId, phaseSequence);
         if (plan === null) return;
 
-        revertPhaseHistory(plan.revertPhaseId, { resetPace: plan.resetPace });
         setCurrentPhase(plan.prevPhaseId);
     };
 

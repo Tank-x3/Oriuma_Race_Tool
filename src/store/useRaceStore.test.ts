@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
     useRaceStore,
     persistPartialize,
@@ -576,23 +576,45 @@ describe('CR-5a-2: gateAssignments ストア昇格', () => {
     });
 });
 
-describe('useRaceStore.revertPhaseHistory - CR-8 / scene3-race.md §6', () => {
-    beforeEach(() => {
+// Bundle-6 / P4-4 + CR-19 / 2026-05-10: 仕様 scene3-race.md §6「完全な状態復元」準拠で
+// CR-8 由来の revertPhaseHistory action は完全削除した。本 describe は「戻る操作で
+// 何も消えない（history / paceResult / specialStrategy / manualModifier 全保持）」を
+// store level で保証する新 describe（store action 自体が消えたため、戻り操作の代替経路 =
+// useRaceEngine.prevPhase の単純 setCurrentPhase 経由のシナリオを直接 store に対して検証）。
+describe('useRaceStore - Bundle-6 / scene3-race.md §6 完全な状態復元', () => {
+    // resetRace は houseRules を保持する設計のため、Bundle-9 describe と同パターンで
+    // 明示的に初期値へ戻す。afterEach も併用し次 describe への houseRules 状態リーク防止。
+    const resetHouseRules = () => {
         useRaceStore.getState().resetRace();
-    });
+        useRaceStore.getState().updateHouseRules({
+            enableModifier: false,
+            enableSpecialStrategy: false,
+            enableCompositeUnique: false,
+            enableExtendedUnique: false,
+            effectValue: 15,
+        });
+    };
+    beforeEach(resetHouseRules);
+    afterEach(resetHouseRules);
 
-    // CR-8 専用の参加者注入ヘルパー。midPhaseCount を引数で切り替え、paceResult.face も同時セット。
-    const installForRevert = (
+    const installForPreserve = (
         midPhaseCount: number,
         paceFace: number | null,
-        history: Umamusume['history']
+        history: Umamusume['history'],
+        houseRulesOverride: Partial<{
+            enableModifier: boolean;
+            enableSpecialStrategy: boolean;
+            enableCompositeUnique: boolean;
+            enableExtendedUnique: boolean;
+            effectValue: number;
+        }> = {}
     ): Umamusume => {
         const uma: Umamusume = {
             id: 'p1',
             entryIndex: 1,
             name: 'Test',
             strategy: '先行', // fixValue 10
-            uniqueSkill: { type: 'Stability', phases: [] }, // 固有ダイスは本テストでは無効化
+            uniqueSkill: { type: 'Stability', phases: [] },
             gate: 1,
             score: 0,
             history,
@@ -605,9 +627,9 @@ describe('useRaceStore.revertPhaseHistory - CR-8 / scene3-race.md §6', () => {
                     enableModifier: false,
                     enableSpecialStrategy: false,
                     enableCompositeUnique: false,
-                    // Bundle-1 / D-5 / 2026-05-09: 型定義拡張に追従
                     enableExtendedUnique: false,
                     effectValue: 15,
+                    ...houseRulesOverride,
                 },
             },
             participants: [uma],
@@ -619,120 +641,218 @@ describe('useRaceStore.revertPhaseHistory - CR-8 / scene3-race.md §6', () => {
         return uma;
     };
 
-    it('(a) Mid → Pace 戻り: history.Mid 削除 + paceResult null + score 再計算（midPhaseCount=1）', () => {
-        // 先行 paceFace=5 → 先行ペース修正値 = +0（基準値、ニュートラル）
-        // 構造: Start (3d8 sum 10) + Mid (3d5 sum 8)
-        // 戻り前 score = fix 10 + Start 10 + Mid 8 + paceMod 0 = 28
-        // 戻り後 score = fix 10 + Start 10 = 20（Mid 削除 + paceMod も 0 なので不変だが意味的にリセット）
-        installForRevert(1, 5, {
-            Start: { baseDice: makeDice('3d8', [3, 4, 3]), computedScore: 20 },
-            Mid: { baseDice: makeDice('3d5', [3, 3, 2]), computedScore: 28 },
-        });
-
-        useRaceStore.getState().revertPhaseHistory('Mid', { resetPace: true });
-
-        const updated = useRaceStore.getState().participants[0];
-        const state = useRaceStore.getState();
-        expect(updated.history['Mid']).toBeUndefined();
-        expect(updated.history['Start']).toBeDefined();
-        expect(state.paceResult).toEqual({ face: null, label: null });
-        expect(updated.score).toBe(20);
-    });
-
-    it('(b) Mid2 → Mid1 戻り: Mid2 のみ削除 + Mid1 維持 + paceResult 維持（midPhaseCount=2）', () => {
-        // 先行 paceFace=5（中立）。Start 10 + Mid1 6 + Mid2 12 + paceMod 0 = 38
-        // 戻り後: Mid2 削除 → fix 10 + Start 10 + Mid1 6 + paceMod 0 = 26
-        const mid1Dice = makeDice('3d5', [2, 2, 2]); // 6
-        const mid2Dice = makeDice('3d5', [4, 4, 4]); // 12
-        installForRevert(2, 5, {
-            Start: { baseDice: makeDice('3d8', [3, 4, 3]), computedScore: 20 },
-            Mid1: { baseDice: mid1Dice, computedScore: 26 },
-            Mid2: { baseDice: mid2Dice, computedScore: 38 },
-        });
-
-        useRaceStore.getState().revertPhaseHistory('Mid2', { resetPace: false });
-
-        const updated = useRaceStore.getState().participants[0];
-        const state = useRaceStore.getState();
-        expect(updated.history['Mid2']).toBeUndefined();
-        // Mid1 の baseDice は維持（再進行時の前回結果再利用を可能に）
-        expect(updated.history['Mid1']?.baseDice).toEqual(mid1Dice);
-        // paceResult は維持
-        expect(state.paceResult.face).toBe(5);
-        expect(updated.score).toBe(26);
-    });
-
-    it('(c) 二重加算回避: 戻った後に Mid を新しい history で上書きしても score が累積しない', () => {
-        // Start 10 + Mid 旧 8 + paceMod 0 = 28
-        // revert で Mid 削除 → 20
-        // 新 Mid history (sum 12) を上書きして再計算 → 32（旧 8 + 新 12 = 40 にならない）
-        installForRevert(1, 5, {
-            Start: { baseDice: makeDice('3d8', [3, 4, 3]), computedScore: 20 },
-            Mid: { baseDice: makeDice('3d5', [3, 3, 2]), computedScore: 28 },
-        });
-
-        // Step 1: revertPhaseHistory で Mid 削除 + paceResult リセット
-        useRaceStore.getState().revertPhaseHistory('Mid', { resetPace: true });
-
-        // Step 2: paceResult 再投擲（中立 face=5）+ Mid 再入力（sum=12）
-        useRaceStore.getState().setPaceResult(5, 'Test');
-        useRaceStore.setState((state) => ({
-            participants: state.participants.map((p) =>
-                p.id === 'p1'
-                    ? {
-                          ...p,
-                          history: {
-                              ...p.history,
-                              Mid: { baseDice: makeDice('3d5', [4, 4, 4]), computedScore: 32 },
-                          },
-                          score: 32, // fix 10 + Start 10 + Mid 12 + paceMod 0
-                      }
-                    : p
-            ),
-        }));
-
-        const updated = useRaceStore.getState().participants[0];
-        // 二重加算なし: 旧 Mid sum 8 + 新 Mid sum 12 = 20 ではなく、新 12 のみ
-        expect(updated.history['Mid']?.baseDice?.sum).toBe(12);
-        expect(updated.score).toBe(32);
-    });
-
-    it('(d) Pace → Start 戻り: history は Pace 用 entry なしで不変 + paceResult null（防御的挙動）', () => {
-        // Pace フェーズは history に entry を持たないため、phaseId='Pace' での
-        // history 削除は実質 no-op となる。paceResult リセットのみが意味を持つ。
-        // 戻り前 score = fix 10 + Start 10 + paceMod 0 = 20（先行 paceFace=5）
-        // 戻り後 score = fix 10 + Start 10 + paceMod なし = 20
-        installForRevert(1, 5, {
-            Start: { baseDice: makeDice('3d8', [3, 4, 3]), computedScore: 20 },
-        });
-
-        useRaceStore.getState().revertPhaseHistory('Pace', { resetPace: true });
-
-        const updated = useRaceStore.getState().participants[0];
-        const state = useRaceStore.getState();
-        expect(updated.history['Start']).toBeDefined();
-        expect(state.paceResult).toEqual({ face: null, label: null });
-        expect(updated.score).toBe(20);
-    });
-
-    it('(e) End → Mid 戻り: End のみ削除 + paceResult 維持（中盤フェーズに戻るがペース再投擲不要）', () => {
-        // 先行 paceFace=5（中立、paceMod 0）
-        // Start 10 + Mid 8 + End 5 + paceMod 0 = 33
-        // 戻り後: End 削除 → fix 10 + Start 10 + Mid 8 = 28
-        installForRevert(1, 5, {
+    it('(i) End → Mid 戻り（setCurrentPhase のみ）: history.End が保持される', () => {
+        installForPreserve(1, 5, {
             Start: { baseDice: makeDice('3d8', [3, 4, 3]), computedScore: 20 },
             Mid: { baseDice: makeDice('3d5', [3, 3, 2]), computedScore: 28 },
             End: { baseDice: makeDice('1d7', [5]), computedScore: 33 },
         });
+        useRaceStore.setState({ currentPhaseId: 'End' });
 
-        useRaceStore.getState().revertPhaseHistory('End', { resetPace: false });
+        // Bundle-6: 戻る操作 = setCurrentPhase のみ（history 操作なし）
+        useRaceStore.getState().setCurrentPhase('Mid');
 
         const updated = useRaceStore.getState().participants[0];
-        const state = useRaceStore.getState();
-        expect(updated.history['End']).toBeUndefined();
+        // history は完全保持
+        expect(updated.history['End']).toBeDefined();
+        expect(updated.history['End']?.baseDice?.sum).toBe(5);
         expect(updated.history['Mid']).toBeDefined();
+        expect(updated.history['Start']).toBeDefined();
+        // score 自動再計算なし（history が変わらない）
+        expect(updated.score).toBe(0);
+    });
+
+    it('(ii) Mid → Pace 戻り: paceResult が保持される', () => {
+        installForPreserve(1, 5, {
+            Start: { baseDice: makeDice('3d8', [3, 4, 3]), computedScore: 20 },
+            Mid: { baseDice: makeDice('3d5', [3, 3, 2]), computedScore: 28 },
+        });
+        useRaceStore.setState({ currentPhaseId: 'Mid' });
+
+        useRaceStore.getState().setCurrentPhase('Pace');
+
+        const state = useRaceStore.getState();
+        // paceResult は完全保持（Bundle-6 = 仕様 §6 完全な状態復元）
         expect(state.paceResult.face).toBe(5);
-        expect(updated.score).toBe(28);
+        expect(state.paceResult.label).toBe('Test');
+        // history も保持
+        expect(state.participants[0].history['Mid']).toBeDefined();
+    });
+
+    it('(iii) 戦法 ON 状態で戻る: history.Mid.specialStrategy が保持される', () => {
+        installForPreserve(
+            1,
+            5,
+            {
+                Start: { baseDice: makeDice('3d8', [3, 4, 3]), computedScore: 20 },
+                Mid: { baseDice: makeDice('3d5', [3, 3, 2]), computedScore: 28 },
+            },
+            { enableSpecialStrategy: true }
+        );
+        useRaceStore.setState({ currentPhaseId: 'Mid' });
+        useRaceStore.getState().setSpecialStrategy('p1', 'Mid', 'Makuri');
+
+        // 戻る操作 = setCurrentPhase のみ
+        useRaceStore.getState().setCurrentPhase('Pace');
+
+        const updated = useRaceStore.getState().participants[0];
+        // specialStrategy 完全保持
+        expect(updated.history['Mid']?.specialStrategy).toBe('Makuri');
+        // score もそのまま（setCurrentPhase は score 再計算しない）
+        // 28 (Mid baseDice) + 15 (Makuri 即時) = 43
+        expect(updated.score).toBe(43);
+    });
+
+    it('(iv) 補正値設定状態で戻る: history.Mid.manualModifier が保持される', () => {
+        installForPreserve(
+            1,
+            5,
+            {
+                Start: { baseDice: makeDice('3d8', [3, 4, 3]), computedScore: 20 },
+                Mid: { baseDice: makeDice('3d5', [3, 3, 2]), computedScore: 28 },
+            },
+            { enableModifier: true }
+        );
+        useRaceStore.setState({ currentPhaseId: 'Mid' });
+        useRaceStore.getState().setManualModifier('p1', 'Mid', 5, '妨害');
+
+        useRaceStore.getState().setCurrentPhase('Pace');
+
+        const updated = useRaceStore.getState().participants[0];
+        // manualModifier 完全保持
+        expect(updated.history['Mid']?.manualModifier).toEqual({
+            value: 5,
+            reason: '妨害',
+        });
+        // 28 + 5 (補正) = 33
+        expect(updated.score).toBe(33);
+    });
+
+    it('(v) ダイス解析後に戻る: baseDice / uniqueDice / computedScore が保持される', () => {
+        const midDice = makeDice('3d5', [3, 3, 2]);
+        const uniqueDice = makeDice('1d6', [4]);
+        installForPreserve(1, 5, {
+            Start: { baseDice: makeDice('3d8', [3, 4, 3]), computedScore: 20 },
+            Mid: { baseDice: midDice, uniqueDice, computedScore: 32 },
+        });
+        useRaceStore.setState({ currentPhaseId: 'End' });
+
+        useRaceStore.getState().setCurrentPhase('Mid');
+
+        const updated = useRaceStore.getState().participants[0];
+        // ダイス解析データ完全保持
+        expect(updated.history['Mid']?.baseDice).toEqual(midDice);
+        expect(updated.history['Mid']?.uniqueDice).toEqual(uniqueDice);
+        expect(updated.history['Mid']?.computedScore).toBe(32);
+    });
+
+    it('(vi) 戻った後に再進行: 保持されていた score と整合する', () => {
+        installForPreserve(
+            1,
+            5,
+            {
+                Start: { baseDice: makeDice('3d8', [3, 4, 3]), computedScore: 20 },
+                Mid: { baseDice: makeDice('3d5', [3, 3, 2]), computedScore: 28 },
+            },
+            { enableModifier: true }
+        );
+        useRaceStore.setState({ currentPhaseId: 'End' });
+        useRaceStore.getState().setManualModifier('p1', 'Mid', 5, '妨害');
+        // この時点 score = 33
+
+        // 戻る → 再進行
+        useRaceStore.getState().setCurrentPhase('Mid');
+        useRaceStore.getState().setCurrentPhase('End');
+
+        const updated = useRaceStore.getState().participants[0];
+        // history と score が保持されたまま End に戻ってくる
+        expect(updated.history['Mid']?.manualModifier).toEqual({
+            value: 5,
+            reason: '妨害',
+        });
+        expect(updated.score).toBe(33);
+    });
+
+    it('(vii) 戻った後に手動でダイス再貼付け（updateParticipant）: 当該 history が上書きされる', () => {
+        installForPreserve(1, 5, {
+            Start: { baseDice: makeDice('3d8', [3, 4, 3]), computedScore: 20 },
+            Mid: { baseDice: makeDice('3d5', [3, 3, 2]), computedScore: 28 },
+        });
+        useRaceStore.setState({ currentPhaseId: 'End' });
+
+        // 戻る
+        useRaceStore.getState().setCurrentPhase('Mid');
+
+        // 手動でダイス再貼付け（PhaseInput 解析実行経路）
+        const newMidDice = makeDice('3d5', [4, 4, 4]); // sum 12
+        useRaceStore.getState().updateParticipant('p1', {
+            history: {
+                Start: { baseDice: makeDice('3d8', [3, 4, 3]), computedScore: 20 },
+                Mid: { baseDice: newMidDice, computedScore: 32 },
+            },
+        });
+
+        const updated = useRaceStore.getState().participants[0];
+        // 当該 history が上書きされる（ユーザー意識的操作で消す経路）
+        expect(updated.history['Mid']?.baseDice?.sum).toBe(12);
+    });
+
+    it('(viii) 連続戻り（End → Mid → Pace → Start）: すべての history が保持される', () => {
+        installForPreserve(1, 5, {
+            Start: { baseDice: makeDice('3d8', [3, 4, 3]), computedScore: 20 },
+            Mid: { baseDice: makeDice('3d5', [3, 3, 2]), computedScore: 28 },
+            End: { baseDice: makeDice('1d7', [5]), computedScore: 33 },
+        });
+        useRaceStore.setState({ currentPhaseId: 'End' });
+
+        useRaceStore.getState().setCurrentPhase('Mid');
+        useRaceStore.getState().setCurrentPhase('Pace');
+        useRaceStore.getState().setCurrentPhase('Start');
+
+        const state = useRaceStore.getState();
+        const updated = state.participants[0];
+        // すべて完全保持
+        expect(updated.history['Start']).toBeDefined();
+        expect(updated.history['Mid']).toBeDefined();
+        expect(updated.history['End']).toBeDefined();
+        expect(state.paceResult.face).toBe(5);
+        expect(state.currentPhaseId).toBe('Start');
+    });
+
+    it('(ix) revertPhaseHistory action 不存在保証: store API surface から削除されている', () => {
+        // Bundle-6 で完全削除されたことの regression guard
+        const store = useRaceStore.getState() as unknown as Record<string, unknown>;
+        expect(store.revertPhaseHistory).toBeUndefined();
+    });
+
+    it('(x) 戻った先で個別 action による消去経路: clearManualModifier で当該 phase の補正のみ消える', () => {
+        // Bundle-6 ユーザー視点: 戻り操作は何も消さない → やり直したい場合は戻り先で
+        // 個別 action を呼ぶ運用。clearManualModifier の単独呼び出しで Mid 補正のみクリアされ、
+        // 他 phase の history（Start.baseDice, End.specialStrategy 等）には影響しないことを保証。
+        installForPreserve(
+            1,
+            5,
+            {
+                Start: { baseDice: makeDice('3d8', [3, 4, 3]), computedScore: 20 },
+                Mid: { baseDice: makeDice('3d5', [3, 3, 2]), computedScore: 28 },
+                End: { baseDice: makeDice('1d7', [5]), computedScore: 33 },
+            },
+            { enableModifier: true, enableSpecialStrategy: true }
+        );
+        useRaceStore.setState({ currentPhaseId: 'End' });
+        useRaceStore.getState().setManualModifier('p1', 'Mid', 5, '妨害');
+        useRaceStore.getState().setSpecialStrategy('p1', 'End', 'Tame');
+
+        // 戻り後に Mid の補正のみクリア
+        useRaceStore.getState().setCurrentPhase('Mid');
+        useRaceStore.getState().clearManualModifier('p1', 'Mid');
+
+        const updated = useRaceStore.getState().participants[0];
+        // Mid の補正のみ消える、specialStrategy / 他 phase は保持
+        expect(updated.history['Mid']?.manualModifier).toBeUndefined();
+        expect(updated.history['Mid']?.baseDice?.sum).toBe(8);
+        expect(updated.history['End']?.specialStrategy).toBe('Tame');
+        expect(updated.history['Start']).toBeDefined();
     });
 });
 
@@ -925,7 +1045,10 @@ describe('Bundle-4 / P4-1, P4-5 / 2026-05-10 useRaceStore.setSpecialStrategy', (
         expect(updated.score).toBe(15);
     });
 
-    it('(v) revertPhaseHistory("End") で終盤反動が消失 → score が即時加算のみに戻る', () => {
+    it('(v) Bundle-6 戻る操作（setCurrentPhase のみ）で history.End が保持される → 終盤反動も維持', () => {
+        // Bundle-6 / 2026-05-10: CR-8 由来 revertPhaseHistory を完全削除し、戻る操作で
+        // history を一切削除しない仕様（scene3-race.md §6 完全な状態復元）。
+        // 終盤反動も history.End 保持のため維持される。
         installForStrategy({
             Start: { baseDice: makeDice('3d8', [3, 4, 3]), computedScore: 20 },
             Mid: { baseDice: makeDice('3d5', [3, 3, 2]), computedScore: 28 },
@@ -933,17 +1056,18 @@ describe('Bundle-4 / P4-1, P4-5 / 2026-05-10 useRaceStore.setSpecialStrategy', (
         });
         useRaceStore.setState({ currentPhaseId: 'End' });
         useRaceStore.getState().setSpecialStrategy('p1', 'Mid', 'Makuri');
-        // この時点 score = 33（相殺）
+        // この時点 score = 33（相殺、Mid 即時 +15 + End 反動 -15）
 
-        // 戻る操作で End 削除
-        useRaceStore.getState().revertPhaseHistory('End', { resetPace: false });
+        // Bundle-6 戻る操作 = setCurrentPhase のみ（history は完全保持）
+        useRaceStore.getState().setCurrentPhase('Mid');
 
         const updated = useRaceStore.getState().participants[0];
-        // End 削除 → 反動消失。fix 10 + Start 10 + Mid 8 + paceMod 0 + Makuri 即時 15 = 43
-        expect(updated.score).toBe(43);
-        // Mid の specialStrategy は維持
+        // history.End 保持 → 反動も維持。score は 33 のまま
+        expect(updated.score).toBe(33);
         expect(updated.history['Mid']?.specialStrategy).toBe('Makuri');
-        expect(updated.history['End']).toBeUndefined();
+        // Bundle-6 / 2026-05-10: history.End は完全保持される（CR-8 削除 → Bundle-6 保持に逆転）
+        expect(updated.history['End']).toBeDefined();
+        expect(updated.history['End']?.baseDice?.sum).toBe(5);
     });
 });
 
@@ -1317,7 +1441,10 @@ describe('Bundle-5 / P4-2, P4-3, CR-22 / 2026-05-10 useRaceStore.setManualModifi
         });
     });
 
-    it('(vi) revertPhaseHistory で当該フェーズの補正値が消える connection 確認', () => {
+    it('(vi) Bundle-6 戻る操作（setCurrentPhase のみ）で history.Mid.manualModifier が保持される', () => {
+        // Bundle-6 / 2026-05-10: CR-8 由来 revertPhaseHistory を完全削除し、戻る操作で
+        // history を一切削除しない仕様（scene3-race.md §6 完全な状態復元）。
+        // 補正値も history.Mid 保持のため維持される（CR-8 削除 → Bundle-6 保持に逆転）。
         installForModifier({
             Start: { baseDice: makeDice('3d8', [3, 4, 3]), computedScore: 20 },
             Mid: { baseDice: makeDice('3d5', [3, 3, 2]), computedScore: 28 },
@@ -1326,12 +1453,18 @@ describe('Bundle-5 / P4-2, P4-3, CR-22 / 2026-05-10 useRaceStore.setManualModifi
         useRaceStore.getState().setManualModifier('p1', 'Mid', 5, '妨害');
         // この時点 score = 33
 
-        useRaceStore.getState().revertPhaseHistory('Mid', { resetPace: false });
+        // Bundle-6 戻る操作 = setCurrentPhase のみ（history は完全保持）
+        useRaceStore.setState({ currentPhaseId: 'Mid' });
+        useRaceStore.getState().setCurrentPhase('Pace');
 
         const updated = useRaceStore.getState().participants[0];
-        // Mid 削除 → 補正も history ごと消失。fix 10 + Start 10 = 20（paceMod は中盤以降に適用、Mid 削除で適用対象なし）
-        expect(updated.history['Mid']).toBeUndefined();
-        expect(updated.score).toBe(20);
+        // Mid 保持 → 補正値も維持
+        expect(updated.history['Mid']).toBeDefined();
+        expect(updated.history['Mid']?.manualModifier).toEqual({
+            value: 5,
+            reason: '妨害',
+        });
+        expect(updated.score).toBe(33);
     });
 
     it('(vii) clearManualModifier: 存在しない participant ID には no-op（防御的、設定済 score は不変）', () => {

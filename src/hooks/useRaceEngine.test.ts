@@ -1,10 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { computePrevPhasePlan } from './useRaceEngine';
 
-// CR-8: prevPhase の純粋計画決定ロジックの単体検証。
+// Bundle-6 / P4-4 + CR-19 / 2026-05-10: 仕様 scene3-race.md §6「完全な状態復元」準拠。
+// CR-8 (2026-04) 由来の {revertPhaseId, resetPace, prevPhaseId} 戻り値構造は本 Bundle で
+// {prevPhaseId} 単一フィールドに簡素化された。本テスト群は新戻り値構造で再構築。
 // store / React に依存しない純関数のため、direct invoke で副作用なくテストする。
 
-describe('computePrevPhasePlan - CR-8 / scene3-race.md §6', () => {
+describe('computePrevPhasePlan - Bundle-6 / scene3-race.md §6 完全な状態復元', () => {
     // midPhaseCount=1 を想定した phaseSequence
     const seq1 = ['Start', 'Pace', 'Mid', 'End'];
     // midPhaseCount=2 を想定した phaseSequence
@@ -21,50 +23,38 @@ describe('computePrevPhasePlan - CR-8 / scene3-race.md §6', () => {
         expect(computePrevPhasePlan('judgment_phase', seq1)).toBeNull();
     });
 
-    it('Pace → Start: revertPhaseId=Pace + resetPace=true + prevPhaseId=Start', () => {
+    it('Pace → Start: prevPhaseId=Start のみ返す（paceResult 保持）', () => {
         expect(computePrevPhasePlan('Pace', seq1)).toEqual({
-            revertPhaseId: 'Pace',
-            resetPace: true,
             prevPhaseId: 'Start',
         });
     });
 
-    it('Mid → Pace（midPhaseCount=1）: 最初の Mid からの戻りなので resetPace=true', () => {
+    it('Mid → Pace（midPhaseCount=1）: prevPhaseId=Pace のみ返す（paceResult 保持）', () => {
         expect(computePrevPhasePlan('Mid', seq1)).toEqual({
-            revertPhaseId: 'Mid',
-            resetPace: true,
             prevPhaseId: 'Pace',
         });
     });
 
-    it('Mid1 → Pace（midPhaseCount=2）: 最初の Mid からの戻りなので resetPace=true', () => {
+    it('Mid1 → Pace（midPhaseCount=2）: prevPhaseId=Pace のみ返す（paceResult 保持）', () => {
         expect(computePrevPhasePlan('Mid1', seq2)).toEqual({
-            revertPhaseId: 'Mid1',
-            resetPace: true,
             prevPhaseId: 'Pace',
         });
     });
 
-    it('Mid2 → Mid1（midPhaseCount=2）: 最初の Mid ではないので resetPace=false', () => {
+    it('Mid2 → Mid1（midPhaseCount=2）: prevPhaseId=Mid1', () => {
         expect(computePrevPhasePlan('Mid2', seq2)).toEqual({
-            revertPhaseId: 'Mid2',
-            resetPace: false,
             prevPhaseId: 'Mid1',
         });
     });
 
-    it('End → Mid（midPhaseCount=1）: ペース戻りでないので resetPace=false', () => {
+    it('End → Mid（midPhaseCount=1）: prevPhaseId=Mid', () => {
         expect(computePrevPhasePlan('End', seq1)).toEqual({
-            revertPhaseId: 'End',
-            resetPace: false,
             prevPhaseId: 'Mid',
         });
     });
 
-    it('End → Mid2（midPhaseCount=2）: ペース戻りでないので resetPace=false', () => {
+    it('End → Mid2（midPhaseCount=2）: prevPhaseId=Mid2', () => {
         expect(computePrevPhasePlan('End', seq2)).toEqual({
-            revertPhaseId: 'End',
-            resetPace: false,
             prevPhaseId: 'Mid2',
         });
     });
