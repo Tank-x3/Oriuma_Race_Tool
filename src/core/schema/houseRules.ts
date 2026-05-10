@@ -12,13 +12,15 @@ export const EFFECT_VALUE_MAX = 999;
 export const VALIDATION_ERROR_MESSAGE =
     'ファイル形式が正しくありません。オリウマツール用の設定ファイルを選択してください';
 
-// Bundle-7 / 2026-05-10: houserule-features.md §4 zod 検証範囲表 (5 フィールド)
+// Bundle-7 / 2026-05-10: houserule-features.md §4 zod 検証範囲表
 // effectValue 値域: Bundle-9 ENG27 で Engineer 裁量採用済の 1〜999 に整合。
+// Bundle-8-T1 / CR-SA-4 / 2026-05-10: enableBondSkill 追加（houserule-features.md §4 zod 検証範囲表 +1 フィールド = 6 フィールド）
 export const houseRulesSchema = z.object({
     enableModifier: z.boolean(),
     enableSpecialStrategy: z.boolean(),
     enableCompositeUnique: z.boolean(),
     enableExtendedUnique: z.boolean(),
+    enableBondSkill: z.boolean(),
     effectValue: z.number().int().min(EFFECT_VALUE_MIN).max(EFFECT_VALUE_MAX),
 });
 

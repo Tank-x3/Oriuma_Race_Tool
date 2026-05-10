@@ -50,6 +50,12 @@ export interface Umamusume {
         type: UniqueSkillType;
         phases: string[]; // Phase IDs where it activates
     };
+    // Bundle-8-T1 / CR-SA-4 / 2026-05-10: 絆スキル種別 (houserule-features.md §2 [v] 絆スキル §データ仕様)
+    // フェーズ非依存で参加者直下に配置。終盤後一括発動のため history 配下ではない。
+    bondSkill?: { type: 'BondGamble' | 'BondStable' | null };
+    // Bundle-8-T1 / CR-SA-4 (CR-SA-11 Sub-A 連動) / 2026-05-10: 特殊戦法発動位置 Scene 1 事前申告 (scene1-setup.md §2)
+    // 値域: 'Start' | 'Mid' | 'Mid1' | 'Mid2' | 'Mid3' | 'Mid4' | null（'End' は含めない）。
+    specialStrategyPhase?: string | null;
     gate: number | null;
     score: number;
     // History of score/dice input
@@ -57,6 +63,9 @@ export interface Umamusume {
     history: Record<string, {
         baseDice?: DiceResult;
         uniqueDice?: DiceResult;
+        // Bundle-8-T1 / CR-SA-4 / 2026-05-10: 絆ダイス結果保存先（終盤のみ、houserule-features.md §2 [v] 絆スキル §データ仕様）
+        // Parser は終盤フェーズ解析時に【絆スキル】セクションを抽出してこのフィールドへ格納（T5 で Parser 拡張、T1 では型のみ）。
+        bondDice?: DiceResult;
         // Bundle-5 / P4-2, P4-3, CR-22 / 2026-05-10: 汎用補正（GM が Scene 3 で任意に加減算する数値）。
         // CR-22 統合で理由ラベル必須化、{ value, reason } 構造体に拡張。value は整数、reason は trim 後非空。
         manualModifier?: { value: number; reason: string };
@@ -88,6 +97,8 @@ export interface RaceState {
             enableCompositeUnique: boolean;
             // Bundle-1 / D-5 / 2026-05-09: 拡張固有タイプ ON/OFF（houserule-features.md §2 [v]）
             enableExtendedUnique: boolean;
+            // Bundle-8-T1 / CR-SA-4 / 2026-05-10: 絆スキル ON/OFF（houserule-features.md §2 [v] 絆スキル）
+            enableBondSkill: boolean;
             // Bundle-1 / D-5 / 2026-05-09: 状態異常効果値 (N)（houserule-features.md §3 デフォルト 15）
             effectValue: number;
         };

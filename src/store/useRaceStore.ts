@@ -32,6 +32,20 @@ interface RaceStoreState extends RaceState {
         phaseId: string,
         value: 'Makuri' | 'Tame' | null
     ) => void;
+    // Bundle-8-T1 / CR-SA-4 / 2026-05-10: 絆スキル種別の設定 (houserule-features.md §2 [v] 絆スキル)。
+    // 値域チェックは UI / validator 層に委ねる（既存 setSpecialStrategy / setManualModifier と同方針 = 防御的判定なし）。
+    // score 再計算は行わない（絆スキル分加算は T6 でスコア計算統合時に追加、T1 では値の保存のみ）。
+    setBondSkill: (
+        participantId: string,
+        type: 'BondGamble' | 'BondStable' | null
+    ) => void;
+    // Bundle-8-T1 / CR-SA-4 (CR-SA-11 Sub-A 連動) / 2026-05-10: 特殊戦法発動位置 Scene 1 事前申告 (scene1-setup.md §2)。
+    // 値域: 'Start' | 'Mid' | 'Mid1' | 'Mid2' | 'Mid3' | 'Mid4' | null（'End' は含めない）。
+    // score 再計算は行わない（戦法ボタンの初期値連動は T4 で実装、T1 では値の保存のみ）。
+    setSpecialStrategyPhase: (
+        participantId: string,
+        phaseId: string | null
+    ) => void;
     // Bundle-5 / P4-2, P4-3, CR-22 / 2026-05-10: 汎用補正の設定 / クリア + score 即時加減算。
     // value は整数、reason は trim 後非空（CR-22 統合）。バリデーション通過済の値が渡る前提で
     // 防御的判定はモーダル側で実施し、本 action は呼ばれた値をそのまま反映する。
@@ -78,16 +92,21 @@ export const PERSIST_NAME = 'race-store';
 // Bundle-7 / P4-6 / 2026-05-10: PERSIST_VERSION 1 → 2 にバンプ。
 // version=1 旧データ（Bundle-1 D-5 で houseRules.enableExtendedUnique / effectValue 追加前）→
 // version=2 へのデフォルト補完を persistMigrate で実施する。
-export const PERSIST_VERSION = 2;
+// Bundle-8-T1 / 2026-05-10: PERSIST_VERSION 2 → 3 にバンプ。
+// version=2 旧データ（Bundle-7 で houseRules 5 フィールド確定）→ version=3 へのデフォルト補完を
+// persistMigrate で実施（DEFAULT_HOUSE_RULES.enableBondSkill 追加で透過対応）。
+export const PERSIST_VERSION = 3;
 export const RESTORE_ERROR_MESSAGE = '保存データの復元に失敗しました。新規セッションを開始します。';
 
 // Bundle-7 / 2026-05-10: マイグレーション時の houseRules デフォルト補完値。
 // 下記 create() の初期 state と同一値を保持。新規セッションと旧データ補完で同じ初期値が使われる。
+// Bundle-8-T1 / CR-SA-4 / 2026-05-10: enableBondSkill 追加（5 → 6 フィールド）。
 export const DEFAULT_HOUSE_RULES: HouseRulesData = {
     enableModifier: false,
     enableSpecialStrategy: false,
     enableCompositeUnique: false,
     enableExtendedUnique: false,
+    enableBondSkill: false,
     effectValue: 15,
 };
 
@@ -104,8 +123,10 @@ export const persistPartialize = (state: RaceStoreState): PersistedRaceState => 
 });
 
 // Bundle-7 / P4-6 / 2026-05-10: 実マイグレーション化。
-// version=1 → 2 への補完: houseRules.enableExtendedUnique / effectValue が旧データには欠落しているため
-// DEFAULT_HOUSE_RULES でマージ補完。zod 検証で型不正・値域違反（effectValue 小数/負値/上限超等）を検知し、
+// version=1 旧データ: houseRules.enableExtendedUnique / effectValue を補完（Bundle-7 から）。
+// Bundle-8-T1 / 2026-05-10: version=2 旧データ: houseRules.enableBondSkill を補完（Bundle-8-T1 から）。
+// 実装方針: DEFAULT_HOUSE_RULES でマージ補完するため version 引数分岐は不要（DEFAULT 拡張のみで透過対応）。
+// zod 検証で型不正・値域違反（effectValue 小数/負値/上限超等）を検知し、
 // 失敗時は throw → onRehydrateStorage の handleRehydrateError に合流（RESTORE_ERROR_MESSAGE 通知 +
 // デフォルト state 起動）。
 export const persistMigrate = (persistedState: unknown, version: number): PersistedRaceState => {
@@ -165,6 +186,8 @@ export const useRaceStore = create<RaceStoreState>()(
                     enableCompositeUnique: false,
                     // Bundle-1 / D-5 / 2026-05-09: 拡張固有タイプ ON/OFF
                     enableExtendedUnique: false,
+                    // Bundle-8-T1 / CR-SA-4 / 2026-05-10: 絆スキル ON/OFF（houserule-features.md §2 [v] 絆スキル）
+                    enableBondSkill: false,
                     // Bundle-1 / D-5 / 2026-05-09: 状態異常効果値 (N)（houserule-features.md §3 デフォルト 15）
                     effectValue: 15,
                 },
@@ -363,6 +386,26 @@ export const useRaceStore = create<RaceStoreState>()(
                         }),
                     };
                 }),
+
+            // Bundle-8-T1 / CR-SA-4 / 2026-05-10: 絆スキル種別の設定 (houserule-features.md §2 [v] 絆スキル)。
+            // フェーズ非依存で participants[*] 直下に配置。score 再計算は行わない（T6 でスコア計算統合時に追加）。
+            setBondSkill: (participantId, type) =>
+                set((state) => ({
+                    participants: state.participants.map((p) => {
+                        if (p.id !== participantId) return p;
+                        return { ...p, bondSkill: { type } };
+                    }),
+                })),
+
+            // Bundle-8-T1 / CR-SA-4 (CR-SA-11 Sub-A 連動) / 2026-05-10: 特殊戦法発動位置 Scene 1 事前申告 (scene1-setup.md §2)。
+            // 値域チェックは UI / validator 層に委ねる（防御的判定なし）。score 再計算は行わない（T4 で戦法ボタン連動時に追加）。
+            setSpecialStrategyPhase: (participantId, phaseId) =>
+                set((state) => ({
+                    participants: state.participants.map((p) => {
+                        if (p.id !== participantId) return p;
+                        return { ...p, specialStrategyPhase: phaseId };
+                    }),
+                })),
 
             generateParticipants: (count: number) =>
                 set((state) => {

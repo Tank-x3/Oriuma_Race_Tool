@@ -14,15 +14,17 @@ import {
 // validateHouseRulesConfig は modal-houserule.md §3 ⚠️ Import Validation 既定文言を返す。
 
 describe('Bundle-7 / P4-6 / 2026-05-10 houseRulesSchema', () => {
+    // Bundle-8-T1 / CR-SA-4 / 2026-05-10: enableBondSkill 追加（5 → 6 フィールド）
     const validHouseRules = {
         enableModifier: false,
         enableSpecialStrategy: false,
         enableCompositeUnique: false,
         enableExtendedUnique: false,
+        enableBondSkill: false,
         effectValue: 15,
     };
 
-    it('(i) 5 フィールドすべて正常値で success', () => {
+    it('(i) 6 フィールドすべて正常値で success', () => {
         const result = houseRulesSchema.safeParse(validHouseRules);
         expect(result.success).toBe(true);
     });
@@ -116,6 +118,8 @@ describe('Bundle-7 / P4-6 / 2026-05-10 validateHouseRulesConfig', () => {
             enableSpecialStrategy: true,
             enableCompositeUnique: false,
             enableExtendedUnique: false,
+            // Bundle-8-T1 / CR-SA-4 / 2026-05-10: 6 フィールドに拡張
+            enableBondSkill: false,
             effectValue: 20,
         },
         strategies: [
@@ -157,5 +161,60 @@ describe('Bundle-7 / P4-6 / 2026-05-10 validateHouseRulesConfig', () => {
         const directResult = houseRulesConfigSchema.safeParse(validConfig);
         const wrappedResult = validateHouseRulesConfig(validConfig);
         expect(directResult.success).toBe(wrappedResult.success);
+    });
+});
+
+// Bundle-8-T1 / CR-SA-4 / 2026-05-10:
+// houserule-features.md §4 zod 検証範囲表 +1 フィールド = enableBondSkill: boolean。
+describe('houseRulesSchema - Bundle-8-T1 / enableBondSkill 拡張', () => {
+    const baseValid = {
+        enableModifier: false,
+        enableSpecialStrategy: false,
+        enableCompositeUnique: false,
+        enableExtendedUnique: false,
+        effectValue: 15,
+    };
+
+    it('(i) enableBondSkill = true で success', () => {
+        const result = houseRulesSchema.safeParse({ ...baseValid, enableBondSkill: true });
+        expect(result.success).toBe(true);
+    });
+
+    it('(ii) enableBondSkill = false で success', () => {
+        const result = houseRulesSchema.safeParse({ ...baseValid, enableBondSkill: false });
+        expect(result.success).toBe(true);
+    });
+
+    it('(iii) enableBondSkill が boolean 以外（string / number / null）で failure', () => {
+        const stringResult = houseRulesSchema.safeParse({
+            ...baseValid,
+            enableBondSkill: 'true' as unknown as boolean,
+        });
+        const numberResult = houseRulesSchema.safeParse({
+            ...baseValid,
+            enableBondSkill: 1 as unknown as boolean,
+        });
+        const nullResult = houseRulesSchema.safeParse({
+            ...baseValid,
+            enableBondSkill: null as unknown as boolean,
+        });
+        expect(stringResult.success).toBe(false);
+        expect(numberResult.success).toBe(false);
+        expect(nullResult.success).toBe(false);
+    });
+
+    it('(iv) enableBondSkill 欠落で failure（DEFAULT 補完は persistMigrate の責務、schema 単体は厳格）', () => {
+        // baseValid には enableBondSkill が含まれない = 欠落ケース
+        const result = houseRulesSchema.safeParse(baseValid);
+        expect(result.success).toBe(false);
+    });
+
+    it('(v) houseRulesConfigSchema 経由で enableBondSkill 含む完全データが通過する', () => {
+        const fullConfig = {
+            houseRules: { ...baseValid, enableBondSkill: true },
+            strategies: [],
+        };
+        const result = houseRulesConfigSchema.safeParse(fullConfig);
+        expect(result.success).toBe(true);
     });
 });

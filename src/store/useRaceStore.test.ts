@@ -47,6 +47,8 @@ const installParticipant = (uma: Umamusume) => {
                 enableCompositeUnique: false,
                 // Bundle-1 / D-5 / 2026-05-09: 型定義拡張に追従
                 enableExtendedUnique: false,
+                // Bundle-8-T1 / CR-SA-4 / 2026-05-10: 型定義拡張に追従（6 フィールド）
+                enableBondSkill: false,
                 effectValue: 15,
             },
         },
@@ -182,6 +184,8 @@ describe('useRaceStore.updateParticipant - CR-38 / basic-rules §6 Case 4', () =
                     enableCompositeUnique: false,
                     // Bundle-1 / D-5 / 2026-05-09: 型定義拡張に追従
                     enableExtendedUnique: false,
+                    // Bundle-8-T1 / CR-SA-4 / 2026-05-10: 型定義拡張に追従（6 フィールド）
+                    enableBondSkill: false,
                     effectValue: 15,
                 },
             },
@@ -283,6 +287,8 @@ describe('useRaceStore.setMidPhaseCount - CR-3 / scene1-setup.md §4 Soft Delete
                     enableCompositeUnique: false,
                     // Bundle-1 / D-5 / 2026-05-09: 型定義拡張に追従
                     enableExtendedUnique: false,
+                    // Bundle-8-T1 / CR-SA-4 / 2026-05-10: 型定義拡張に追従（6 フィールド）
+                    enableBondSkill: false,
                     effectValue: 15,
                 },
             },
@@ -439,12 +445,14 @@ describe('CR-5a: zustand persist 設定', () => {
 
     it('PERSIST_VERSION / PERSIST_NAME: 想定値が export されている', () => {
         // Bundle-7 / P4-6 / 2026-05-10: 1 → 2 にバンプ
-        expect(PERSIST_VERSION).toBe(2);
+        // Bundle-8-T1 / CR-SA-4 / 2026-05-10: 2 → 3 にバンプ
+        expect(PERSIST_VERSION).toBe(3);
         expect(PERSIST_NAME).toBe('race-store');
     });
 
-    it('persistMigrate: 完全な version=2 データはそのまま通過する（基本動作）', () => {
+    it('persistMigrate: 完全な version=3 データはそのまま通過する（基本動作）', () => {
         // Bundle-7 / 2026-05-10: 旧 passthrough テストを「正常な version=2 データの通過」テストに書き換え
+        // Bundle-8-T1 / 2026-05-10: enableBondSkill 追加（6 フィールド）に伴い version=3 データ通過テストへ更新
         const validPersisted = {
             config: {
                 midPhaseCount: 3,
@@ -454,6 +462,7 @@ describe('CR-5a: zustand persist 設定', () => {
                     enableSpecialStrategy: false,
                     enableCompositeUnique: false,
                     enableExtendedUnique: false,
+                    enableBondSkill: false,
                     effectValue: 15,
                 },
             },
@@ -464,7 +473,7 @@ describe('CR-5a: zustand persist 設定', () => {
             uiState: { scene: 'race' },
         } as unknown as PersistedRaceState;
 
-        const result = persistMigrate(validPersisted, 2);
+        const result = persistMigrate(validPersisted, 3);
 
         // houseRules は補完なしで通過
         expect(result.config.houseRules).toEqual(validPersisted.config.houseRules);
@@ -591,6 +600,8 @@ describe('useRaceStore - Bundle-6 / scene3-race.md §6 完全な状態復元', (
             enableSpecialStrategy: false,
             enableCompositeUnique: false,
             enableExtendedUnique: false,
+            // Bundle-8-T1 / CR-SA-4 / 2026-05-10: 6 フィールドに拡張
+            enableBondSkill: false,
             effectValue: 15,
         });
     };
@@ -606,6 +617,7 @@ describe('useRaceStore - Bundle-6 / scene3-race.md §6 完全な状態復元', (
             enableSpecialStrategy: boolean;
             enableCompositeUnique: boolean;
             enableExtendedUnique: boolean;
+            enableBondSkill: boolean;
             effectValue: number;
         }> = {}
     ): Umamusume => {
@@ -628,6 +640,8 @@ describe('useRaceStore - Bundle-6 / scene3-race.md §6 完全な状態復元', (
                     enableSpecialStrategy: false,
                     enableCompositeUnique: false,
                     enableExtendedUnique: false,
+                    // Bundle-8-T1 / CR-SA-4 / 2026-05-10: 6 フィールドに拡張
+                    enableBondSkill: false,
                     effectValue: 15,
                     ...houseRulesOverride,
                 },
@@ -880,6 +894,8 @@ describe('Bundle-9 / 2026-05-10 useRaceStore.updateHouseRules', () => {
             enableSpecialStrategy: false,
             enableCompositeUnique: false,
             enableExtendedUnique: false,
+            // Bundle-8-T1 / CR-SA-4 / 2026-05-10: 6 フィールドに拡張
+            enableBondSkill: false,
             effectValue: 15,
         });
     });
@@ -932,6 +948,8 @@ describe('Bundle-4 / P4-1, P4-5 / 2026-05-10 useRaceStore.setSpecialStrategy', (
             enableSpecialStrategy: true,
             enableCompositeUnique: false,
             enableExtendedUnique: false,
+            // Bundle-8-T1 / CR-SA-4 / 2026-05-10: 6 フィールドに拡張
+            enableBondSkill: false,
             effectValue: 15,
         });
     });
@@ -957,6 +975,8 @@ describe('Bundle-4 / P4-1, P4-5 / 2026-05-10 useRaceStore.setSpecialStrategy', (
                     enableSpecialStrategy: true,
                     enableCompositeUnique: false,
                     enableExtendedUnique: false,
+                    // Bundle-8-T1 / CR-SA-4 / 2026-05-10: 6 フィールドに拡張
+                    enableBondSkill: false,
                     effectValue: 15,
                 },
             },
@@ -1079,6 +1099,8 @@ describe('Bundle-4 / P4-1, P4-5 / 2026-05-10 useRaceStore.updateHouseRules effec
             enableSpecialStrategy: true,
             enableCompositeUnique: false,
             enableExtendedUnique: false,
+            // Bundle-8-T1 / CR-SA-4 / 2026-05-10: 6 フィールドに拡張
+            enableBondSkill: false,
             effectValue: 15,
         });
     });
@@ -1106,6 +1128,8 @@ describe('Bundle-4 / P4-1, P4-5 / 2026-05-10 useRaceStore.updateHouseRules effec
                     enableSpecialStrategy: true,
                     enableCompositeUnique: false,
                     enableExtendedUnique: false,
+                    // Bundle-8-T1 / CR-SA-4 / 2026-05-10: 6 フィールドに拡張
+                    enableBondSkill: false,
                     effectValue: 15,
                 },
             },
@@ -1159,6 +1183,8 @@ describe('Bundle-7 / P4-6 / 2026-05-10 persistMigrate (zod 検証 + デフォル
                 enableSpecialStrategy: false,
                 enableCompositeUnique: false,
                 enableExtendedUnique: false,
+                // Bundle-8-T1 / CR-SA-4 / 2026-05-10: 6 フィールドに拡張
+                enableBondSkill: false,
                 effectValue: 15,
             },
         },
@@ -1187,12 +1213,13 @@ describe('Bundle-7 / P4-6 / 2026-05-10 persistMigrate (zod 検証 + デフォル
 
         const result = persistMigrate(oldPersisted, 1);
 
-        // 補完済の 5 フィールド構造になる
+        // Bundle-8-T1 / 2026-05-10: 補完済の 6 フィールド構造になる（enableBondSkill 追加）
         expect(result.config.houseRules).toEqual({
             enableModifier: true,
             enableSpecialStrategy: true,
             enableCompositeUnique: false,
             enableExtendedUnique: false, // デフォルト補完
+            enableBondSkill: false, // Bundle-8-T1 デフォルト補完
             effectValue: 15, // デフォルト補完
         });
         // 既存フィールドは維持
@@ -1200,7 +1227,7 @@ describe('Bundle-7 / P4-6 / 2026-05-10 persistMigrate (zod 検証 + デフォル
         expect(result.config.fullGateSize).toBe(18);
     });
 
-    it('(ii) houseRules 自体が undefined → デフォルト 5 フィールドで補完', () => {
+    it('(ii) houseRules 自体が undefined → デフォルト 6 フィールドで補完', () => {
         const noHouseRules = {
             ...baseValid,
             config: {
@@ -1212,11 +1239,13 @@ describe('Bundle-7 / P4-6 / 2026-05-10 persistMigrate (zod 検証 + デフォル
 
         const result = persistMigrate(noHouseRules, 1);
 
+        // Bundle-8-T1 / 2026-05-10: デフォルト補完は 6 フィールド構造
         expect(result.config.houseRules).toEqual({
             enableModifier: false,
             enableSpecialStrategy: false,
             enableCompositeUnique: false,
             enableExtendedUnique: false,
+            enableBondSkill: false,
             effectValue: 15,
         });
     });
@@ -1305,6 +1334,8 @@ describe('Bundle-5 / P4-2, P4-3, CR-22 / 2026-05-10 useRaceStore.setManualModifi
             enableSpecialStrategy: false,
             enableCompositeUnique: false,
             enableExtendedUnique: false,
+            // Bundle-8-T1 / CR-SA-4 / 2026-05-10: 6 フィールドに拡張
+            enableBondSkill: false,
             effectValue: 15,
         });
     });
@@ -1330,6 +1361,8 @@ describe('Bundle-5 / P4-2, P4-3, CR-22 / 2026-05-10 useRaceStore.setManualModifi
                     enableSpecialStrategy: false,
                     enableCompositeUnique: false,
                     enableExtendedUnique: false,
+                    // Bundle-8-T1 / CR-SA-4 / 2026-05-10: 6 フィールドに拡張
+                    enableBondSkill: false,
                     effectValue: 15,
                 },
             },
@@ -1485,5 +1518,230 @@ describe('Bundle-5 / P4-2, P4-3, CR-22 / 2026-05-10 useRaceStore.setManualModifi
             reason: '妨害',
         });
         expect(updated.score).toBe(33);
+    });
+});
+
+// Bundle-8-T1 / CR-SA-4 / 2026-05-10:
+// 絆スキル基盤（型/zod/永続化 + 2 actions 新設）の動作検証。
+// houserule-features.md §2 [v] 絆スキル §データ仕様 + §3 §捲り 前 cross-reference (specialStrategyPhase)
+// に基づく setBondSkill / setSpecialStrategyPhase の最小動作確認。
+// score 再計算は本 T1 では行わない（T6 でスコア計算統合時に追加）。
+describe('useRaceStore - Bundle-8-T1 / 絆スキル基盤', () => {
+    beforeEach(() => {
+        // resetRace は houseRules を保持する設計のため、明示的に初期値へ戻す
+        useRaceStore.getState().resetRace();
+        useRaceStore.getState().updateHouseRules({
+            enableModifier: false,
+            enableSpecialStrategy: false,
+            enableCompositeUnique: false,
+            enableExtendedUnique: false,
+            enableBondSkill: false,
+            effectValue: 15,
+        });
+    });
+
+    const installBondParticipant = (override: Partial<Umamusume> = {}) => {
+        const uma: Umamusume = {
+            id: 'p1',
+            entryIndex: 1,
+            name: 'Test',
+            strategy: '先行',
+            uniqueSkill: { type: 'Stability', phases: [] },
+            gate: 1,
+            score: 100, // score 再計算が走らないことを確認するため非ゼロ値を入れる
+            history: {},
+            ...override,
+        };
+        useRaceStore.setState({ participants: [uma] });
+    };
+
+    it('(i) houseRules 初期値: enableBondSkill === false（houserule-features.md §2 [v] 絆スキル デフォルト OFF）', () => {
+        const houseRules = useRaceStore.getState().config.houseRules;
+        expect(houseRules.enableBondSkill).toBe(false);
+    });
+
+    it('(ii) setBondSkill("p1", "BondGamble") → bondSkill.type === "BondGamble"', () => {
+        installBondParticipant();
+        useRaceStore.getState().setBondSkill('p1', 'BondGamble');
+        const updated = useRaceStore.getState().participants[0];
+        expect(updated.bondSkill?.type).toBe('BondGamble');
+    });
+
+    it('(iii) setBondSkill("p1", "BondStable") → bondSkill.type === "BondStable"', () => {
+        installBondParticipant();
+        useRaceStore.getState().setBondSkill('p1', 'BondStable');
+        const updated = useRaceStore.getState().participants[0];
+        expect(updated.bondSkill?.type).toBe('BondStable');
+    });
+
+    it('(iv) setBondSkill("p1", null) → bondSkill.type === null', () => {
+        installBondParticipant({ bondSkill: { type: 'BondGamble' } });
+        useRaceStore.getState().setBondSkill('p1', null);
+        const updated = useRaceStore.getState().participants[0];
+        expect(updated.bondSkill?.type).toBeNull();
+    });
+
+    it('(v) setBondSkill 呼び出し時に score は変更されない（T1 はスコア計算統合なし、T6 で実装）', () => {
+        installBondParticipant({ score: 100 });
+        useRaceStore.getState().setBondSkill('p1', 'BondGamble');
+        const updated = useRaceStore.getState().participants[0];
+        expect(updated.score).toBe(100);
+    });
+
+    it('(vi) setBondSkill: 存在しない participant ID には no-op（防御的、他参加者は不変）', () => {
+        installBondParticipant({ bondSkill: { type: 'BondStable' } });
+        useRaceStore.getState().setBondSkill('nonexistent', 'BondGamble');
+        const updated = useRaceStore.getState().participants[0];
+        // 既存値が維持される（'nonexistent' に対する更新は副作用なし）
+        expect(updated.bondSkill?.type).toBe('BondStable');
+    });
+
+    it('(vii) setSpecialStrategyPhase("p1", "Mid1") → specialStrategyPhase === "Mid1"', () => {
+        installBondParticipant();
+        useRaceStore.getState().setSpecialStrategyPhase('p1', 'Mid1');
+        const updated = useRaceStore.getState().participants[0];
+        expect(updated.specialStrategyPhase).toBe('Mid1');
+    });
+
+    it('(viii) setSpecialStrategyPhase("p1", null) → specialStrategyPhase === null', () => {
+        installBondParticipant({ specialStrategyPhase: 'Start' });
+        useRaceStore.getState().setSpecialStrategyPhase('p1', null);
+        const updated = useRaceStore.getState().participants[0];
+        expect(updated.specialStrategyPhase).toBeNull();
+    });
+
+    it('(ix) setSpecialStrategyPhase 呼び出し時に score は変更されない（T1 はスコア計算統合なし、T4 で実装）', () => {
+        installBondParticipant({ score: 100 });
+        useRaceStore.getState().setSpecialStrategyPhase('p1', 'Start');
+        const updated = useRaceStore.getState().participants[0];
+        expect(updated.score).toBe(100);
+    });
+
+    it('(x) generateParticipants で生成された参加者の bondSkill / specialStrategyPhase 初期値が undefined（オプショナル）', () => {
+        useRaceStore.getState().generateParticipants(3);
+        const all = useRaceStore.getState().participants;
+        expect(all).toHaveLength(3);
+        for (const p of all) {
+            expect(p.bondSkill).toBeUndefined();
+            expect(p.specialStrategyPhase).toBeUndefined();
+        }
+    });
+});
+
+// Bundle-8-T1 / CR-SA-4 / 2026-05-10:
+// PERSIST_VERSION 2 → 3 バンプに伴う v2→v3 マイグレーション（enableBondSkill デフォルト補完）の動作検証。
+// houserule-features.md §4 zod 検証範囲表 +1 フィールド = enableBondSkill: boolean。
+describe('useRaceStore.persistMigrate - Bundle-8-T1 / v2→v3 マイグレーション', () => {
+    it('(i) v2 旧データ（enableBondSkill 欠落、他 5 フィールドあり）→ デフォルト false 補完で起動成功', () => {
+        const v2Persisted = {
+            config: {
+                midPhaseCount: 1,
+                fullGateSize: null,
+                houseRules: {
+                    enableModifier: true,
+                    enableSpecialStrategy: false,
+                    enableCompositeUnique: true,
+                    enableExtendedUnique: false,
+                    effectValue: 25,
+                    // enableBondSkill が欠落している = v2 旧データ
+                },
+            },
+            participants: [],
+            currentPhaseId: 'setup',
+            paceResult: { face: null, label: null },
+            strategies: [],
+            gateAssignments: null,
+            uiState: { scene: 'setup' },
+        } as unknown as PersistedRaceState;
+
+        const result = persistMigrate(v2Persisted, 2);
+
+        // enableBondSkill が false で補完される
+        expect(result.config.houseRules.enableBondSkill).toBe(false);
+        // 他 5 フィールドは旧データの値を維持
+        expect(result.config.houseRules.enableModifier).toBe(true);
+        expect(result.config.houseRules.enableSpecialStrategy).toBe(false);
+        expect(result.config.houseRules.enableCompositeUnique).toBe(true);
+        expect(result.config.houseRules.enableExtendedUnique).toBe(false);
+        expect(result.config.houseRules.effectValue).toBe(25);
+    });
+
+    it('(ii) v3 完全データ → 検証成功で通過（補完なし）', () => {
+        const v3Persisted = {
+            config: {
+                midPhaseCount: 2,
+                fullGateSize: 18,
+                houseRules: {
+                    enableModifier: false,
+                    enableSpecialStrategy: true,
+                    enableCompositeUnique: false,
+                    enableExtendedUnique: true,
+                    enableBondSkill: true,
+                    effectValue: 30,
+                },
+            },
+            participants: [],
+            currentPhaseId: 'Start',
+            paceResult: { face: 5, label: 'Slow' },
+            strategies: [],
+            gateAssignments: null,
+            uiState: { scene: 'race' },
+        } as unknown as PersistedRaceState;
+
+        const result = persistMigrate(v3Persisted, 3);
+        expect(result.config.houseRules).toEqual(v3Persisted.config.houseRules);
+    });
+
+    it('(iii) v2 旧データ + houseRules 他 5 フィールドも欠落 → DEFAULT_HOUSE_RULES の 6 フィールド全補完', () => {
+        const v2Minimal = {
+            config: {
+                midPhaseCount: 1,
+                fullGateSize: null,
+                // houseRules 自体が空オブジェクト（極端ケース、Bundle-1 以前由来想定）
+                houseRules: {},
+            },
+            participants: [],
+            currentPhaseId: 'setup',
+            paceResult: { face: null, label: null },
+            strategies: [],
+            gateAssignments: null,
+            uiState: { scene: 'setup' },
+        } as unknown as PersistedRaceState;
+
+        const result = persistMigrate(v2Minimal, 2);
+        // すべてデフォルト補完
+        expect(result.config.houseRules).toEqual({
+            enableModifier: false,
+            enableSpecialStrategy: false,
+            enableCompositeUnique: false,
+            enableExtendedUnique: false,
+            enableBondSkill: false,
+            effectValue: 15,
+        });
+    });
+
+    it('(iv) v2 旧データ + enableBondSkill が boolean 以外（不正値）→ throw（zod 検証失敗 = 破損データ経路）', () => {
+        const v2Invalid = {
+            config: {
+                midPhaseCount: 1,
+                fullGateSize: null,
+                houseRules: {
+                    enableModifier: false,
+                    enableSpecialStrategy: false,
+                    enableCompositeUnique: false,
+                    enableExtendedUnique: false,
+                    enableBondSkill: 'true' as unknown as boolean, // 不正値（string）
+                    effectValue: 15,
+                },
+            },
+            participants: [],
+            currentPhaseId: 'setup',
+            paceResult: { face: null, label: null },
+            strategies: [],
+            gateAssignments: null,
+            uiState: { scene: 'setup' },
+        } as unknown as PersistedRaceState;
+
+        expect(() => persistMigrate(v2Invalid, 2)).toThrow();
     });
 });
