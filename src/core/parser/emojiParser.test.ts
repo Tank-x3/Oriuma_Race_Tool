@@ -538,6 +538,173 @@ describe('EmojiParser (88-ch Support)', () => {
         });
     });
 
+    // CR-SA-10-Followup-F4-E1: 88ch Multi-line Case B 個別出目検算追加
+    // 仕様: parser-system.md §B Step 2 Case B 改訂版（CR-SA-10-Followup-F4 / 2026-05-11 SA21）
+    // 改訂内容:
+    //   - ヘッダー行から `合計:` 行の間に現れる `N回目: M` 形式の個別出目行を収集し、
+    //     `Σ individualDice === Math.abs(diceSum)` + `length === _diceCount` を検証する。
+    //   - 不整合の場合は validChecksum=false + errors に「ダイス内訳と合計値が不整合です」文言を追加し、
+    //     results には push しない。
+    //   - 個別出目 0 件時は検算スキップ（フォーマット変動の後方互換性、下流の範囲チェックに委ねる）。
+    //   - 検証順序: 個別出目検算 → 範囲チェック（個別出目検算で不整合 → 範囲チェックに進まない）。
+    describe('CR-SA-10-Followup-F4-E1: 個別出目検算 on Multi-line Case B', () => {
+        it('(F4-1) accepts when 個別出目合算 === 合計 (3d6 + 1回目:4 / 2回目:5 / 3回目:6 + 合計:15)', () => {
+            const input = `
+                ウマ娘A 🎲 dice3d6=
+                1回目: 4
+                2回目: 5
+                3回目: 6
+                合計: 15
+            `;
+            const result = parser.parse(input, participants, 'RACE');
+
+            expect(result.errors).toHaveLength(0);
+            expect(result.results).toHaveLength(1);
+            expect(result.results[0]).toMatchObject({
+                name: 'ウマ娘A',
+                diceStr: '3d6',
+                diceResult: 15,
+                fixValue: 0,
+                total: 15,
+                validChecksum: true,
+            });
+        });
+
+        it('(F4-2) rejects when 個別出目合算 !== 合計 (3d6 + 1回目:4 / 2回目:5 / 3回目:5 + 合計:15)', () => {
+            // 個別出目合算 4+5+5 = 14 ≠ 合計 15 → 不整合検知
+            const input = `
+                ウマ娘A 🎲 dice3d6=
+                1回目: 4
+                2回目: 5
+                3回目: 5
+                合計: 15
+            `;
+            const result = parser.parse(input, participants, 'RACE');
+
+            // results 不追加（不整合データを下流のスコア計算へ流さないため）
+            expect(result.results).toHaveLength(0);
+            // errors に SSoT 文言（内訳合計 14 + 合計表記 15）
+            const mismatchError = result.errors.find(e =>
+                e.includes('ダイス内訳と合計値が不整合です') &&
+                e.includes('ウマ娘A') &&
+                e.includes('3d6') &&
+                e.includes('内訳合計 14') &&
+                e.includes('合計表記 15') &&
+                e.includes('レスを改変せず、内訳と合計まで含めて貼り付けてください')
+            );
+            expect(mismatchError).toBeDefined();
+        });
+
+        it('(F4-3) rejects when 個別出目個数 !== _diceCount (3d6 + 1回目:4 / 2回目:8 + 合計:12)', () => {
+            // 個別出目 2 件 ≠ _diceCount 3 → 不整合検知（合算 12 が合計 12 と一致しても個数不一致で拒否）
+            const input = `
+                ウマ娘A 🎲 dice3d6=
+                1回目: 4
+                2回目: 8
+                合計: 12
+            `;
+            const result = parser.parse(input, participants, 'RACE');
+
+            expect(result.results).toHaveLength(0);
+            const mismatchError = result.errors.find(e =>
+                e.includes('ダイス内訳と合計値が不整合です') &&
+                e.includes('ウマ娘A') &&
+                e.includes('3d6')
+            );
+            expect(mismatchError).toBeDefined();
+        });
+
+        it('(F4-4) skips checksum when 個別出目 0 件 + 範囲内合計 (3d6 + 合計:12, regression guard)', () => {
+            // 個別出目行なし → 検算スキップ → 既存範囲チェック (3≤12≤18) で results push
+            const input = `
+                ウマ娘A 🎲 dice3d6=
+                合計: 12
+            `;
+            const result = parser.parse(input, participants, 'RACE');
+
+            expect(result.errors).toHaveLength(0);
+            expect(result.results).toHaveLength(1);
+            expect(result.results[0]).toMatchObject({
+                name: 'ウマ娘A',
+                diceStr: '3d6',
+                diceResult: 12,
+                fixValue: 0,
+                total: 12,
+                validChecksum: true,
+            });
+        });
+
+        it('(F4-5) accepts subtraction block when 個別出目合算 === |diceSum| (-dice3d6 + 1回目:4 / 2回目:5 / 3回目:6 + 合計:-15)', () => {
+            // 個別出目は常に正値、合算 15 === Math.abs(-15) で整合 → 受理 + diceResult=-15
+            const input = `
+                ウマ娘A -🎲 dice3d6=
+                1回目: 4
+                2回目: 5
+                3回目: 6
+                合計: -15
+            `;
+            const result = parser.parse(input, participants, 'RACE');
+
+            expect(result.errors).toHaveLength(0);
+            expect(result.results).toHaveLength(1);
+            expect(result.results[0]).toMatchObject({
+                name: 'ウマ娘A',
+                diceStr: '3d6',
+                diceResult: -15,
+                fixValue: 0,
+                total: -15,
+                validChecksum: true,
+            });
+        });
+
+        it('(F4-6) rejects subtraction block when 個別出目合算 !== |diceSum| (-dice3d6 + 個別 4/5/5 + 合計:-15)', () => {
+            // 個別出目合算 14 ≠ Math.abs(-15) = 15 → 不整合検知（減算ブロックでも絶対値ベース比較）
+            const input = `
+                ウマ娘A -🎲 dice3d6=
+                1回目: 4
+                2回目: 5
+                3回目: 5
+                合計: -15
+            `;
+            const result = parser.parse(input, participants, 'RACE');
+
+            expect(result.results).toHaveLength(0);
+            const mismatchError = result.errors.find(e =>
+                e.includes('ダイス内訳と合計値が不整合です') &&
+                e.includes('ウマ娘A') &&
+                e.includes('3d6') &&
+                e.includes('内訳合計 14') &&
+                // 減算ブロックでも生 diceSum を「合計表記」表示（絶対値変換しない、SSoT 準拠）
+                e.includes('合計表記 -15')
+            );
+            expect(mismatchError).toBeDefined();
+        });
+
+        it('(F4-7) accepts 全角コロン variant (1回目： 4 — U+FF1A)', () => {
+            // 全角コロン「：」(U+FF1A) を含む個別出目行も検出パターン `[:：]` で受理する。
+            // 検出パターン: /^\s*\d+\s*回目\s*[:：]\s*(-?\d+)\s*$/
+            const fullColonInput = [
+                'ウマ娘A 🎲 dice3d6=',
+                '1回目： 4',  // 全角コロン U+FF1A
+                '2回目： 5',
+                '3回目： 6',
+                '合計: 15',
+            ].join('\n');
+
+            const result = parser.parse(fullColonInput, participants, 'RACE');
+
+            expect(result.errors).toHaveLength(0);
+            expect(result.results).toHaveLength(1);
+            expect(result.results[0]).toMatchObject({
+                name: 'ウマ娘A',
+                diceStr: '3d6',
+                diceResult: 15,
+                total: 15,
+                validChecksum: true,
+            });
+        });
+    });
+
     // CR-7 Part B: #3-3-G PACE コンテキスト委譲テスト
     // 仕様: docs/specs/architecture/parser-system.md §B "PACE コンテキストの委譲" (L209-211)
     // 委譲先: emojiParser.ts:6-9 → StandardParser.parse(text, participants, 'PACE')

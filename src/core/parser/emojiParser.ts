@@ -11,11 +11,18 @@ import {
 
 // Multi-line Case B の合計行処理時にヘッダー由来情報（減算フラグ + 個数 X / 面数 Y）を
 // currentBlock 経由で参照するためのローカル拡張型（CR-SA-10-Followup-F1 / 2026-05-09）。
+// CR-SA-10-Followup-F4-E1 / 2026-05-11: 個別出目検算 (`Σ === Math.abs(diceSum)` + `length === _diceCount`)
+// のため、個別出目行で抽出した数値列を `_individualDice` に保持する。
 type ParserBlock = Partial<ParsedLine> & {
     _isSubtractive?: boolean;
     _diceCount?: number;
     _diceFaces?: number;
+    _individualDice?: number[];
 };
+
+// CR-SA-10-Followup-F4-E1 / 2026-05-11: 個別出目行検出パターン（半角・全角コロン両対応、
+// 先頭空白許容、`N回目: M` 形式の `M` を抽出。SA21 SSoT parser-system.md §B Step 2 Case B 準拠）
+const INDIVIDUAL_DICE_PATTERN = /^\s*\d+\s*回目\s*[:：]\s*(-?\d+)\s*$/;
 
 export class EmojiParser implements ParserStrategy {
     parse(text: string, participants: Umamusume[], context: 'RACE' | 'PACE'): ParseResultWithBond {
@@ -182,6 +189,9 @@ export class EmojiParser implements ParserStrategy {
                 // Step 1 で取得した個数 X / 面数 Y を currentBlock に保持する（合計行処理時に参照）。
                 currentBlock._diceCount = diceCount;
                 currentBlock._diceFaces = diceFaces;
+                // CR-SA-10-Followup-F4-E1 / 2026-05-11: 個別出目行（N回目: M）を順次格納するための配列を初期化。
+                // 合計行処理時に Σ === Math.abs(diceSum) + length === _diceCount で検算する。
+                currentBlock._individualDice = [];
 
                 // If inline result was present, it's a single line entry (Standard-ish mixed in)
                 if (inlineResult !== undefined) {
@@ -228,6 +238,17 @@ export class EmojiParser implements ParserStrategy {
             }
             else if (currentBlock) {
                 // Step 2: Result Extraction (Multi-line Body)
+
+                // CR-SA-10-Followup-F4-E1 / 2026-05-11: 個別出目行（N回目: M）の検出と収集。
+                // SA21 SSoT parser-system.md §B Step 2 Case B 「個別出目行の収集」準拠。
+                // 個別出目自体は常に正値で記載されるため、減算ブロックでも正値のまま push する
+                // （合算結果のみ合計行処理時に Math.abs(diceSum) で絶対値ベース比較）。
+                const individualMatch = trimmed.match(INDIVIDUAL_DICE_PATTERN);
+                if (individualMatch) {
+                    currentBlock._individualDice!.push(parseInt(individualMatch[1], 10));
+                    continue;
+                }
+
                 // Look for "合計: N" (This is usually the DICE SUM, not the Final Score)
                 // Modified: Support negative total (e.g. "合計: -20")
                 // CR-17: 行頭アンカー `^` を追加し、文中の「合計: N」誤マッチを除去する。
@@ -246,6 +267,27 @@ export class EmojiParser implements ParserStrategy {
                     //   減算ケース（diceResult が負数化済）は絶対値で範囲を判定する（Case A と同方針）。
                     const diceCount = currentBlock._diceCount!;
                     const diceFaces = currentBlock._diceFaces!;
+
+                    // CR-SA-10-Followup-F4-E1 / 2026-05-11: 個別出目と合計の整合性検証
+                    // （SA21 SSoT parser-system.md §B Step 2 Case B「個別出目と合計の整合性検証」準拠）。
+                    // 検証順序 = 個別出目検算 → 範囲チェック（個別出目検算で不整合 → currentBlock リセット + continue
+                    // で後続ステップに進まない）。個別出目 0 件時は検算スキップして既存範囲チェックに進む
+                    // （フォーマット変動 / 個別出目記載なしケースの後方互換性確保）。
+                    const individualDice = currentBlock._individualDice!;
+                    if (individualDice.length > 0) {
+                        const individualSum = individualDice.reduce((acc, v) => acc + v, 0);
+                        const expectedAbs = Math.abs(diceSum);
+                        const sumMismatch = individualSum !== expectedAbs;
+                        const countMismatch = individualDice.length !== diceCount;
+                        if (sumMismatch || countMismatch) {
+                            currentBlock.validChecksum = false;
+                            errors.push(
+                                `ダイス内訳と合計値が不整合です: "${currentBlock.name}" (${currentBlock.diceStr}: 内訳合計 ${individualSum}, 合計表記 ${diceSum}。レスを改変せず、内訳と合計まで含めて貼り付けてください)`
+                            );
+                            currentBlock = null;
+                            continue;
+                        }
+                    }
                     const lowerBound = diceCount;
                     const upperBound = diceCount * diceFaces;
                     const valueForRangeCheck = Math.abs(diceResultValue);
