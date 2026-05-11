@@ -2,10 +2,18 @@
 // modal-houserule.md §3 + houserule-features.md §4 SSoT 準拠。
 // メインモーダル (設定名入力 + 保存ボタン + 一覧 [読込/削除]) + 上書き確認 + 読込時の初期化警告ダイアログ。
 // Bundle-10-T2 確立済 StrategyEditorModal の createPortal + z-index 階層パターン踏襲。
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { FolderOpen, Save, Trash2, X } from 'lucide-react';
+import { Download, FolderOpen, Save, Trash2, Upload, X } from 'lucide-react';
 import { useRaceStore } from '../../../store/useRaceStore';
+// Bundle-11-T2 / CR-SA-12 / 2026-05-11: ファイル I/O 機能
+// (modal-houserule.md §3 設定プリセット管理 ファイル入出力 + §⚠️ Import Validation)
+import { useNotificationStore } from '../../../store/useNotificationStore';
+import {
+    serializeHouseRulesConfig,
+    deserializeAndValidate,
+    buildExportFilename,
+} from './presetManager.helpers';
 
 interface PresetManagerModalProps {
     // 親側 `HouseRulesForm` で `{isOpen && <PresetManagerModal ... />}` の条件描画とするため、
@@ -22,7 +30,8 @@ interface ConfirmDialogState {
 }
 
 export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({ onClose }) => {
-    const { savePreset, loadPreset, deletePreset, listPresetNames } = useRaceStore();
+    const { savePreset, loadPreset, deletePreset, listPresetNames, importHouseRulesConfig } =
+        useRaceStore();
     // lazy initial pattern: mount 時に一度だけ listPresetNames() を実行。
     // 親側で `{isOpen && <PresetManagerModal ... />}` の条件描画により、open/close ごとに
     // mount/unmount される（state も自動リセット）= useEffect 経由の setState を回避する設計
@@ -30,6 +39,8 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({ onClose 
     const [presetName, setPresetName] = useState<string>('');
     const [presetNames, setPresetNames] = useState<string[]>(() => listPresetNames());
     const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null);
+    // Bundle-11-T2: 非表示 <input type="file"> をプログラム的にトリガーするための ref
+    const fileInputRef = useRef<HTMLInputElement | null>(null);
 
     // Escape キーで最前面のレイヤーを閉じる (確認ダイアログ > メインモーダル の優先順)。
     useEffect(() => {
@@ -115,6 +126,65 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({ onClose 
             e.preventDefault();
             handleSaveClick();
         }
+    };
+
+    // Bundle-11-T2 / CR-SA-12 / 2026-05-11: ファイル入出力ハンドラ
+    // Export: 現 state の houseRules + strategies を JSON 化 → Blob ダウンロード
+    // Import: 選択ファイル → FileReader → JSON.parse + zod 検証 → 確認ダイアログ → state 上書き
+    // (modal-houserule.md §3 ファイル入出力 + §⚠️ Import Validation + §ℹ️ Confirmations)
+
+    const handleExportClick = () => {
+        const state = useRaceStore.getState();
+        const json = serializeHouseRulesConfig(state.config.houseRules, state.strategies);
+        const blob = new Blob([json], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = buildExportFilename(new Date());
+        document.body.appendChild(anchor);
+        anchor.click();
+        document.body.removeChild(anchor);
+        URL.revokeObjectURL(url);
+    };
+
+    const handleImportButtonClick = () => {
+        fileInputRef.current?.click();
+    };
+
+    const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        // 同名ファイルを再選択しても onChange 発火させるため input value をリセット
+        e.target.value = '';
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+            const text = typeof reader.result === 'string' ? reader.result : '';
+            const result = deserializeAndValidate(text);
+            if (!result.success) {
+                useNotificationStore.getState().addNotification('error', result.error);
+                return;
+            }
+            setConfirmDialog({
+                title: 'ファイルから読込確認',
+                body: '現在の変更内容は失われます。読み込みますか？',
+                primaryLabel: '読み込む',
+                cancelLabel: 'キャンセル',
+                onConfirm: () => {
+                    importHouseRulesConfig(result.data);
+                    setConfirmDialog(null);
+                    onClose();
+                },
+            });
+        };
+        reader.onerror = () => {
+            useNotificationStore
+                .getState()
+                .addNotification(
+                    'error',
+                    'ファイル形式が正しくありません。オリウマツール用の設定ファイルを選択してください',
+                );
+        };
+        reader.readAsText(file);
     };
 
     return createPortal(
@@ -229,6 +299,41 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({ onClose 
                             ))}
                         </ul>
                     )}
+                </div>
+
+                {/* Bundle-11-T2 / CR-SA-12 / 2026-05-11: ファイル入出力セクション
+                    (modal-houserule.md §3 設定プリセット管理 ファイル入出力 ワイヤーフレーム下段) */}
+                <div className="space-y-2 pt-2 border-t border-slate-200 dark:border-slate-700">
+                    <p className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                        ファイル入出力
+                    </p>
+                    <div className="flex flex-wrap items-stretch gap-2">
+                        <button
+                            type="button"
+                            onClick={handleExportClick}
+                            className="inline-flex items-center gap-1 px-3 py-2 text-sm font-medium text-primary-700 dark:text-primary-300 bg-primary-50 dark:bg-primary-900/20 hover:bg-primary-100 dark:hover:bg-primary-900/40 border border-primary-200 dark:border-primary-800 rounded-lg transition-colors"
+                        >
+                            <Download className="w-4 h-4" />
+                            📤 ファイルへ保存(.json)
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handleImportButtonClick}
+                            className="inline-flex items-center gap-1 px-3 py-2 text-sm font-medium text-primary-700 dark:text-primary-300 bg-primary-50 dark:bg-primary-900/20 hover:bg-primary-100 dark:hover:bg-primary-900/40 border border-primary-200 dark:border-primary-800 rounded-lg transition-colors"
+                        >
+                            <Upload className="w-4 h-4" />
+                            📥 ファイルから読込(.json)
+                        </button>
+                        <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept="application/json,.json"
+                            onChange={handleFileSelected}
+                            className="hidden"
+                            aria-hidden="true"
+                            data-testid="preset-manager-file-input"
+                        />
+                    </div>
                 </div>
 
                 {/* Footer */}

@@ -14,7 +14,7 @@ import { useNotificationStore } from './useNotificationStore';
 import { calculateScoreWithBondSkill } from '../components/scene/race/bondSkill.helpers';
 // Bundle-7 / P4-6 / 2026-05-10: 永続化マイグレーションで houseRules を zod 検証する。
 // houserule-features.md §4 zod 検証範囲表に基づく検証 + Bundle-1 で追加された 2 フィールドの補完。
-import { houseRulesSchema, type HouseRulesData } from '../core/schema/houseRules';
+import { houseRulesSchema, type HouseRulesData, type HouseRulesConfig } from '../core/schema/houseRules';
 
 interface RaceStoreState extends RaceState {
     uiState: {
@@ -75,6 +75,12 @@ interface RaceStoreState extends RaceState {
     loadPreset: (name: string) => void;
     deletePreset: (name: string) => void;
     listPresetNames: () => string[];
+    // Bundle-11-T2 / CR-SA-12 / 2026-05-11: ファイル I/O 経由 Import の state 上書き action
+    // (modal-houserule.md §3 設定プリセット管理 ファイル入出力)。
+    // 受け取る config は呼び出し側で validateHouseRulesConfig() 検証済みの HouseRulesConfig を想定。
+    // loadPreset の state 上書き部分を共通化し、ファイル Import 経路と LocalStorage Import 経路で
+    // 同一の挙動 (houseRules + strategies 上書き + 全 participants score 再計算) を保証する。
+    importHouseRulesConfig: (config: HouseRulesConfig) => void;
     // Bundle-5 / P4-2, P4-3, CR-22 / 2026-05-10: 汎用補正の設定 / クリア + score 即時加減算。
     // value は整数、reason は trim 後非空（CR-22 統合）。バリデーション通過済の値が渡る前提で
     // 防御的判定はモーダル側で実施し、本 action は呼ばれた値をそのまま反映する。
@@ -573,6 +579,8 @@ export const useRaceStore = create<RaceStoreState>()(
             // loadPreset: LocalStorage から該当プリセットを読込し、houseRules + strategies を上書き。
             // 全 participants の score を新 houseRules / strategies / 既存 paceResult / 既存 activePhaseIds で再計算。
             // 該当キー不在 or JSON.parse 失敗時は notification にエラー通知し state 不変。
+            // Bundle-11-T2 / 2026-05-11: state 上書き処理は importHouseRulesConfig action に共通化
+            //（ファイル I/O 経路と同一の挙動を保証）。
             loadPreset: (name) => {
                 const trimmed = name.trim();
                 if (trimmed === '') return;
@@ -584,12 +592,9 @@ export const useRaceStore = create<RaceStoreState>()(
                         .addNotification('error', `プリセット '${trimmed}' が見つかりません`);
                     return;
                 }
-                let parsed: { houseRules: HouseRulesData; strategies: Strategy[] };
+                let parsed: HouseRulesConfig;
                 try {
-                    parsed = JSON.parse(raw) as {
-                        houseRules: HouseRulesData;
-                        strategies: Strategy[];
-                    };
+                    parsed = JSON.parse(raw) as HouseRulesConfig;
                 } catch {
                     useNotificationStore
                         .getState()
@@ -599,24 +604,7 @@ export const useRaceStore = create<RaceStoreState>()(
                         );
                     return;
                 }
-                set((state) => {
-                    const newConfig = { ...state.config, houseRules: parsed.houseRules };
-                    const activePhaseIds = getActivePhaseIds(state.config.midPhaseCount);
-                    return {
-                        config: newConfig,
-                        strategies: parsed.strategies,
-                        participants: state.participants.map((p) => ({
-                            ...p,
-                            score: calculateScoreWithBondSkill(
-                                p,
-                                parsed.strategies,
-                                state.paceResult.face,
-                                activePhaseIds,
-                                parsed.houseRules,
-                            ),
-                        })),
-                    };
-                });
+                useRaceStore.getState().importHouseRulesConfig(parsed);
             },
 
             // deletePreset: LocalStorage から該当キーを削除。trim 空 / 未定義 storage / 不存在キーはすべて no-op。
@@ -640,6 +628,33 @@ export const useRaceStore = create<RaceStoreState>()(
                 }
                 return names;
             },
+
+            // Bundle-11-T2 / CR-SA-12 / 2026-05-11: 検証済 HouseRulesConfig による state 上書き action
+            // (modal-houserule.md §3 設定プリセット管理 ファイル入出力)。
+            // 受け取る config は呼び出し側で validateHouseRulesConfig() 検証済みの想定（再検証は行わない）。
+            // loadPreset / ファイル I/O Import の共通実装点となり、両経路で同じ score 再計算挙動を保証する。
+            // strategies は zod 推論型 CustomStrategyData[] (paceModifiers: Record<string, number>) を持つが、
+            // Strategy 型 (paceModifiers: { [key: number]: number }) と JS ランタイムでは互換 (キーは常に文字列)。
+            importHouseRulesConfig: (config) =>
+                set((state) => {
+                    const newConfig = { ...state.config, houseRules: config.houseRules };
+                    const activePhaseIds = getActivePhaseIds(state.config.midPhaseCount);
+                    const newStrategies = config.strategies as unknown as Strategy[];
+                    return {
+                        config: newConfig,
+                        strategies: newStrategies,
+                        participants: state.participants.map((p) => ({
+                            ...p,
+                            score: calculateScoreWithBondSkill(
+                                p,
+                                newStrategies,
+                                state.paceResult.face,
+                                activePhaseIds,
+                                config.houseRules,
+                            ),
+                        })),
+                    };
+                }),
 
             generateParticipants: (count: number) =>
                 set((state) => {
