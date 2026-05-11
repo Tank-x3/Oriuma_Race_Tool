@@ -18,15 +18,17 @@ import {
     validateSpecialStrategyTypeAndPhase,
 } from '../../../core/validator';
 
-const STRATEGY_OPTIONS: StrategyName[] = ['大逃げ', '逃げ', '先行', '差し', '追込'];
 // Bundle-2 / D-1, D-14 / 2026-05-09: 静的配列を廃止し、`enableExtendedUnique` 連動で
 // useMemo にて動的計算するよう変更（コンポーネント内で getUniqueSkillTypeOptions() を呼ぶ）。
 // 'Persistent' は Bundle-3（複合固有スキル `enableCompositeUnique` 連動）で別途扱う。
+// Bundle-10-T2 / CR-SA-12 / 2026-05-11: 脚質選択肢を `state.strategies` から動的取得に変更
+// （カスタム脚質をプルダウンに反映するため、採用案 a 例外拡大、Bundle-9 ENG27 STRATEGY_OPTIONS ハードコード解消）。
 
 export const EntryForm: React.FC = () => {
     const {
         participants,
         config,
+        strategies,
         updateParticipant,
         // Bundle-8-T2 / CR-SA-4 (CR-SA-11 Sub-A 連動) / 2026-05-10: Scene 1 事前申告 actions
         setBondSkill,
@@ -35,6 +37,13 @@ export const EntryForm: React.FC = () => {
         moveToGate, // Updated action
         resetRace
     } = useRaceStore();
+
+    // Bundle-10-T2 / CR-SA-12 / 2026-05-11: ストアの脚質配列から選択肢を動的取得
+    // （`addStrategy` で追加されたカスタム脚質も含むため、エディタ操作と Scene 1 プルダウンが整合する）。
+    const strategyOptions: StrategyName[] = useMemo(
+        () => strategies.map((s) => s.name),
+        [strategies],
+    );
 
     const houseRules = config.houseRules;
     // Bundle-8-T2 / CR-SA-4 / 2026-05-10: 2 行レイアウト切替 + 2 行目フィールド構成 (scene1-setup.md §2)
@@ -364,7 +373,7 @@ export const EntryForm: React.FC = () => {
                                                     }`}
                                             >
                                                 <option value="" disabled>---</option>
-                                                {STRATEGY_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+                                                {strategyOptions.map(s => <option key={s} value={s}>{s}</option>)}
                                             </select>
                                         </td>
                                         <td className="px-4 py-3">
