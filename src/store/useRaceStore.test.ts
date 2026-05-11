@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
     useRaceStore,
     persistPartialize,
@@ -6,6 +6,7 @@ import {
     handleRehydrateError,
     PERSIST_NAME,
     PERSIST_VERSION,
+    PRESET_KEY_PREFIX,
     RESTORE_ERROR_MESSAGE,
     type PersistedRaceState,
 } from './useRaceStore';
@@ -2191,5 +2192,284 @@ describe('useRaceStore - Bundle-10-T1 / removeStrategy action', () => {
         expect(afterStrategies).toEqual(beforeStrategies);
         expect(afterScore).toBe(beforeScore);
         expect(afterStrategy).toBe(beforeStrategy);
+    });
+});
+
+// Bundle-11-T1 / CR-SA-12 / 2026-05-11: プリセット管理 actions
+// (modal-houserule.md §3 設定プリセット管理 + houserule-features.md §4 Config Management)
+// LocalStorage を vi.stubGlobal で in-memory モック化し、Node 環境（jsdom/happy-dom 未導入）下で
+// savePreset / loadPreset / deletePreset / listPresetNames の挙動を検証する。
+const createMockLocalStorage = () => {
+    const store = new Map<string, string>();
+    return {
+        getItem: (k: string) => (store.has(k) ? store.get(k)! : null),
+        setItem: (k: string, v: string) => {
+            store.set(k, String(v));
+        },
+        removeItem: (k: string) => {
+            store.delete(k);
+        },
+        clear: () => {
+            store.clear();
+        },
+        get length() {
+            return store.size;
+        },
+        key: (i: number) => Array.from(store.keys())[i] ?? null,
+    };
+};
+
+describe('savePreset - Bundle-11-T1', () => {
+    let mockStorage: ReturnType<typeof createMockLocalStorage>;
+    beforeEach(() => {
+        mockStorage = createMockLocalStorage();
+        vi.stubGlobal('localStorage', mockStorage);
+        useRaceStore.getState().resetRace();
+        resetStrategies();
+    });
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    it('(1) 設定名 + 現在の houseRules + strategies で LocalStorage に保存される', () => {
+        useRaceStore.getState().updateHouseRules({ enableBondSkill: true });
+        useRaceStore.getState().savePreset('プリセットA');
+        const raw = mockStorage.getItem(`${PRESET_KEY_PREFIX}プリセットA`);
+        expect(raw).not.toBeNull();
+        const parsed = JSON.parse(raw!);
+        expect(parsed.houseRules.enableBondSkill).toBe(true);
+        expect(Array.isArray(parsed.strategies)).toBe(true);
+        expect(parsed.strategies).toHaveLength(5);
+    });
+
+    it('(2) 既存設定名で再保存 → 既存キーが新値で上書きされる', () => {
+        useRaceStore.getState().updateHouseRules({ enableModifier: true });
+        useRaceStore.getState().savePreset('プリセットA');
+        useRaceStore.getState().updateHouseRules({ enableModifier: false });
+        useRaceStore.getState().savePreset('プリセットA');
+        const raw = mockStorage.getItem(`${PRESET_KEY_PREFIX}プリセットA`);
+        const parsed = JSON.parse(raw!);
+        expect(parsed.houseRules.enableModifier).toBe(false);
+    });
+
+    it('(3) 設定名 trim 後空欄 → no-op（LocalStorage 不変）', () => {
+        useRaceStore.getState().savePreset('');
+        useRaceStore.getState().savePreset('   ');
+        expect(mockStorage.length).toBe(0);
+    });
+
+    it('(4) LocalStorage キー = `race-store-presets:<name>` 完全一致 + PERSIST_NAME 主キーと別名前空間', () => {
+        useRaceStore.getState().savePreset('XYZ');
+        expect(mockStorage.getItem('race-store-presets:XYZ')).not.toBeNull();
+        // 主キー race-store とは別キー
+        expect(mockStorage.getItem('race-store')).toBeNull();
+        expect(PRESET_KEY_PREFIX).toBe('race-store-presets:');
+        expect(PRESET_KEY_PREFIX).not.toBe(PERSIST_NAME);
+    });
+
+    it('(5) カスタム脚質を含む strategies が完全シリアライズされる', () => {
+        const customA: Strategy = {
+            name: 'カスタムA',
+            fixValue: 99,
+            dice: { start: '2d10', mid: '2d8', end: '2d6' },
+            paceModifiers: { 1: -3, 9: 3 },
+        };
+        useRaceStore.getState().addStrategy('逃げ', customA);
+        useRaceStore.getState().savePreset('カスタム含む');
+        const raw = mockStorage.getItem(`${PRESET_KEY_PREFIX}カスタム含む`);
+        const parsed = JSON.parse(raw!);
+        const restored = parsed.strategies.find((s: Strategy) => s.name === 'カスタムA');
+        expect(restored).toBeDefined();
+        expect(restored.fixValue).toBe(99);
+        expect(restored.dice).toEqual({ start: '2d10', mid: '2d8', end: '2d6' });
+        expect(restored.paceModifiers).toEqual({ 1: -3, 9: 3 });
+    });
+});
+
+describe('loadPreset - Bundle-11-T1', () => {
+    let mockStorage: ReturnType<typeof createMockLocalStorage>;
+    beforeEach(() => {
+        mockStorage = createMockLocalStorage();
+        vi.stubGlobal('localStorage', mockStorage);
+        useRaceStore.getState().resetRace();
+        resetStrategies();
+        useNotificationStore.setState({ notifications: [] });
+    });
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    it('(6) 既存プリセットを読込 → state.config.houseRules + state.strategies が上書きされる', () => {
+        // プリセット保存（enableBondSkill=true, enableModifier=true）
+        useRaceStore.getState().updateHouseRules({
+            enableBondSkill: true,
+            enableModifier: true,
+        });
+        useRaceStore.getState().savePreset('プリセットB');
+        // 現状をデフォルトに戻す
+        useRaceStore.getState().updateHouseRules({
+            enableBondSkill: false,
+            enableModifier: false,
+        });
+        expect(useRaceStore.getState().config.houseRules.enableBondSkill).toBe(false);
+        // 読込
+        useRaceStore.getState().loadPreset('プリセットB');
+        const after = useRaceStore.getState().config.houseRules;
+        expect(after.enableBondSkill).toBe(true);
+        expect(after.enableModifier).toBe(true);
+    });
+
+    it('(7) 存在しないプリセット名 → state 不変 + 通知エラー発行', () => {
+        const before = useRaceStore.getState().config.houseRules;
+        useRaceStore.getState().loadPreset('存在しない');
+        const after = useRaceStore.getState().config.houseRules;
+        expect(after).toEqual(before);
+        const notifs = useNotificationStore.getState().notifications;
+        expect(notifs).toHaveLength(1);
+        expect(notifs[0].type).toBe('error');
+        expect(notifs[0].message).toContain('存在しない');
+    });
+
+    it('(8) loadPreset 後の participants の score が再計算される（updateHouseRules と同パターン）', () => {
+        // 絆スキル + 終盤ダイス完備の participant を installParticipant で注入
+        const history: Umamusume['history'] = {
+            Start: { baseDice: makeDice('3d8', [3, 3, 4]), computedScore: 0 },
+            End: {
+                baseDice: makeDice('3d6', [7, 7, 6]),
+                bondDice: makeDice('1d15', [12]),
+                computedScore: 0,
+            },
+        };
+        const p = setupParticipant({
+            strategy: '先行',
+            bondSkill: { type: 'BondGamble' },
+            history,
+        });
+        installParticipant(p);
+        // 絆スキル ON 状態でプリセット保存
+        useRaceStore.getState().updateHouseRules({ enableBondSkill: true });
+        useRaceStore.getState().savePreset('絆ON設定');
+        const scoreWithBond = useRaceStore.getState().participants[0].score;
+        // 絆スキル OFF に切り替え（score 12 減）
+        useRaceStore.getState().updateHouseRules({ enableBondSkill: false });
+        expect(useRaceStore.getState().participants[0].score).not.toBe(scoreWithBond);
+        // 読込 → score が再計算され、保存時の値に復元
+        useRaceStore.getState().loadPreset('絆ON設定');
+        expect(useRaceStore.getState().participants[0].score).toBe(scoreWithBond);
+    });
+
+    it('(9) JSON.parse 失敗（破損データ） → state 不変 + 通知エラー', () => {
+        mockStorage.setItem(`${PRESET_KEY_PREFIX}壊れたデータ`, '{ invalid json');
+        const before = useRaceStore.getState().config.houseRules;
+        useRaceStore.getState().loadPreset('壊れたデータ');
+        const after = useRaceStore.getState().config.houseRules;
+        expect(after).toEqual(before);
+        const notifs = useNotificationStore.getState().notifications;
+        expect(notifs).toHaveLength(1);
+        expect(notifs[0].type).toBe('error');
+    });
+
+    it('(10) loadPreset で strategies が完全置換される（カスタム脚質も含めて）', () => {
+        const customA: Strategy = {
+            name: 'カスタムA',
+            fixValue: 7,
+            dice: { start: '2d6', mid: '2d4', end: '1d10' },
+            paceModifiers: {},
+        };
+        useRaceStore.getState().addStrategy('逃げ', customA);
+        useRaceStore.getState().savePreset('カスタム含む');
+        // カスタム脚質を削除
+        useRaceStore.getState().removeStrategy('カスタムA');
+        expect(useRaceStore.getState().strategies).toHaveLength(5);
+        // 読込で復元
+        useRaceStore.getState().loadPreset('カスタム含む');
+        expect(useRaceStore.getState().strategies).toHaveLength(6);
+        expect(
+            useRaceStore.getState().strategies.find((s) => s.name === 'カスタムA'),
+        ).toBeDefined();
+    });
+
+    it('(11) 設定名 trim 空欄 → no-op（state 不変、通知も発行されない）', () => {
+        const before = useRaceStore.getState().config.houseRules;
+        useRaceStore.getState().loadPreset('');
+        useRaceStore.getState().loadPreset('   ');
+        expect(useRaceStore.getState().config.houseRules).toEqual(before);
+        expect(useNotificationStore.getState().notifications).toHaveLength(0);
+    });
+});
+
+describe('deletePreset - Bundle-11-T1', () => {
+    let mockStorage: ReturnType<typeof createMockLocalStorage>;
+    beforeEach(() => {
+        mockStorage = createMockLocalStorage();
+        vi.stubGlobal('localStorage', mockStorage);
+        useRaceStore.getState().resetRace();
+        resetStrategies();
+    });
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    it('(12) 既存プリセット削除 → LocalStorage から消える', () => {
+        useRaceStore.getState().savePreset('削除対象');
+        expect(mockStorage.getItem(`${PRESET_KEY_PREFIX}削除対象`)).not.toBeNull();
+        useRaceStore.getState().deletePreset('削除対象');
+        expect(mockStorage.getItem(`${PRESET_KEY_PREFIX}削除対象`)).toBeNull();
+    });
+
+    it('(13) 存在しないプリセット名 → no-op（エラーなし）', () => {
+        expect(() => useRaceStore.getState().deletePreset('存在しない')).not.toThrow();
+        expect(mockStorage.length).toBe(0);
+    });
+
+    it('(14) 設定名 trim 空欄 → no-op + 他キー不変', () => {
+        useRaceStore.getState().savePreset('keepMe');
+        useRaceStore.getState().deletePreset('');
+        useRaceStore.getState().deletePreset('   ');
+        expect(mockStorage.getItem(`${PRESET_KEY_PREFIX}keepMe`)).not.toBeNull();
+    });
+});
+
+describe('listPresetNames - Bundle-11-T1', () => {
+    let mockStorage: ReturnType<typeof createMockLocalStorage>;
+    beforeEach(() => {
+        mockStorage = createMockLocalStorage();
+        vi.stubGlobal('localStorage', mockStorage);
+        useRaceStore.getState().resetRace();
+        resetStrategies();
+    });
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    it('(15) PRESET_KEY_PREFIX のキーのみ列挙される', () => {
+        useRaceStore.getState().savePreset('alpha');
+        useRaceStore.getState().savePreset('beta');
+        useRaceStore.getState().savePreset('gamma');
+        const names = useRaceStore.getState().listPresetNames();
+        expect(names.sort()).toEqual(['alpha', 'beta', 'gamma']);
+    });
+
+    it('(16) 既存 `race-store` 主キー（Zustand persist）は列挙対象外', () => {
+        mockStorage.setItem('race-store', '{"foo":"bar"}');
+        mockStorage.setItem('unrelated-key', 'value');
+        useRaceStore.getState().savePreset('プリセットX');
+        const names = useRaceStore.getState().listPresetNames();
+        expect(names).toEqual(['プリセットX']);
+        expect(names).not.toContain('race-store');
+        expect(names).not.toContain('unrelated-key');
+    });
+
+    it('(17) プリセット 0 件 → 空配列を返す', () => {
+        const names = useRaceStore.getState().listPresetNames();
+        expect(names).toEqual([]);
+    });
+
+    it('(18) deletePreset 後、削除済名前が一覧から消える', () => {
+        useRaceStore.getState().savePreset('a');
+        useRaceStore.getState().savePreset('b');
+        useRaceStore.getState().deletePreset('a');
+        const names = useRaceStore.getState().listPresetNames();
+        expect(names).toEqual(['b']);
     });
 });

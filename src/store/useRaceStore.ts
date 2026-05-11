@@ -64,6 +64,17 @@ interface RaceStoreState extends RaceState {
     addStrategy: (insertAfterName: string, strategy: Strategy) => void;
     updateStrategy: (name: string, updates: Partial<Strategy>) => void;
     removeStrategy: (name: string) => void;
+    // Bundle-11-T1 / CR-SA-12 / 2026-05-11: プリセット管理 actions（modal-houserule.md §3）
+    // LocalStorage に名前付きで houseRules + strategies をシリアライズ保存・読込・削除する。
+    // キー名前空間: `race-store-presets:<name>`（PRESET_KEY_PREFIX、PERSIST_NAME='race-store' 主キーとの衝突回避）。
+    // 設定名 trim 後空欄は UI / validator 層でブロック（本 actions も防御的に no-op で安全側に倒す）。
+    // loadPreset 成功時は houseRules + strategies を上書きし、全 participants の score を再計算する
+    //（updateHouseRules + updateStrategy と同パターン、calculateScoreWithBondSkill 経由）。
+    // listPresetNames は state 非依存だが、UI 層から呼び出しを統一するため store action として配置。
+    savePreset: (name: string) => void;
+    loadPreset: (name: string) => void;
+    deletePreset: (name: string) => void;
+    listPresetNames: () => string[];
     // Bundle-5 / P4-2, P4-3, CR-22 / 2026-05-10: 汎用補正の設定 / クリア + score 即時加減算。
     // value は整数、reason は trim 後非空（CR-22 統合）。バリデーション通過済の値が渡る前提で
     // 防御的判定はモーダル側で実施し、本 action は呼ばれた値をそのまま反映する。
@@ -107,6 +118,10 @@ export type PersistedRaceState = Pick<
 
 // CR-5a: persist 設定値（テスト容易性のため module-level に分離して export）
 export const PERSIST_NAME = 'race-store';
+// Bundle-11-T1 / CR-SA-12 / 2026-05-11: プリセット管理用 LocalStorage キープレフィックス。
+// 既存 `race-store` 主キー (Zustand persist) との衝突回避のため名前空間を分離する
+//（modal-houserule.md §3「LocalStorage キー命名規則は Engineer 裁量、推奨形は名前空間付与」）。
+export const PRESET_KEY_PREFIX = 'race-store-presets:';
 // Bundle-7 / P4-6 / 2026-05-10: PERSIST_VERSION 1 → 2 にバンプ。
 // version=1 旧データ（Bundle-1 D-5 で houseRules.enableExtendedUnique / effectValue 追加前）→
 // version=2 へのデフォルト補完を persistMigrate で実施する。
@@ -536,6 +551,95 @@ export const useRaceStore = create<RaceStoreState>()(
                         }),
                     };
                 }),
+
+            // Bundle-11-T1 / CR-SA-12 / 2026-05-11: プリセット管理 actions
+            // (modal-houserule.md §3 設定プリセット管理 + houserule-features.md §4 Config Management)
+            // LocalStorage キー = `${PRESET_KEY_PREFIX}<name>` で houseRules + strategies の組をシリアライズ保存。
+            // 設定名 trim 後空欄 = no-op（UI 層のバリデーションと並行、防御的安全策）。
+            // Node 環境（テスト未モック時）等で localStorage グローバルが未定義の場合も
+            // crash させず no-op で返す（typeof ガード、既存 persist middleware 「storage 未提供環境では no-op」と同方針）。
+            savePreset: (name) => {
+                const trimmed = name.trim();
+                if (trimmed === '') return;
+                if (typeof globalThis.localStorage === 'undefined') return;
+                const state = useRaceStore.getState();
+                const payload = JSON.stringify({
+                    houseRules: state.config.houseRules,
+                    strategies: state.strategies,
+                });
+                globalThis.localStorage.setItem(`${PRESET_KEY_PREFIX}${trimmed}`, payload);
+            },
+
+            // loadPreset: LocalStorage から該当プリセットを読込し、houseRules + strategies を上書き。
+            // 全 participants の score を新 houseRules / strategies / 既存 paceResult / 既存 activePhaseIds で再計算。
+            // 該当キー不在 or JSON.parse 失敗時は notification にエラー通知し state 不変。
+            loadPreset: (name) => {
+                const trimmed = name.trim();
+                if (trimmed === '') return;
+                if (typeof globalThis.localStorage === 'undefined') return;
+                const raw = globalThis.localStorage.getItem(`${PRESET_KEY_PREFIX}${trimmed}`);
+                if (raw === null) {
+                    useNotificationStore
+                        .getState()
+                        .addNotification('error', `プリセット '${trimmed}' が見つかりません`);
+                    return;
+                }
+                let parsed: { houseRules: HouseRulesData; strategies: Strategy[] };
+                try {
+                    parsed = JSON.parse(raw) as {
+                        houseRules: HouseRulesData;
+                        strategies: Strategy[];
+                    };
+                } catch {
+                    useNotificationStore
+                        .getState()
+                        .addNotification(
+                            'error',
+                            `プリセット '${trimmed}' の読み込みに失敗しました`,
+                        );
+                    return;
+                }
+                set((state) => {
+                    const newConfig = { ...state.config, houseRules: parsed.houseRules };
+                    const activePhaseIds = getActivePhaseIds(state.config.midPhaseCount);
+                    return {
+                        config: newConfig,
+                        strategies: parsed.strategies,
+                        participants: state.participants.map((p) => ({
+                            ...p,
+                            score: calculateScoreWithBondSkill(
+                                p,
+                                parsed.strategies,
+                                state.paceResult.face,
+                                activePhaseIds,
+                                parsed.houseRules,
+                            ),
+                        })),
+                    };
+                });
+            },
+
+            // deletePreset: LocalStorage から該当キーを削除。trim 空 / 未定義 storage / 不存在キーはすべて no-op。
+            deletePreset: (name) => {
+                const trimmed = name.trim();
+                if (trimmed === '') return;
+                if (typeof globalThis.localStorage === 'undefined') return;
+                globalThis.localStorage.removeItem(`${PRESET_KEY_PREFIX}${trimmed}`);
+            },
+
+            // listPresetNames: LocalStorage 内の PRESET_KEY_PREFIX で始まるキーを列挙し、名前部分のみ返却。
+            // 未定義 storage の場合は空配列で返す。state 非依存だが、actions API として統一的に公開する。
+            listPresetNames: () => {
+                if (typeof globalThis.localStorage === 'undefined') return [];
+                const names: string[] = [];
+                for (let i = 0; i < globalThis.localStorage.length; i++) {
+                    const key = globalThis.localStorage.key(i);
+                    if (key !== null && key.startsWith(PRESET_KEY_PREFIX)) {
+                        names.push(key.substring(PRESET_KEY_PREFIX.length));
+                    }
+                }
+                return names;
+            },
 
             generateParticipants: (count: number) =>
                 set((state) => {
