@@ -170,7 +170,9 @@ export class Calculator {
         // We need to calculate the modifier value from strategy.
 
         if (paceRoll !== null) {
-            const mod = getPaceModifier(participant.strategy, paceRoll);
+            // Bundle-10-Followup-runtime-sync / 2026-05-11: strategies を渡すことで、
+            // カスタム脚質の paceModifiers が実機計算に反映される。
+            const mod = getPaceModifier(participant.strategy, paceRoll, strategies);
             total += mod;
         }
 

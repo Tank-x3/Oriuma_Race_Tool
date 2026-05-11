@@ -50,13 +50,25 @@ export const DEFAULT_STRATEGIES: Strategy[] = [
     },
 ];
 
-export function getPaceModifier(strategyName: string, paceRoll: number): number {
+// Bundle-10-Followup-runtime-sync / 2026-05-11: state.strategies の paceModifiers を優先参照。
+// 未定義時のみ固定テーブル PACE_MODIFIERS にフォールバックし、DEFAULT 5 脚質互換性を維持する。
+export function getPaceModifier(
+    strategyName: string,
+    paceRoll: number,
+    strategies: Strategy[],
+): number {
+    const strategy = strategies.find(s => s.name === strategyName);
+    if (strategy?.paceModifiers && strategy.paceModifiers[paceRoll] !== undefined) {
+        return strategy.paceModifiers[paceRoll];
+    }
     if (!PACE_MODIFIERS[paceRoll]) return 0;
     return PACE_MODIFIERS[paceRoll][strategyName] || 0;
 }
 
-export function getStrategy(name: string, customStrategies: Strategy[] = []): Strategy | undefined {
-    return [...DEFAULT_STRATEGIES, ...customStrategies].find(s => s.name === name);
+// Bundle-10-Followup-runtime-sync / 2026-05-11: state.strategies のみから検索する形に変更。
+// DEFAULT 5 脚質も含めて state.strategies が SSoT として動作するため、ユーザー編集が実機計算に反映される。
+export function getStrategy(name: string, strategies: Strategy[]): Strategy | undefined {
+    return strategies.find(s => s.name === name);
 }
 
 export function getPaceLabel(face: number): string {

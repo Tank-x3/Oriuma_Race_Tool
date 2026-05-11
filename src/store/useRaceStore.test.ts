@@ -2063,10 +2063,10 @@ describe('useRaceStore - Bundle-10-T1 / updateStrategy action', () => {
         expect(updated?.paceModifiers).toEqual({ 1: 8, 9: -8 });
     });
 
-    // [ESCALATION REQUIRED 案 V V1 / 2026-05-11]: getStrategy は `[...DEFAULT_STRATEGIES, ...customStrategies]`
-    // を結合して find するため、state.strategies の DEFAULT 5 脚質編集が score 計算に反映されない（DEFAULT 不変版が優先取得）。
-    // 仕様 houserule-features.md §1 Edit「既存の 5 脚質のパラメータ（固定値・ダイス）を編集可能」との齟齬。
-    // 本 T1 では暫定的にカスタム脚質ベースで「score 再計算経路が走る」ことを確認する（DEFAULT 編集の score 反映解消は後続 SA 判断）。
+    // Bundle-10-T1 ENG38 で発見された ESCALATION 案 V V1（getStrategy 設計の DEFAULT 5 脚質編集 score 反映齟齬）は
+    // Bundle-10-Followup-runtime-sync (2026-05-11) で getStrategy(name, strategies) シグネチャ変更により解消済。
+    // 本テストはカスタム脚質ベースで score 再計算経路が走ることを確認する位置付けは維持する
+    // （DEFAULT 編集の score 反映 regression は strategy-runtime-sync.test.ts で別途カバー）。
     it('編集した脚質を選択している participant の score が再計算される（カスタム脚質の fixValue 変更）', () => {
         const customA: Strategy = {
             name: 'カスタムA',
