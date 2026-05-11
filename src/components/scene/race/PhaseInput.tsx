@@ -11,13 +11,12 @@ import { useNotificationStore } from '../../../store/useNotificationStore';
 import { useRaceEngine } from '../../../hooks/useRaceEngine';
 import { Play, RotateCw, AlertTriangle } from 'lucide-react';
 import { clsx } from 'clsx';
-// Bundle-2 / D-1, D-14 / 2026-05-09 [ESCALATION 案 V Provisional 適用]:
-// 既存 d10/d20 ヒューリスティックでは SuperGamble (1d35) / SuperStability (1d3) を捕捉できないため、
-// 参加者の固有タイプから期待ダイス式を逆引きして判定する方式に拡張する（拡張固有タイプ含む 5 種網羅）。
-import { getExpectedUniqueDiceStr } from './phaseOutput.helpers';
-// Bundle-4 / P4-1, P4-5 / 2026-05-10 [ESCALATION 案 V Provisional 適用]:
-// 戦法併記（【捲り】±N / 【溜め】±N）を解析前に除去する純粋関数。
-import { stripStrategyAnnotations } from './specialStrategy.helpers';
+// CR-SA-11-Sub-B-E1 / 2026-05-11: PhaseInput 解析前処理層への分離。
+// Bundle-2 ENG25 由来の拡張固有タイプ判定（isUniqueDice）と
+// Bundle-4 ENG28 由来の戦法注釈除去（sanitizeInputForParser）を preprocessor 層に集約。
+// 既存純粋関数（stripStrategyAnnotations / getExpectedUniqueDiceStr）は存置し、
+// preprocessor 層から呼び出す形に再構成（重複定義なし）。
+import { sanitizeInputForParser, isUniqueDice } from './phaseInput.preprocessors';
 // Bundle-8-T5 / CR-SA-4 / 2026-05-10 [ESCALATION 案 V Provisional 適用]:
 // 終盤【絆スキル】セクション解析後の bondDice 格納分岐用拡張型
 // （scene3-race.md §2、houserule-features.md §2 [v] §データ仕様 L141）。
@@ -56,12 +55,9 @@ export const PhaseInput: React.FC<PhaseInputProps> = ({ onErrors }) => {
         try {
             await new Promise(resolve => setTimeout(resolve, 50)); // UI flush
 
-            // Bundle-4 / P4-1, P4-5 / 2026-05-10 [ESCALATION 案 V Provisional 適用]:
-            // 仕様 houserule-features.md §3 Application Timing は「事後適用」前提だが、
-            // 実 GM 運用では掲示板投稿前に戦法を宣言（PhaseOutput 併記）する必要があり、
-            // 解析対象テキストに ` 【捲り】±N` / ` 【溜め】±N` 併記が含まれる。
-            // Parser を不変厳守エリアから外せないため、解析前処理として併記を除去する。
-            const sanitizedInput = stripStrategyAnnotations(inputText);
+            // CR-SA-11-Sub-B-E1 / 2026-05-11: preprocessor 層経由で戦法注釈を除去。
+            // 旧 Bundle-4 ENG28 由来の stripStrategyAnnotations 直接呼び出しを置換。
+            const sanitizedInput = sanitizeInputForParser(inputText);
 
             const context = isPacePhase ? 'PACE' : 'RACE';
             const parser = ParserFactory.getParser(sanitizedInput);
@@ -120,13 +116,9 @@ export const PhaseInput: React.FC<PhaseInputProps> = ({ onErrors }) => {
                     const prevHistory = p.history[currentPhaseId] || {};
                     const diceStr = result.diceStr;
 
-                    // Bundle-2 / D-1, D-14 / 2026-05-09 [ESCALATION 案 V Provisional 適用]:
-                    // 参加者の固有タイプから期待ダイス式を逆引きし、解析結果と完全一致するかで判定。
-                    // SuperGamble (1d35) / SuperStability (1d3) を含む 5 種すべてに対応。
-                    // 既存の d10/d20 ヒューリスティックでは Stability/Gamble/Persistent (`X+dice1d10/dice1d20`)
-                    // のみ正しく分類されていたが、拡張固有タイプには対応できなかった。
-                    const expectedUniqueDiceStr = getExpectedUniqueDiceStr(p.uniqueSkill.type);
-                    const isUnique = expectedUniqueDiceStr !== '' && diceStr === expectedUniqueDiceStr;
+                    // CR-SA-11-Sub-B-E1 / 2026-05-11: preprocessor 層経由で拡張固有タイプ判定。
+                    // 旧 Bundle-2 ENG25 由来の getExpectedUniqueDiceStr 直接呼び出しを置換。
+                    const isUnique = isUniqueDice(p.uniqueSkill.type, diceStr);
 
                     const newHistoryEntry = {
                         ...prevHistory,
