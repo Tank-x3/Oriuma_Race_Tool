@@ -4,6 +4,9 @@ import { Calculator } from '../../../core/calculator';
 // Bundle-4 / P4-1, P4-5 / 2026-05-10: 特殊戦法（捲り/溜め）の純粋関数群。
 // houserule-features.md §3 Status Effect Logic / Future Queue / scene3-race.md §2 §5 準拠。
 // データ構造を増やさず再計算で導出する設計（participants[*].history[phaseId].specialStrategy のみ参照）。
+// Bundle-4-Followup-special-strategy-timing-E1 / 2026-05-12 (SA21 案 A 採択):
+// specialStrategy 効果値の score 反映を「結果取り込み済 phase」に限定する形に
+// `computeSpecialStrategyTotalDelta` を改修。判定用に `isPhaseResultLoaded` を新設。
 
 /**
  * 終盤フェーズへの到達済か判定する。
@@ -15,6 +18,35 @@ export const hasReachedEndPhase = (
     history: Umamusume['history']
 ): boolean => {
     return currentPhaseId === 'End' || history['End'] !== undefined;
+};
+
+/**
+ * Bundle-4-Followup-special-strategy-timing-E1 / 2026-05-12 (SA21 案 A 採択):
+ * 指定 phase が「結果取り込み済」かを判定する純粋関数。
+ *
+ * 「結果取り込み済」の定義（houserule-features.md §3 Application Timing 改訂分）:
+ *  - baseDice / uniqueDice / manualModifier のいずれかが history[phaseId] に格納済
+ *  - すなわち Parser 解析実行（baseDice / uniqueDice）または GM 操作（manualModifier）で
+ *    当該 phase の結果が確定済の状態
+ *
+ * 用途:
+ *  - `computeSpecialStrategyTotalDelta`: 発動 phase が結果取り込み済の場合のみ effectValue を反映
+ *  - `getDiceFormulaBaseValue` (phaseOutput.helpers.ts): score から effectValue を差し引く判定
+ *
+ * specialStrategy 自体は判定に含めない（事前操作 = specialStrategy のみ設定済の状態を
+ * 「結果取り込み前」として扱うため）。computedScore も含めない（fixValue 加算前提のため）。
+ */
+export const isPhaseResultLoaded = (
+    p: Umamusume,
+    phaseId: string
+): boolean => {
+    const entry = p.history[phaseId];
+    if (!entry) return false;
+    return (
+        entry.baseDice !== undefined ||
+        entry.uniqueDice !== undefined ||
+        entry.manualModifier !== undefined
+    );
 };
 
 /**
@@ -162,9 +194,15 @@ export const computeSpecialStrategyTotalDelta = (
     if (activated === null) return 0;
     if (activated.phaseId === 'End') return 0;
 
+    // Bundle-4-Followup-special-strategy-timing-E1 / 2026-05-12 (SA21 案 A 採択):
+    // 発動 phase が結果取り込み済の場合のみ effectValue を score へ反映する。
+    // 事前操作（Scene 1 事前申告連動 ON / 戦法ボタン事前 ON）+ 結果取り込み前 = delta 0
+    // → score 不変（二重加算誤認リスク解消、houserule-features.md §3 Application Timing 改訂分）
+    if (!isPhaseResultLoaded(p, activated.phaseId)) return 0;
+
     let delta = activated.value === 'Makuri' ? effectValue : -effectValue;
 
-    // 終盤の baseDice 解析実行済（history.End あり）なら反動/解放も加算
+    // 終盤の baseDice 解析実行済（history.End あり）なら反動/解放も加算（既存仕様維持）
     if (p.history['End'] !== undefined) {
         delta += activated.value === 'Makuri' ? -effectValue : effectValue;
     }

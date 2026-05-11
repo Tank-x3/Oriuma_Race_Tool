@@ -3,7 +3,13 @@ import { useRaceStore } from '../../../store/useRaceStore';
 import { useRaceEngine } from '../../../hooks/useRaceEngine';
 import { Copy, Check, Dices } from 'lucide-react';
 import { clsx } from 'clsx';
-import { getUniqueDiceFormula, getExpectedUniqueDiceStr } from './phaseOutput.helpers';
+import {
+    getUniqueDiceFormula,
+    getExpectedUniqueDiceStr,
+    // Bundle-4-Followup-special-strategy-timing-E1 / 2026-05-12 (SA21 案 A 採択):
+    // ダイス式 [基礎値] 算出を helpers へ切り出し。効果値反映前のスコアを使用する。
+    getDiceFormulaBaseValue,
+} from './phaseOutput.helpers';
 // Bundle-4 / P4-1, P4-5 / 2026-05-10: 通常ダイス行末への特殊戦法併記
 import { getSpecialStrategyAnnotation } from './specialStrategy.helpers';
 // Bundle-8-T4 / CR-SA-4 / 2026-05-10: 終盤【絆スキル】セクション自動生成（scene3-race.md §2）
@@ -29,18 +35,12 @@ export const PhaseOutput: React.FC = () => {
     });
 
     // Helper: Get Base Value for Phase
-    const getBaseValue = (p: typeof participants[0]) => {
-        if (currentPhaseId === 'Start') {
-            const strategy = strategies.find(s => s.name === p.strategy);
-            return strategy?.fixValue ?? 0;
-        }
-        // Mid/End: Current Score
-        // Note: Logic says "Previous Phase Result" but essentially current score before this phase dice.
-        // If Pace Phase executed, score might include pace mod? 
-        // Logic: "Pace Modifier ... is applied to Base Value straight away". 
-        // So p.score is correct if we updated it after Pace.
-        return p.score;
-    };
+    // Bundle-4-Followup-special-strategy-timing-E1 / 2026-05-12 (SA21 案 A 採択):
+    // ダイス式 [基礎値] は specialStrategy 効果値反映前のスコアを使用する
+    // （houserule-features.md §3 Application Timing 改訂分、scene3-race.md §2 特殊戦法併記）。
+    // 算出ロジックは phaseOutput.helpers#getDiceFormulaBaseValue に切り出し。
+    const getBaseValue = (p: typeof participants[0]) =>
+        getDiceFormulaBaseValue(p, currentPhaseId, config.houseRules, strategies);
 
     // Helper: Get Dice Formula
     const getDiceFormula = (strategyName: string) => {

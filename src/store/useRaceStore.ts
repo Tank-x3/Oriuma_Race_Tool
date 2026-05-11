@@ -330,8 +330,14 @@ export const useRaceStore = create<RaceStoreState>()(
                     };
                 }),
 
-            // Bundle-4 / P4-1, P4-5 / 2026-05-10: 特殊戦法設定 + score 即時加減算。
-            // history[phaseId].specialStrategy を更新後、解析未実行 phase を除外した score を再計算。
+            // Bundle-4 / P4-1, P4-5 / 2026-05-10: 特殊戦法設定 + score 加減算。
+            // history[phaseId].specialStrategy を更新後、calculateScoreWithBondSkill 経由で score を再計算。
+            // Bundle-4-Followup-special-strategy-timing-E1 / 2026-05-12 (SA21 案 A 採択):
+            // specialStrategy 効果値の score 反映タイミング統一。発動 phase が結果取り込み済の場合のみ
+            // computeSpecialStrategyTotalDelta が effectValue を返す形に specialStrategy.helpers.ts を
+            // 改修済みのため、本 action の構造は変更不要（state 構造 / actions 配置 / persist /
+            // PERSIST_VERSION すべて完全不変）。事前操作 + 結果取り込み前 = score 不変、
+            // 結果取り込み実行で specialStrategy 効果値が反映される挙動を実現する。
             setSpecialStrategy: (participantId, phaseId, value) =>
                 set((state) => {
                     const activePhaseIds = getActivePhaseIds(state.config.midPhaseCount);

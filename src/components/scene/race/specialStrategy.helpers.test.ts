@@ -5,6 +5,7 @@ import {
     getSpecialStrategyAnnotation,
     computeSpecialStrategyTotalDelta,
     stripStrategyAnnotations,
+    isPhaseResultLoaded,
 } from './specialStrategy.helpers';
 import type { Umamusume } from '../../../types';
 
@@ -18,6 +19,14 @@ const makeParticipant = (override: Partial<Umamusume> = {}): Umamusume => ({
     score: 0,
     history: {},
     ...override,
+});
+
+// Bundle-4-Followup-special-strategy-timing-E1 / 2026-05-12 用 baseDice fixture
+// computeSpecialStrategyTotalDelta 新仕様（結果取り込み済判定）で「発動 phase 取り込み済」を表現する。
+const makeBaseDice = (diceStr: string, values: number[]) => ({
+    diceStr,
+    values,
+    sum: values.reduce((a, b) => a + b, 0),
 });
 
 describe('specialStrategy.helpers - Bundle-4 / P4-1, P4-5 / 2026-05-10', () => {
@@ -124,47 +133,167 @@ describe('specialStrategy.helpers - Bundle-4 / P4-1, P4-5 / 2026-05-10', () => {
             const p = makeParticipant({ history: { Start: { computedScore: 20 } } });
             expect(computeSpecialStrategyTotalDelta(p, 15, true)).toBe(0);
         });
-        it('Mid1 で Makuri 発動・history.End なし → +15（即時加算のみ）', () => {
+        it('Mid1 で Makuri 発動 (取り込み済) ・history.End なし → +15（即時加算のみ）', () => {
+            // Bundle-4-Followup-E1: 結果取り込み済を表現するため baseDice 追加（旧仕様 history に baseDice なくとも
+            // +15 が期待されたが、新仕様では取り込み済前提で同 assertion を維持）
             const p = makeParticipant({
-                history: { Mid1: { computedScore: 35, specialStrategy: 'Makuri' } },
+                history: {
+                    Mid1: {
+                        baseDice: makeBaseDice('2d8', [4, 5]),
+                        computedScore: 35,
+                        specialStrategy: 'Makuri',
+                    },
+                },
             });
             expect(computeSpecialStrategyTotalDelta(p, 15, true)).toBe(15);
         });
-        it('Mid1 で Makuri 発動・history.End あり → 0（+15 即時 + (-15) 反動 = 0）', () => {
+        it('Mid1 で Makuri 発動 (取り込み済) ・history.End あり → 0（+15 即時 + (-15) 反動 = 0）', () => {
             const p = makeParticipant({
                 history: {
-                    Mid1: { computedScore: 35, specialStrategy: 'Makuri' },
-                    End: { computedScore: 60 },
+                    Mid1: {
+                        baseDice: makeBaseDice('2d8', [4, 5]),
+                        computedScore: 35,
+                        specialStrategy: 'Makuri',
+                    },
+                    End: { baseDice: makeBaseDice('1d7', [5]), computedScore: 60 },
                 },
             });
             expect(computeSpecialStrategyTotalDelta(p, 15, true)).toBe(0);
         });
-        it('Start で Tame 発動・history.End なし → -20（即時減算のみ、効果値 20）', () => {
+        it('Start で Tame 発動 (取り込み済) ・history.End なし → -20（即時減算のみ、効果値 20）', () => {
             const p = makeParticipant({
-                history: { Start: { computedScore: 0, specialStrategy: 'Tame' } },
+                history: {
+                    Start: {
+                        baseDice: makeBaseDice('3d8', [3, 4, 3]),
+                        computedScore: 20,
+                        specialStrategy: 'Tame',
+                    },
+                },
             });
             expect(computeSpecialStrategyTotalDelta(p, 20, true)).toBe(-20);
         });
-        it('Start で Tame 発動・history.End あり → 0（-20 即時 + (+20) 解放 = 0、効果値 20）', () => {
+        it('Start で Tame 発動 (取り込み済) ・history.End あり → 0（-20 即時 + (+20) 解放 = 0、効果値 20）', () => {
             const p = makeParticipant({
                 history: {
-                    Start: { computedScore: 0, specialStrategy: 'Tame' },
-                    End: { computedScore: 50 },
+                    Start: {
+                        baseDice: makeBaseDice('3d8', [3, 4, 3]),
+                        computedScore: 20,
+                        specialStrategy: 'Tame',
+                    },
+                    End: { baseDice: makeBaseDice('1d7', [5]), computedScore: 50 },
                 },
             });
             expect(computeSpecialStrategyTotalDelta(p, 20, true)).toBe(0);
         });
         it('発動フェーズ自体が End → 0（仕様上不可だが防御的に 0）', () => {
             const p = makeParticipant({
-                history: { End: { computedScore: 60, specialStrategy: 'Makuri' } },
+                history: {
+                    End: {
+                        baseDice: makeBaseDice('1d7', [5]),
+                        computedScore: 60,
+                        specialStrategy: 'Makuri',
+                    },
+                },
             });
             expect(computeSpecialStrategyTotalDelta(p, 15, true)).toBe(0);
         });
         it('enableSpecialStrategy === false → 0（過去データがあっても無効化）', () => {
             const p = makeParticipant({
-                history: { Mid1: { computedScore: 35, specialStrategy: 'Makuri' } },
+                history: {
+                    Mid1: {
+                        baseDice: makeBaseDice('2d8', [4, 5]),
+                        computedScore: 35,
+                        specialStrategy: 'Makuri',
+                    },
+                },
             });
             expect(computeSpecialStrategyTotalDelta(p, 15, false)).toBe(0);
+        });
+    });
+
+    // Bundle-4-Followup-special-strategy-timing-E1 / 2026-05-12 (SA21 案 A 採択):
+    // specialStrategy 効果値の score 反映タイミング統一に伴う新規テスト群。
+    // 結果取り込み済判定 (`isPhaseResultLoaded`) + 結果取り込み前の delta 0 挙動の regression。
+    describe('isPhaseResultLoaded - Bundle-4-Followup-E1 / 2026-05-12', () => {
+        it('(I1) baseDice あり → true（Parser 解析実行済）', () => {
+            const p = makeParticipant({
+                history: {
+                    Mid1: {
+                        baseDice: makeBaseDice('2d8', [4, 5]),
+                        computedScore: 9,
+                    },
+                },
+            });
+            expect(isPhaseResultLoaded(p, 'Mid1')).toBe(true);
+        });
+        it('(I2) uniqueDice あり → true（固有スキル取り込み済）', () => {
+            const p = makeParticipant({
+                history: {
+                    Mid1: {
+                        uniqueDice: makeBaseDice('1d10', [7]),
+                        computedScore: 7,
+                    },
+                },
+            });
+            expect(isPhaseResultLoaded(p, 'Mid1')).toBe(true);
+        });
+        it('(I3) manualModifier あり → true（GM 補正済）', () => {
+            const p = makeParticipant({
+                history: {
+                    Mid1: {
+                        manualModifier: { value: 5, reason: '妨害' },
+                        computedScore: 5,
+                    },
+                },
+            });
+            expect(isPhaseResultLoaded(p, 'Mid1')).toBe(true);
+        });
+        it('(I4) specialStrategy のみ + 上記いずれもなし → false（事前操作 = 結果取り込み前）', () => {
+            const p = makeParticipant({
+                history: {
+                    Mid1: { specialStrategy: 'Makuri', computedScore: 0 },
+                },
+            });
+            expect(isPhaseResultLoaded(p, 'Mid1')).toBe(false);
+        });
+        it('(I5) history エントリ不在 → false', () => {
+            const p = makeParticipant({ history: {} });
+            expect(isPhaseResultLoaded(p, 'Mid1')).toBe(false);
+        });
+    });
+
+    describe('computeSpecialStrategyTotalDelta - Bundle-4-Followup-E1 / 2026-05-12 反映タイミング統一', () => {
+        it('(T1) 事前操作 (baseDice なし) + Makuri → 0（結果取り込み前 = score 不変、二重加算誤認リスク解消）', () => {
+            // Scene 1 事前申告連動 ON または戦法ボタン事前 ON のシナリオ
+            // 旧仕様（Bundle-4 ENG28）では +15 即時加算だったが、SA21 案 A 採択で 0 に挙動変更
+            const p = makeParticipant({
+                history: { Mid1: { specialStrategy: 'Makuri', computedScore: 0 } },
+            });
+            expect(computeSpecialStrategyTotalDelta(p, 15, true)).toBe(0);
+        });
+        it('(T2) 事前操作 (baseDice なし) + Tame + history.End あり (仕様外) → 0（防御的）', () => {
+            // 発動 phase 結果取り込み前で End に到達するシナリオは GM 進行ルール上不可だが、
+            // 防御的に delta = 0 を返すことを保証する
+            const p = makeParticipant({
+                history: {
+                    Mid1: { specialStrategy: 'Tame', computedScore: 0 },
+                    End: { baseDice: makeBaseDice('1d7', [5]), computedScore: 5 },
+                },
+            });
+            expect(computeSpecialStrategyTotalDelta(p, 15, true)).toBe(0);
+        });
+        it('(T3) 取り込み済判定が manualModifier 単独でも成立 → +15（GM 操作のみで取り込み扱い）', () => {
+            // 発動 phase に baseDice / uniqueDice なくとも manualModifier があれば「結果取り込み済」
+            const p = makeParticipant({
+                history: {
+                    Mid1: {
+                        manualModifier: { value: 3, reason: '加算' },
+                        specialStrategy: 'Makuri',
+                        computedScore: 3,
+                    },
+                },
+            });
+            expect(computeSpecialStrategyTotalDelta(p, 15, true)).toBe(15);
         });
     });
 

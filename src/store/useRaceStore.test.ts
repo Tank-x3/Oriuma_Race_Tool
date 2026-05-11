@@ -1050,11 +1050,14 @@ describe('Bundle-4 / P4-1, P4-5 / 2026-05-10 useRaceStore.setSpecialStrategy', (
         expect(updated.history['Mid']?.specialStrategy).toBe('Makuri');
     });
 
-    it('(v-pre) ユーザーフィードバック regression: 解析未実行（baseDice なし）で Makuri 設定 → score = effectValue のみ（fixValue 等は加算しない）', () => {
-        // ユーザー報告（Round 2）: 「差し脚質で戦法 ON 時に +20 表示、ダイス出力は +15」
-        // 原因: setSpecialStrategy が history[Start] = { specialStrategy: Makuri, computedScore: 0 } を作成
-        // → Calculator が history.Start exists 判定で fixValue (差し: 0) + 安定型固有 5 等を加算してしまう
-        // 修正: 解析未実行（baseDice/uniqueDice/manualModifier いずれも未投入）の history は score 計算から除外
+    it('(v-pre) Bundle-4-Followup-E1 / 2026-05-12: 解析未実行（baseDice なし）で Makuri 設定 → score = 0（事前操作 + 結果取り込み前 = score 不変）', () => {
+        // Bundle-4 ENG28 ユーザー報告（Round 2）当時: 「差し脚質で戦法 ON 時に +20 表示、ダイス出力は +15」
+        // ENG28 修正: 解析未実行（baseDice/uniqueDice/manualModifier いずれも未投入）の history を score 計算から除外
+        //   → 旧仕様では「effectValue のみ加算」（score = 15）の挙動。
+        // Bundle-4-Followup-E1 / 2026-05-12 (SA21 案 A 採択): 効果値の score 反映タイミング統一。
+        //   発動 phase が結果取り込み済の場合のみ effectValue を delta に加算する形に
+        //   `computeSpecialStrategyTotalDelta` を改修。事前操作 + 結果取り込み前 = delta 0 = score 不変。
+        //   → 新仕様では「effectValue も加算されない」（score = 0）の挙動。
         installForStrategy({}); // 解析未実行（history 全空）
         useRaceStore.setState({ currentPhaseId: 'Start' });
 
@@ -1062,9 +1065,9 @@ describe('Bundle-4 / P4-1, P4-5 / 2026-05-10 useRaceStore.setSpecialStrategy', (
 
         const updated = useRaceStore.getState().participants[0];
         expect(updated.history['Start']?.specialStrategy).toBe('Makuri');
-        // 期待: 0（解析未実行のため fixValue 加算なし）+ 15（Makuri 即時）= 15
-        // 修正前は 10（先行 fixValue）+ 15 = 25 になっていた
-        expect(updated.score).toBe(15);
+        // Bundle-4-Followup-E1: 0（解析未実行 = 結果取り込み前 → fixValue + effectValue いずれも加算なし）
+        // 旧 ENG28 仕様では 15（effectValue のみ即時加算）、二重加算誤認リスク解消のため本 E1 で挙動変更
+        expect(updated.score).toBe(0);
     });
 
     it('(v) Bundle-6 戻る操作（setCurrentPhase のみ）で history.End が保持される → 終盤反動も維持', () => {
