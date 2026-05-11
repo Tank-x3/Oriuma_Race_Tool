@@ -129,6 +129,58 @@ export const validateSpecialStrategyTypeAndPhase = (
     return [];
 };
 
+// Bundle-10-T3 / CR-SA-12 / 2026-05-11: 脚質エディタ Validation 統合
+// (modal-houserule.md §Critical Errors + houserule-features.md §1 Validation SSoT)
+// 既存 Layer 2 純粋関数群 (validatePersistentSkillPhases / validateBondSkillType /
+// validateSpecialStrategyPhase / validateSpecialStrategyTypeAndPhase) と同パターン。
+
+/**
+ * 脚質名の重複・空欄検証 (modal-houserule.md §Critical Errors SSoT)。
+ *
+ * - 空文字 / 空白のみ trim 後空 → エラー（脚質名未入力）
+ * - 編集モード時 `editingName === name`（名前未変更）→ 重複扱いしない
+ * - `existingNames` 内に同名がある場合 → エラー（脚質名重複）
+ *
+ * @param name 入力された脚質名（trim 前）
+ * @param existingNames 既存脚質名の配列（state.strategies から抽出した name の集合）
+ * @param editingName 編集モード時の元の脚質名（新規追加時は undefined）
+ * @returns 妥当なら `[]`、エラーなら 1 件のエラーメッセージ配列。
+ */
+export const validateStrategyName = (
+    name: string,
+    existingNames: string[],
+    editingName?: string,
+): string[] => {
+    const trimmed = name.trim();
+    if (trimmed === '') {
+        return ['脚質名を入力してください。'];
+    }
+    if (editingName !== undefined && editingName === name) {
+        return [];
+    }
+    if (existingNames.includes(name)) {
+        return [`脚質名 '${name}' は既に使用されています。別の名前を指定してください。`];
+    }
+    return [];
+};
+
+/**
+ * ダイス式 `XdY` 形式の検証 (modal-houserule.md §Critical Errors SSoT)。
+ *
+ * 仕様 houserule-features.md §1 Validation は「`XdY` 形式以外を拒否」と規定。
+ * ただし既存 DEFAULT_STRATEGIES「大逃げ」`dice.end: '-1d27'` 等の負号付き値と
+ * 整合性を取るため `-?\d+d\d+` の正規表現で負号付きも許容する
+ * （Engineer 裁量範囲、SA20 §5.3 推奨形 (b)）。
+ *
+ * @returns 妥当なら `[]`、エラーなら 1 件のエラーメッセージ配列。
+ */
+export const validateDiceFormat = (diceStr: string): string[] => {
+    if (/^-?\d+d\d+$/.test(diceStr.trim())) {
+        return [];
+    }
+    return [`ダイス式は '3d6' の形式で入力してください`];
+};
+
 export class Validator {
     /**
      * Validates if the line count matches the expected number of participants.

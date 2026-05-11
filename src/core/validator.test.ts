@@ -5,6 +5,8 @@ import {
     validateBondSkillType,
     validateSpecialStrategyPhase,
     validateSpecialStrategyTypeAndPhase,
+    validateStrategyName,
+    validateDiceFormat,
 } from './validator';
 
 describe('Validator', () => {
@@ -218,5 +220,99 @@ describe('validateSpecialStrategyTypeAndPhase - Bundle-8-T2', () => {
 
     it('returns error for type=null + phase=Mid1 (種別未設定)', () => {
         expect(validateSpecialStrategyTypeAndPhase(null, 'Mid1')).toEqual([typeMissingError]);
+    });
+});
+
+// Bundle-10-T3 / CR-SA-12 / 2026-05-11: 脚質エディタ Validation 統合
+// modal-houserule.md §Critical Errors + houserule-features.md §1 Validation SSoT 準拠
+describe('validateStrategyName - Bundle-10-T3', () => {
+    const existing = ['大逃げ', '逃げ', '先行', '差し', '追込'];
+
+    // (1) 重複なし + 新規名前 → []
+    it('returns no error for new unique name (新規追加モード)', () => {
+        expect(validateStrategyName('カスタム脚質X', existing)).toEqual([]);
+    });
+
+    // (2) 重複あり + 新規追加モード → エラー
+    it('returns error for duplicate name (新規追加モード)', () => {
+        expect(validateStrategyName('逃げ', existing)).toEqual([
+            "脚質名 '逃げ' は既に使用されています。別の名前を指定してください。",
+        ]);
+    });
+
+    // (3) 重複あり + 編集モード + editingName === name (自分自身) → []
+    it('returns no error when editing self (editingName === name)', () => {
+        expect(validateStrategyName('逃げ', existing, '逃げ')).toEqual([]);
+    });
+
+    // (4) 重複あり + 編集モード + editingName !== name (別名重複) → エラー
+    it('returns error when editing changes to existing other name', () => {
+        expect(validateStrategyName('逃げ', existing, 'カスタム脚質Y')).toEqual([
+            "脚質名 '逃げ' は既に使用されています。別の名前を指定してください。",
+        ]);
+    });
+
+    // (5) 空文字 → エラー
+    it('returns error for empty string', () => {
+        expect(validateStrategyName('', existing)).toEqual(['脚質名を入力してください。']);
+    });
+
+    // (6) 空白のみ (trim 後空) → エラー
+    it('returns error for whitespace-only input', () => {
+        expect(validateStrategyName('   ', existing)).toEqual(['脚質名を入力してください。']);
+    });
+
+    // (7) エラー文言 = 仕様 SSoT 通り (重複時)
+    it('matches spec SSoT error message verbatim (重複時)', () => {
+        expect(validateStrategyName('差し', existing)).toEqual([
+            "脚質名 '差し' は既に使用されています。別の名前を指定してください。",
+        ]);
+    });
+});
+
+describe('validateDiceFormat - Bundle-10-T3', () => {
+    // (8) '3d6' 形式 → []
+    it('returns no error for standard XdY (3d6)', () => {
+        expect(validateDiceFormat('3d6')).toEqual([]);
+    });
+
+    // (9) '-1d27' 形式 (DEFAULT 大逃げ既存値) → [] (推奨形 (b) 負号許容)
+    it('returns no error for negative XdY (-1d27、DEFAULT 大逃げ既存値整合)', () => {
+        expect(validateDiceFormat('-1d27')).toEqual([]);
+    });
+
+    // (10) '3+6' (加算式) → エラー
+    it('returns error for additive expression (3+6)', () => {
+        expect(validateDiceFormat('3+6')).toEqual([
+            "ダイス式は '3d6' の形式で入力してください",
+        ]);
+    });
+
+    // (11) 'dice3d6' (接頭辞付き) → エラー
+    it('returns error for prefixed format (dice3d6)', () => {
+        expect(validateDiceFormat('dice3d6')).toEqual([
+            "ダイス式は '3d6' の形式で入力してください",
+        ]);
+    });
+
+    // (12) 空文字 → エラー
+    it('returns error for empty string', () => {
+        expect(validateDiceFormat('')).toEqual([
+            "ダイス式は '3d6' の形式で入力してください",
+        ]);
+    });
+
+    // (13) 'abc' → エラー
+    it('returns error for non-dice string (abc)', () => {
+        expect(validateDiceFormat('abc')).toEqual([
+            "ダイス式は '3d6' の形式で入力してください",
+        ]);
+    });
+
+    // (14) エラー文言 = 仕様 SSoT 通り
+    it('matches spec SSoT error message verbatim (不正なダイス形式)', () => {
+        expect(validateDiceFormat('3d6+1')).toEqual([
+            "ダイス式は '3d6' の形式で入力してください",
+        ]);
     });
 });

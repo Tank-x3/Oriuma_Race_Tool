@@ -6,6 +6,9 @@ import { createPortal } from 'react-dom';
 import { Layers, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { useRaceStore } from '../../../store/useRaceStore';
 import { isDefaultStrategy } from '../../../core/strategy.helpers';
+// Bundle-10-T3 / CR-SA-12 / 2026-05-11: 脚質エディタ Validation 統合
+// (modal-houserule.md §Critical Errors + houserule-features.md §1 Validation SSoT)
+import { validateStrategyName, validateDiceFormat } from '../../../core/validator';
 import type { Strategy } from '../../../types';
 import {
     PACE_ROLL_RANGE,
@@ -220,6 +223,7 @@ export const StrategyEditorModal: React.FC<StrategyEditorModalProps> = ({ isOpen
                 <StrategyEditSubModal
                     mode={editing.mode}
                     targetStrategy={editing.targetStrategy}
+                    existingNames={strategies.map((s) => s.name)}
                     onSubmit={handleSubmitForm}
                     onCancel={() => setEditing(null)}
                 />
@@ -244,6 +248,7 @@ export const StrategyEditorModal: React.FC<StrategyEditorModalProps> = ({ isOpen
 interface StrategyEditSubModalProps {
     mode: 'edit' | 'insert';
     targetStrategy: Strategy;
+    existingNames: string[];
     onSubmit: (form: StrategyFormState) => void;
     onCancel: () => void;
 }
@@ -251,6 +256,7 @@ interface StrategyEditSubModalProps {
 const StrategyEditSubModal: React.FC<StrategyEditSubModalProps> = ({
     mode,
     targetStrategy,
+    existingNames,
     onSubmit,
     onCancel,
 }) => {
@@ -261,6 +267,21 @@ const StrategyEditSubModal: React.FC<StrategyEditSubModalProps> = ({
     const [form, setForm] = useState<StrategyFormState>(initialForm);
     const isDefault = isDefaultStrategy(targetStrategy.name);
     const nameReadOnly = mode === 'edit' && isDefault;
+
+    // Bundle-10-T3 / CR-SA-12 / 2026-05-11: validation onChange リアルタイム
+    // (HouseRulesForm validateEffectValue 同パターン)。
+    // editingName: edit 時のみ自分自身を渡し、名前未変更の場合の自己重複を除外する。
+    const editingName = mode === 'edit' ? targetStrategy.name : undefined;
+    const nameErrors = validateStrategyName(form.name, existingNames, editingName);
+    const diceStartErrors = validateDiceFormat(form.diceStart);
+    const diceMidErrors = validateDiceFormat(form.diceMid);
+    const diceEndErrors = validateDiceFormat(form.diceEnd);
+    const hasErrors =
+        nameErrors.length +
+            diceStartErrors.length +
+            diceMidErrors.length +
+            diceEndErrors.length >
+        0;
 
     const handlePaceChange = (roll: number, raw: string) => {
         setForm((prev) => ({
@@ -276,7 +297,7 @@ const StrategyEditSubModal: React.FC<StrategyEditSubModalProps> = ({
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        if (form.name.trim() === '') return;
+        if (hasErrors) return;
         onSubmit(form);
     };
 
@@ -342,6 +363,11 @@ const StrategyEditSubModal: React.FC<StrategyEditSubModalProps> = ({
                             デフォルト 5 脚質の名前は変更できません。
                         </p>
                     )}
+                    {nameErrors.length > 0 && (
+                        <p className="text-xs text-red-500 dark:text-red-400" role="alert">
+                            {nameErrors[0]}
+                        </p>
+                    )}
                 </div>
 
                 {/* fixValue */}
@@ -375,6 +401,12 @@ const StrategyEditSubModal: React.FC<StrategyEditSubModalProps> = ({
                                 : phase === 'Mid'
                                   ? form.diceMid
                                   : form.diceEnd;
+                        const errors =
+                            phase === 'Start'
+                                ? diceStartErrors
+                                : phase === 'Mid'
+                                  ? diceMidErrors
+                                  : diceEndErrors;
                         const setter = (next: string) => {
                             if (phase === 'Start') setForm({ ...form, diceStart: next });
                             else if (phase === 'Mid') setForm({ ...form, diceMid: next });
@@ -396,6 +428,14 @@ const StrategyEditSubModal: React.FC<StrategyEditSubModalProps> = ({
                                     onChange={(e) => setter(e.target.value)}
                                     className="w-full h-10 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg px-3 text-slate-900 dark:text-white font-mono focus:outline-none focus:border-primary-500 transition-colors"
                                 />
+                                {errors.length > 0 && (
+                                    <p
+                                        className="text-xs text-red-500 dark:text-red-400"
+                                        role="alert"
+                                    >
+                                        {errors[0]}
+                                    </p>
+                                )}
                             </div>
                         );
                     })}
@@ -455,7 +495,8 @@ const StrategyEditSubModal: React.FC<StrategyEditSubModalProps> = ({
                         </button>
                         <button
                             type="submit"
-                            className="px-4 py-2 text-sm font-bold bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors"
+                            disabled={hasErrors}
+                            className="px-4 py-2 text-sm font-bold bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors disabled:bg-slate-300 dark:disabled:bg-slate-600 disabled:text-slate-500 dark:disabled:text-slate-400 disabled:cursor-not-allowed disabled:hover:bg-slate-300 dark:disabled:hover:bg-slate-600"
                         >
                             {mode === 'edit' ? '保存' : '追加'}
                         </button>
