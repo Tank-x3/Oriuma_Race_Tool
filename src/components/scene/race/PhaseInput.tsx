@@ -16,11 +16,18 @@ import { clsx } from 'clsx';
 // Bundle-4 ENG28 由来の戦法注釈除去（sanitizeInputForParser）を preprocessor 層に集約。
 // 既存純粋関数（stripStrategyAnnotations / getExpectedUniqueDiceStr）は存置し、
 // preprocessor 層から呼び出す形に再構成（重複定義なし）。
-import { sanitizeInputForParser, isUniqueDice } from './phaseInput.preprocessors';
+//
+// CR-SA-13-E1 / 2026-05-12: ハウスルール脚質ダイス × 固有期待ダイス衝突対応。
+// 旧 isUniqueDice 単独判定（diceStr 完全一致ヒューリスティック）から、
+// classifyDiceResultsForParticipant（規則 R-1/R-2/R-3 三段判定）へ置換。
+// 参加者単位グループ化により 1 回の Parser 呼び出しで同一参加者宛に複数結果が
+// 到達するパターンも一貫した振り分けで処理する。
+import { sanitizeInputForParser, classifyDiceResultsForParticipant } from './phaseInput.preprocessors';
 // Bundle-8-T5 / CR-SA-4 / 2026-05-10 [ESCALATION 案 V Provisional 適用]:
 // 終盤【絆スキル】セクション解析後の bondDice 格納分岐用拡張型
 // （scene3-race.md §2、houserule-features.md §2 [v] §データ仕様 L141）。
 import type { ParseResultWithBond } from '../../../core/parser/bondTypes';
+import type { ParsedLine } from '../../../core/parser/interface';
 
 interface PhaseInputProps {
     onErrors?: (errors: string[]) => void;
@@ -100,41 +107,45 @@ export const PhaseInput: React.FC<PhaseInputProps> = ({ onErrors }) => {
             } else {
                 // Race Phase Update
                 // Use a local map to accumulate updates within this batch
-                // ensuring multiple results for the same participant (Base + Unique) 
+                // ensuring multiple results for the same participant (Base + Unique)
                 // don't overwrite each other due to stale closure state.
                 const pendingUpdates = new Map<string, typeof participants[0]>();
 
+                // CR-SA-13-E1 / 2026-05-12: 参加者単位グループ化。
+                // 1 回の Parser 呼び出しで同一参加者宛に複数結果が到達するパターン
+                // （フェーズダイス + 固有ダイス同時取り込み等）を R-1/R-2/R-3 で一貫処理するため、
+                // results を participantId 単位にまとめてから振り分け関数へ委譲する。
+                const resultsByParticipantId = new Map<string, ParsedLine[]>();
                 results.forEach(result => {
+                    const list = resultsByParticipantId.get(result.participantId) ?? [];
+                    list.push(result);
+                    resultsByParticipantId.set(result.participantId, list);
+                });
+
+                resultsByParticipantId.forEach((parsedLines, participantId) => {
                     // unexpected: find returns undefined if not found
-                    const originalP = participants.find(p => p.id === result.participantId);
+                    const originalP = participants.find(p => p.id === participantId);
                     if (!originalP) return;
 
                     // Get the latest state from pendingUpdates or original
                     const p = pendingUpdates.get(originalP.id) || originalP;
 
-                    // Update History
+                    // CR-SA-13-E1 / 2026-05-12: preprocessor 層の振り分け関数経由で
+                    // ハウスルール脚質ダイス × 固有期待ダイス衝突を解消（規則 R-1/R-2/R-3）。
+                    // 旧 isUniqueDice 単独判定（diceStr ヒューリスティック）を置換。
                     const prevHistory = p.history[currentPhaseId] || {};
-                    const diceStr = result.diceStr;
-
-                    // CR-SA-11-Sub-B-E1 / 2026-05-11: preprocessor 層経由で拡張固有タイプ判定。
-                    // 旧 Bundle-2 ENG25 由来の getExpectedUniqueDiceStr 直接呼び出しを置換。
-                    const isUnique = isUniqueDice(p.uniqueSkill.type, diceStr);
+                    const classification = classifyDiceResultsForParticipant(
+                        p.uniqueSkill.type,
+                        p.uniqueSkill.phases,
+                        parsedLines,
+                        currentPhaseId,
+                        prevHistory.baseDice,
+                    );
 
                     const newHistoryEntry = {
                         ...prevHistory,
-                        ...(isUnique ? {
-                            uniqueDice: {
-                                diceStr: result.diceStr,
-                                values: [],
-                                sum: result.diceResult
-                            }
-                        } : {
-                            baseDice: {
-                                diceStr: result.diceStr,
-                                values: [],
-                                sum: result.diceResult
-                            }
-                        })
+                        ...(classification.baseDice ? { baseDice: classification.baseDice } : {}),
+                        ...(classification.uniqueDice ? { uniqueDice: classification.uniqueDice } : {}),
                     };
 
                     const newTotalHistory = {
@@ -251,7 +262,7 @@ export const PhaseInput: React.FC<PhaseInputProps> = ({ onErrors }) => {
                     }}
                     placeholder={isPacePhase
                         ? "ここに 'dice1d9=...' を貼り付けてください"
-                        : "ここに掲示板のレスを丸ごと貼り付けてください...\n※自動的に名前とダイスを解析します"}
+                        : "ここに掲示板のレスを丸ごと貼り付けてください...\n※自動的に名前とダイスを解析します\n※行数制限などで複数レスに分割して投稿した場合も、1回にまとめて解析実行してください"}
                     className="w-full h-32 p-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-mono focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all placeholder:text-gray-400"
                 />
 

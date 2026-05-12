@@ -90,3 +90,20 @@ export const getExpectedUniqueDiceStr = (type: UniqueSkillType): string => {
     if (type === 'SuperStability') return '1d3';
     return '';
 };
+
+// CR-SA-13-E1 / 2026-05-12: 固有スキルタイプから期待 fix 値を返す純粋関数。
+// `getExpectedUniqueDiceStr` と対称。ParsedLine.fixValue との完全一致判定（規則 R-3）に使用。
+// SSoT: houserule-features.md §2 [v] 拡張固有タイプ 出力フォーマット
+//  - Stability: `5+dice1d10=` → 5
+//  - Gamble: `dice1d20=` → 0
+//  - Persistent: `dice1d10=` → 0
+//  - SuperGamble: `-10+dice1d35=` → -10
+//  - SuperStability: `8+dice1d3=` → 8
+export const getExpectedUniqueFixValue = (type: UniqueSkillType): number => {
+    if (type === 'Stability') return 5;
+    if (type === 'Gamble') return 0;
+    if (type === 'Persistent') return 0;
+    if (type === 'SuperGamble') return -10;
+    if (type === 'SuperStability') return 8;
+    return 0;
+};
