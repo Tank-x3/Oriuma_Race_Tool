@@ -6,8 +6,8 @@ import {
     calculateBondSkillDelta,
     calculateScoreWithBondSkill,
 } from './bondSkill.helpers';
-import type { DiceResult, Strategy, Umamusume } from '../../../types';
-import { DEFAULT_STRATEGIES } from '../../../core/strategies';
+import type { DiceResult, Strategy, Umamusume, UniqueDiceConfig } from '../../../types';
+import { DEFAULT_STRATEGIES, DEFAULT_UNIQUE_DICE_CONFIG } from '../../../core/strategies';
 import { getActivePhaseIds } from '../../../core/calculator';
 
 const makeParticipant = (override: Partial<Umamusume> = {}): Umamusume => ({
@@ -288,7 +288,8 @@ describe('calculateScoreWithBondSkill - Bundle-8-T6', () => {
                 },
             },
         });
-        const houseRules = { enableBondSkill: true, enableSpecialStrategy: false, effectValue: 15 };
+        // CR-SA-15-E2 / 2026-05-15: houseRules Pick 型拡張（uniqueDiceConfig 追加）に追従
+        const houseRules = { enableBondSkill: true, enableSpecialStrategy: false, effectValue: 15, uniqueDiceConfig: DEFAULT_UNIQUE_DICE_CONFIG };
         const score = calculateScoreWithBondSkill(p, strategies, null, activePhaseIds, houseRules);
         const baseOnly = calculateScoreWithBondSkill(p, strategies, null, activePhaseIds, {
             ...houseRules,
@@ -310,7 +311,8 @@ describe('calculateScoreWithBondSkill - Bundle-8-T6', () => {
                 },
             },
         });
-        const houseRules = { enableBondSkill: true, enableSpecialStrategy: false, effectValue: 15 };
+        // CR-SA-15-E2 / 2026-05-15: houseRules Pick 型拡張（uniqueDiceConfig 追加）に追従
+        const houseRules = { enableBondSkill: true, enableSpecialStrategy: false, effectValue: 15, uniqueDiceConfig: DEFAULT_UNIQUE_DICE_CONFIG };
         const score = calculateScoreWithBondSkill(p, strategies, null, activePhaseIds, houseRules);
         const baseOnly = calculateScoreWithBondSkill(p, strategies, null, activePhaseIds, {
             ...houseRules,
@@ -332,7 +334,8 @@ describe('calculateScoreWithBondSkill - Bundle-8-T6', () => {
                 },
             },
         });
-        const houseRules = { enableBondSkill: true, enableSpecialStrategy: false, effectValue: 15 };
+        // CR-SA-15-E2 / 2026-05-15: houseRules Pick 型拡張（uniqueDiceConfig 追加）に追従
+        const houseRules = { enableBondSkill: true, enableSpecialStrategy: false, effectValue: 15, uniqueDiceConfig: DEFAULT_UNIQUE_DICE_CONFIG };
         const score = calculateScoreWithBondSkill(p, strategies, null, activePhaseIds, houseRules);
         const baseOnly = calculateScoreWithBondSkill(p, strategies, null, activePhaseIds, {
             ...houseRules,
@@ -367,6 +370,8 @@ describe('calculateScoreWithBondSkill - Bundle-8-T6', () => {
             enableBondSkill: true,
             enableSpecialStrategy: true,
             effectValue: 15,
+            // CR-SA-15-E2 / 2026-05-15: houseRules Pick 型拡張（uniqueDiceConfig 追加）に追従
+            uniqueDiceConfig: DEFAULT_UNIQUE_DICE_CONFIG,
         };
         const houseRulesNoBond = { ...houseRulesBoth, enableBondSkill: false };
         const scoreBoth = calculateScoreWithBondSkill(p, strategies, null, activePhaseIds, houseRulesBoth);
@@ -381,12 +386,91 @@ describe('calculateScoreWithBondSkill - Bundle-8-T6', () => {
             bondSkill: { type: 'BondGamble' },
             history: baseHistory,
         });
-        const houseRules = { enableBondSkill: true, enableSpecialStrategy: false, effectValue: 15 };
+        // CR-SA-15-E2 / 2026-05-15: houseRules Pick 型拡張（uniqueDiceConfig 追加）に追従
+        const houseRules = { enableBondSkill: true, enableSpecialStrategy: false, effectValue: 15, uniqueDiceConfig: DEFAULT_UNIQUE_DICE_CONFIG };
         const score = calculateScoreWithBondSkill(p, strategies, null, activePhaseIds, houseRules);
         const baseOnly = calculateScoreWithBondSkill(p, strategies, null, activePhaseIds, {
             ...houseRules,
             enableBondSkill: false,
         });
         expect(score).toBe(baseOnly);
+    });
+});
+
+// CR-SA-15-E2 / 2026-05-15: houseRules.uniqueDiceConfig が calculateScoreWithBondSkill 経由で
+// 固有固定値計算に伝播することの検証（houserule-features.md §5.4）。
+describe('CR-SA-15-E2: calculateScoreWithBondSkill uniqueDiceConfig 参照化', () => {
+    const strategies: Strategy[] = DEFAULT_STRATEGIES;
+    const activePhaseIds = getActivePhaseIds(1);
+
+    const baseHistory = {
+        Start: { baseDice: makeDice('3d8', [3, 3, 4]), computedScore: 0 },
+        Mid: { baseDice: makeDice('3d5', [5, 5, 5]), computedScore: 0 },
+        End: { baseDice: makeDice('3d6', [7, 7, 6]), computedScore: 0 },
+    };
+
+    it('uniqueDiceConfig カスタム値（安定型固定値 5→12）が固有固定値加算に反映される', () => {
+        // 固有スキル安定型（発動フェーズ End）+ End に固有ダイス取り込み済
+        const p = makeParticipant({
+            strategy: '先行',
+            uniqueSkill: { type: 'Stability', phases: ['End'] },
+            bondSkill: { type: null },
+            history: {
+                ...baseHistory,
+                End: {
+                    baseDice: makeDice('3d6', [7, 7, 6]),
+                    uniqueDice: makeDice('1d10', [8]),
+                    computedScore: 0,
+                },
+            },
+        });
+        const houseRulesDefault = {
+            enableBondSkill: false,
+            enableSpecialStrategy: false,
+            effectValue: 15,
+            uniqueDiceConfig: DEFAULT_UNIQUE_DICE_CONFIG,
+        };
+        // 安定型固定値を 5 → 12 に変更したカスタム設定
+        const customConfig: UniqueDiceConfig = {
+            ...DEFAULT_UNIQUE_DICE_CONFIG,
+            Stability: { fixValue: 12, diceStr: '1d10' },
+        };
+        const houseRulesCustom = { ...houseRulesDefault, uniqueDiceConfig: customConfig };
+        const scoreDefault = calculateScoreWithBondSkill(p, strategies, null, activePhaseIds, houseRulesDefault);
+        const scoreCustom = calculateScoreWithBondSkill(p, strategies, null, activePhaseIds, houseRulesCustom);
+        // 固有固定値 5 → 12 の差分 +7 が score に反映される
+        expect(scoreCustom - scoreDefault).toBe(7);
+    });
+
+    it('uniqueDiceConfig デフォルト値では固有固定値が従来のハードコード値（安定型 +5）と一致', () => {
+        const p = makeParticipant({
+            strategy: '先行',
+            uniqueSkill: { type: 'Stability', phases: ['End'] },
+            bondSkill: { type: null },
+            history: {
+                ...baseHistory,
+                End: {
+                    baseDice: makeDice('3d6', [7, 7, 6]),
+                    uniqueDice: makeDice('1d10', [8]),
+                    computedScore: 0,
+                },
+            },
+        });
+        // 固有スキルなし参加者との score 差分 = 固有固定値 5 + uniqueDice sum 8 = 13
+        const pNoUnique = makeParticipant({
+            strategy: '先行',
+            uniqueSkill: { type: 'Stability', phases: [] },
+            bondSkill: { type: null },
+            history: baseHistory,
+        });
+        const houseRules = {
+            enableBondSkill: false,
+            enableSpecialStrategy: false,
+            effectValue: 15,
+            uniqueDiceConfig: DEFAULT_UNIQUE_DICE_CONFIG,
+        };
+        const scoreWithUnique = calculateScoreWithBondSkill(p, strategies, null, activePhaseIds, houseRules);
+        const scoreNoUnique = calculateScoreWithBondSkill(pNoUnique, strategies, null, activePhaseIds, houseRules);
+        expect(scoreWithUnique - scoreNoUnique).toBe(13);
     });
 });

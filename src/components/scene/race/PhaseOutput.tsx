@@ -101,7 +101,8 @@ export const PhaseOutput: React.FC = () => {
             needsUnique = true;
         } else if (shouldHaveUnique && hasUnique) {
             // Bundle-2 / D-1, D-14 / 2026-05-09: 拡張固有タイプ含む 5 種の期待ダイス式を helpers から取得
-            const expectedUnique = getExpectedUniqueDiceStr(p.uniqueSkill.type);
+            // CR-SA-15-E2 / 2026-05-15: 固有期待ダイス式を houseRules.uniqueDiceConfig 参照化
+            const expectedUnique = getExpectedUniqueDiceStr(p.uniqueSkill.type, config.houseRules.uniqueDiceConfig);
 
             if (history.uniqueDice?.diceStr !== expectedUnique) {
                 needsUnique = true;
@@ -250,7 +251,8 @@ export const PhaseOutput: React.FC = () => {
                 // If filter is ON, only show if unique needs correction
                 if (!filterCorrection || status.unique) {
                     // Bundle-2 / D-1, D-14 / 2026-05-09: 拡張固有タイプ含む 5 種のダイス文字列を helpers から取得
-                    const uDice = getUniqueDiceFormula(p.uniqueSkill.type);
+                    // CR-SA-15-E2 / 2026-05-15: 固有ダイス式を houseRules.uniqueDiceConfig 参照化
+                    const uDice = getUniqueDiceFormula(p.uniqueSkill.type, config.houseRules.uniqueDiceConfig);
 
                     if (uDice) {
                         uniqueTextLines.push(`${gateSym} ${p.name}　${uDice}`);

@@ -2,9 +2,11 @@ import { describe, it, expect } from 'vitest';
 import {
     getUniqueDiceFormula,
     getExpectedUniqueDiceStr,
+    getExpectedUniqueFixValue,
     getDiceFormulaBaseValue,
 } from './phaseOutput.helpers';
-import type { Strategy, Umamusume } from '../../../types';
+import type { Strategy, Umamusume, UniqueDiceConfig } from '../../../types';
+import { DEFAULT_UNIQUE_DICE_CONFIG } from '../../../core/strategies';
 
 const makeParticipant = (override: Partial<Umamusume> = {}): Umamusume => ({
     id: 'p1',
@@ -218,6 +220,62 @@ describe('phaseOutput.helpers - Bundle-2 / D-1, D-14 / 2026-05-09', () => {
 
         it('returns "1d3" for SuperStability (Bundle-2)', () => {
             expect(getExpectedUniqueDiceStr('SuperStability')).toBe('1d3');
+        });
+    });
+});
+
+// CR-SA-15-E2 / 2026-05-15: 固有ダイス 3 関数の uniqueDiceConfig 参照化検証
+// （houserule-features.md §5.3 投稿用ダイス出力フォーマット生成ルール / §5.4 既存ハードコード置換対象）。
+describe('CR-SA-15-E2: 固有ダイス 3 関数の uniqueDiceConfig 参照化', () => {
+    describe('getUniqueDiceFormula — §5.3 符号別生成ルール', () => {
+        it('fixValue > 0: カスタム設定（安定型 7+1d11）→ "7+dice1d11="', () => {
+            const config: UniqueDiceConfig = {
+                ...DEFAULT_UNIQUE_DICE_CONFIG,
+                Stability: { fixValue: 7, diceStr: '1d11' },
+            };
+            expect(getUniqueDiceFormula('Stability', config)).toBe('7+dice1d11=');
+        });
+
+        it('fixValue < 0: カスタム設定（超ギャンブル -5+1d40）→ "-5+dice1d40="', () => {
+            const config: UniqueDiceConfig = {
+                ...DEFAULT_UNIQUE_DICE_CONFIG,
+                SuperGamble: { fixValue: -5, diceStr: '1d40' },
+            };
+            expect(getUniqueDiceFormula('SuperGamble', config)).toBe('-5+dice1d40=');
+        });
+
+        it('fixValue === 0: カスタム設定（ギャンブル型 0+1d25）→ "dice1d25="', () => {
+            const config: UniqueDiceConfig = {
+                ...DEFAULT_UNIQUE_DICE_CONFIG,
+                Gamble: { fixValue: 0, diceStr: '1d25' },
+            };
+            expect(getUniqueDiceFormula('Gamble', config)).toBe('dice1d25=');
+        });
+
+        // 注: 引数省略時の DEFAULT_UNIQUE_DICE_CONFIG フォールバックは、本 describe 上部の
+        // 既存 getUniqueDiceFormula テスト群（引数省略呼び出しが全件 Pass）が証跡となる。
+    });
+
+    describe('getExpectedUniqueDiceStr — uniqueDiceConfig 参照', () => {
+        it('カスタム設定（安定型 diceStr 1d11）→ "1d11"', () => {
+            const config: UniqueDiceConfig = {
+                ...DEFAULT_UNIQUE_DICE_CONFIG,
+                Stability: { fixValue: 5, diceStr: '1d11' },
+            };
+            expect(getExpectedUniqueDiceStr('Stability', config)).toBe('1d11');
+        });
+        // 注: 引数省略時のフォールバックは既存 getExpectedUniqueDiceStr テスト群が証跡となる。
+    });
+
+    describe('getExpectedUniqueFixValue — uniqueDiceConfig 参照', () => {
+        it('カスタム設定（安定型 fixValue 7）→ 7、引数省略時はデフォルト 5 フォールバック', () => {
+            const config: UniqueDiceConfig = {
+                ...DEFAULT_UNIQUE_DICE_CONFIG,
+                Stability: { fixValue: 7, diceStr: '1d10' },
+            };
+            expect(getExpectedUniqueFixValue('Stability', config)).toBe(7);
+            // getExpectedUniqueFixValue は本ファイルに既存テストがないため引数省略時の挙動も併せて検証
+            expect(getExpectedUniqueFixValue('Stability')).toBe(5);
         });
     });
 });

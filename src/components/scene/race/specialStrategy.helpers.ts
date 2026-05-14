@@ -1,5 +1,7 @@
-import type { Umamusume, Strategy } from '../../../types';
+import type { Umamusume, Strategy, UniqueDiceConfig } from '../../../types';
 import { Calculator } from '../../../core/calculator';
+// CR-SA-15-E2 / 2026-05-15: calculateScoreWithSpecialStrategy の uniqueDiceConfig フォールバック値。
+import { DEFAULT_UNIQUE_DICE_CONFIG } from '../../../core/strategies';
 
 // Bundle-4 / P4-1, P4-5 / 2026-05-10: 特殊戦法（捲り/溜め）の純粋関数群。
 // houserule-features.md §3 Status Effect Logic / Future Queue / scene3-race.md §2 §5 準拠。
@@ -146,6 +148,10 @@ const filterAnalyzedHistory = (p: Umamusume): Umamusume => {
  *
  * 4 箇所のストア action（setSpecialStrategy / updateHouseRules / updateParticipant /
  * revertPhaseHistory）すべてで本関数を呼ぶことで、score 計算ロジックを一元化する。
+ *
+ * CR-SA-15-E2 / 2026-05-15: 固有スキル設定参照化（houserule-features.md §5.4）。
+ * `uniqueDiceConfig` を末尾オプショナル引数で受け取り `Calculator.calculateTotalScore` へ伝播する。
+ * 省略時は `DEFAULT_UNIQUE_DICE_CONFIG` フォールバック（= 従来挙動完全維持）。
  */
 export const calculateScoreWithSpecialStrategy = (
     p: Umamusume,
@@ -153,14 +159,16 @@ export const calculateScoreWithSpecialStrategy = (
     paceFace: number | null,
     activePhaseIds: readonly string[],
     effectValue: number,
-    enableSpecialStrategy: boolean
+    enableSpecialStrategy: boolean,
+    uniqueDiceConfig: UniqueDiceConfig = DEFAULT_UNIQUE_DICE_CONFIG
 ): number => {
     const filtered = filterAnalyzedHistory(p);
     const baseScore = Calculator.calculateTotalScore(
         filtered,
         strategies,
         paceFace,
-        activePhaseIds
+        activePhaseIds,
+        uniqueDiceConfig
     );
     const delta = computeSpecialStrategyTotalDelta(p, effectValue, enableSpecialStrategy);
     return baseScore + delta;

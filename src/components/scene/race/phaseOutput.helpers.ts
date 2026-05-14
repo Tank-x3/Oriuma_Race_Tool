@@ -1,5 +1,7 @@
-import type { RaceState, Strategy, Umamusume, UniqueSkillType } from '../../../types';
+import type { RaceState, Strategy, Umamusume, UniqueSkillType, UniqueDiceConfig } from '../../../types';
 import { isPhaseResultLoaded } from './specialStrategy.helpers';
+// CR-SA-15-E2 / 2026-05-15: 固有ダイス 3 関数のフォールバック値（houserule-features.md §5.4）。
+import { DEFAULT_UNIQUE_DICE_CONFIG } from '../../../core/strategies';
 
 // Bundle-2 / D-1, D-14 / 2026-05-09: PhaseOutput 内で使用する固有スキル関連の純粋関数を分離。
 // 純粋関数化により単体テストを容易にする（既存挙動は維持、houserule-features.md §2 [v] 拡張固有タイプ反映）。
@@ -63,47 +65,56 @@ export const getDiceFormulaBaseValue = (
  * 固有スキルタイプから「投稿用ダイス出力」用のダイス文字列を返す。
  * 該当タイプがなければ空文字を返す。
  *
- * - Stability: `5+dice1d10=`
- * - Gamble: `dice1d20=`
- * - Persistent: `dice1d10=`
- * - SuperGamble: `-10+dice1d35=` (Bundle-2 / D-1, D-14)
- * - SuperStability: `8+dice1d3=` (Bundle-2 / D-1, D-14)
+ * CR-SA-15-E2 / 2026-05-15: 固有スキル設定参照化（houserule-features.md §5.3
+ * 投稿用ダイス出力フォーマット生成ルール）。従来のハードコード文字列を
+ * `uniqueDiceConfig` 参照へ切り替え。`uniqueDiceConfig` 省略時は
+ * `DEFAULT_UNIQUE_DICE_CONFIG` フォールバック（= 従来のハードコード値と
+ * 完全一致、既存挙動完全維持）。
+ *
+ * 符号別生成ルール（houserule-features.md §5.3）:
+ *  - `fixValue > 0` → `${fixValue}+dice${diceStr}=`（例: 安定型 `5+dice1d10=`）
+ *  - `fixValue < 0` → `${fixValue}+dice${diceStr}=`（負号は数値に含む、例: 超ギャンブル `-10+dice1d35=`）
+ *  - `fixValue === 0` → `dice${diceStr}=`（例: ギャンブル型 `dice1d20=`）
  */
-export const getUniqueDiceFormula = (type: UniqueSkillType): string => {
-    if (type === 'Stability') return '5+dice1d10=';
-    if (type === 'Gamble') return 'dice1d20=';
-    if (type === 'Persistent') return 'dice1d10=';
-    if (type === 'SuperGamble') return '-10+dice1d35=';
-    if (type === 'SuperStability') return '8+dice1d3=';
-    return '';
+export const getUniqueDiceFormula = (
+    type: UniqueSkillType,
+    uniqueDiceConfig: UniqueDiceConfig = DEFAULT_UNIQUE_DICE_CONFIG,
+): string => {
+    const entry = uniqueDiceConfig[type];
+    if (!entry) return '';
+    const { fixValue, diceStr } = entry;
+    if (fixValue === 0) return `dice${diceStr}=`;
+    return `${fixValue}+dice${diceStr}=`;
 };
 
 /**
  * 固有スキルタイプから期待ダイス式（`getCorrectionStatus` 比較用）を返す。
  * 該当タイプがなければ空文字を返す。
+ *
+ * CR-SA-15-E2 / 2026-05-15: 固有スキル設定参照化（houserule-features.md §5.4）。
+ * 従来のハードコード `'1d10'` 等を `uniqueDiceConfig[type].diceStr` 参照へ切り替え。
+ * `uniqueDiceConfig` 省略時は `DEFAULT_UNIQUE_DICE_CONFIG` フォールバック。
  */
-export const getExpectedUniqueDiceStr = (type: UniqueSkillType): string => {
-    if (type === 'Stability') return '1d10';
-    if (type === 'Gamble') return '1d20';
-    if (type === 'Persistent') return '1d10';
-    if (type === 'SuperGamble') return '1d35';
-    if (type === 'SuperStability') return '1d3';
-    return '';
+export const getExpectedUniqueDiceStr = (
+    type: UniqueSkillType,
+    uniqueDiceConfig: UniqueDiceConfig = DEFAULT_UNIQUE_DICE_CONFIG,
+): string => {
+    const entry = uniqueDiceConfig[type];
+    if (!entry) return '';
+    return entry.diceStr;
 };
 
 // CR-SA-13-E1 / 2026-05-12: 固有スキルタイプから期待 fix 値を返す純粋関数。
 // `getExpectedUniqueDiceStr` と対称。ParsedLine.fixValue との完全一致判定（規則 R-3）に使用。
-// SSoT: houserule-features.md §2 [v] 拡張固有タイプ 出力フォーマット
-//  - Stability: `5+dice1d10=` → 5
-//  - Gamble: `dice1d20=` → 0
-//  - Persistent: `dice1d10=` → 0
-//  - SuperGamble: `-10+dice1d35=` → -10
-//  - SuperStability: `8+dice1d3=` → 8
-export const getExpectedUniqueFixValue = (type: UniqueSkillType): number => {
-    if (type === 'Stability') return 5;
-    if (type === 'Gamble') return 0;
-    if (type === 'Persistent') return 0;
-    if (type === 'SuperGamble') return -10;
-    if (type === 'SuperStability') return 8;
-    return 0;
+// CR-SA-15-E2 / 2026-05-15: 固有スキル設定参照化（houserule-features.md §5.4）。
+// 従来のハードコード `5` 等を `uniqueDiceConfig[type].fixValue` 参照へ切り替え。
+// `uniqueDiceConfig` 省略時は `DEFAULT_UNIQUE_DICE_CONFIG` フォールバック
+// （= 従来のハードコード値と完全一致、既存挙動完全維持）。
+export const getExpectedUniqueFixValue = (
+    type: UniqueSkillType,
+    uniqueDiceConfig: UniqueDiceConfig = DEFAULT_UNIQUE_DICE_CONFIG,
+): number => {
+    const entry = uniqueDiceConfig[type];
+    if (!entry) return 0;
+    return entry.fixValue;
 };

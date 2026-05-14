@@ -2514,10 +2514,12 @@ describe('listPresetNames - Bundle-11-T1', () => {
 // CR-SA-15-E1 / 2026-05-14:
 // 固有スキル設定（uniqueDiceConfig）のストア統合検証（houserule-features.md §5.4 / basic-rules.md §6 Case 5）。
 // - 初期 state の uniqueDiceConfig が DEFAULT_UNIQUE_DICE_CONFIG と一致
-// - updateHouseRules({ uniqueDiceConfig }) で値が更新される + score 再計算がトリガーされる
-//   （E1 時点では calculator.ts が uniqueDiceConfig 未参照のため score 値自体は不変＝既存挙動完全維持。
-//    E2 で calculator.ts が参照化されて初めて basic-rules.md §6 Case 5 が成立する）
+// - updateHouseRules({ uniqueDiceConfig }) で値が更新される
 // - persistMigrate: version=3 旧データ（uniqueDiceConfig 欠落）→ DEFAULT_UNIQUE_DICE_CONFIG 補完
+// CR-SA-15-E2 / 2026-05-15: test (3) を更新。E1 では calculator.ts が uniqueDiceConfig 未参照のため
+// 「updateHouseRules({ uniqueDiceConfig }) で score 値は不変」だったが、E2 で calculator.ts が
+// 参照化されたため、固有スキル発動フェーズに固有ダイス取り込み済の参加者は固有固定値の変更で
+// score が再計算され値が変わる（basic-rules.md §6 Case 5 成立 = E1 「実質 no-op」の実効化）。
 describe('CR-SA-15-E1 / 2026-05-14 uniqueDiceConfig store integration', () => {
     // resetRace は houseRules を保持する設計のため、uniqueDiceConfig を明示的に初期値へ戻す
     // （Bundle-9 / Bundle-6 describe と同パターン、次 describe への状態リーク防止）。
@@ -2552,36 +2554,44 @@ describe('CR-SA-15-E1 / 2026-05-14 uniqueDiceConfig store integration', () => {
         expect(houseRules.effectValue).toBe(15);
     });
 
-    it('(3) updateHouseRules({ uniqueDiceConfig }) で score 再計算がトリガーされる（E1 時点では score 値自体は不変＝既存挙動維持）', () => {
+    it('(3) updateHouseRules({ uniqueDiceConfig }) で score 再計算が実効化する（E2 で固有固定値の変更が score に反映、basic-rules.md §6 Case 5 成立）', () => {
+        // CR-SA-15-E2 / 2026-05-15: E1 では calculator.ts が uniqueDiceConfig 未参照のため
+        // 「score 値は不変」だったが、E2 で calculator.ts が参照化されたため、固有スキル発動
+        // フェーズに固有ダイス取り込み済の参加者は固有固定値変更で score が変わる。
         const uma: Umamusume = {
             id: 'p1',
             entryIndex: 1,
             name: 'Test',
             strategy: '先行',
-            uniqueSkill: { type: 'Stability', phases: [] },
+            // 固有スキル安定型・発動フェーズ Start（固有固定値が score に効く構成）
+            uniqueSkill: { type: 'Stability', phases: ['Start'] },
             gate: 1,
             score: 0,
             history: {
-                Start: { baseDice: makeDice('3d8', [3, 4, 3]), computedScore: 20 },
+                Start: {
+                    baseDice: makeDice('3d8', [3, 4, 3]),
+                    uniqueDice: makeDice('1d10', [8]),
+                    computedScore: 0,
+                },
             },
         };
         useRaceStore.setState({ participants: [uma] });
-        // setMidPhaseCount で score を初期計算（既存値と同じだが unconditional に再計算する仕様を活用）
+        // setMidPhaseCount で score を初期計算
         useRaceStore.getState().setMidPhaseCount(1);
         const scoreBefore = useRaceStore.getState().participants[0].score;
 
+        // 安定型固定値を 5 → 12 に変更
         useRaceStore.getState().updateHouseRules({
             uniqueDiceConfig: {
                 ...DEFAULT_UNIQUE_DICE_CONFIG,
-                Stability: { fixValue: 99, diceStr: '1d11' },
+                Stability: { fixValue: 12, diceStr: '1d10' },
             },
         });
         const scoreAfter = useRaceStore.getState().participants[0].score;
 
-        // E1 時点では calculator.ts が uniqueDiceConfig を未参照のため score 値は不変
-        // （再計算経路自体は走るが結果は同値＝既存挙動完全維持）。
-        expect(scoreAfter).toBe(scoreBefore);
-        expect(typeof scoreAfter).toBe('number');
+        // E2 で calculator.ts が uniqueDiceConfig を参照するため、
+        // 固有固定値 5 → 12 の差分 +7 が score に反映される。
+        expect(scoreAfter - scoreBefore).toBe(7);
     });
 
     it('(4) persistMigrate: version=3 旧データ（uniqueDiceConfig 欠落）→ DEFAULT_UNIQUE_DICE_CONFIG 補完 + zod 検証通過', () => {

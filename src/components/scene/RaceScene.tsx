@@ -93,7 +93,8 @@ export const RaceScene: React.FC = () => {
                 if (shouldHave !== hasUnique) return true;
                 if (shouldHave && hasUnique) {
                     // Bundle-2 / D-1, D-14 / 2026-05-09: 拡張固有タイプ含む 5 種を helpers 経由で取得
-                    const expU = getExpectedUniqueDiceStr(p.uniqueSkill.type);
+                    // CR-SA-15-E2 / 2026-05-15: 固有期待ダイス式を houseRules.uniqueDiceConfig 参照化
+                    const expU = getExpectedUniqueDiceStr(p.uniqueSkill.type, config.houseRules.uniqueDiceConfig);
                     if (history.uniqueDice?.diceStr !== expU) return true;
                 }
 
@@ -122,11 +123,13 @@ export const RaceScene: React.FC = () => {
         if (currentPhaseId === 'Pace') {
             let updatedCount = 0;
             participants.forEach(p => {
+                // CR-SA-15-E2 / 2026-05-15: 固有固定値を houseRules.uniqueDiceConfig 参照化
                 const totalScore = Calculator.calculateTotalScore(
                     p,
                     strategies,
                     paceResult.face,
-                    getActivePhaseIds(config.midPhaseCount)
+                    getActivePhaseIds(config.midPhaseCount),
+                    config.houseRules.uniqueDiceConfig
                 );
                 // Only update if changed (optimization)
                 if (totalScore !== p.score) {

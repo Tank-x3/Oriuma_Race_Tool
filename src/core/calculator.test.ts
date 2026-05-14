@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { Calculator } from './calculator';
-import { DEFAULT_STRATEGIES } from './strategies';
-import type { Umamusume } from '../types';
+import { DEFAULT_STRATEGIES, DEFAULT_UNIQUE_DICE_CONFIG } from './strategies';
+import type { Umamusume, UniqueDiceConfig } from '../types';
 
 describe('Calculator', () => {
     const mockUma: Umamusume = {
@@ -278,5 +278,95 @@ describe('Calculator', () => {
         // Unique: 5 (Stab Fix) + 8 (Dice) = 13
         // Total: 32
         expect(score).toBe(32);
+    });
+
+    // CR-SA-15-E2 / 2026-05-15: calculateTotalScore の固有固定値が uniqueDiceConfig 参照化された
+    // ことの検証（houserule-features.md §5.4）。カスタム設定値が score に反映され、引数省略時は
+    // DEFAULT_UNIQUE_DICE_CONFIG フォールバック（= 従来のハードコード値と完全一致）となる。
+    describe('CR-SA-15-E2: calculateTotalScore uniqueDiceConfig 参照化', () => {
+        it('カスタム設定（安定型 fixValue 5→7）で固有固定値加算が +2 される（Start phase）', () => {
+            const startDice = { diceStr: '3d5', values: [3, 3, 3], sum: 9 };
+            const uniqueDice = { diceStr: '1d10', values: [8], sum: 8 };
+            const uma: Umamusume = {
+                ...mockUma,
+                uniqueSkill: { type: 'Stability', phases: ['Start'] },
+                history: {
+                    'Start': { baseDice: startDice, uniqueDice: uniqueDice, computedScore: 0 }
+                }
+            };
+            const customConfig: UniqueDiceConfig = {
+                ...DEFAULT_UNIQUE_DICE_CONFIG,
+                Stability: { fixValue: 7, diceStr: '1d10' },
+            };
+            const scoreDefault = Calculator.calculateTotalScore(uma, DEFAULT_STRATEGIES, null);
+            const scoreCustom = Calculator.calculateTotalScore(uma, DEFAULT_STRATEGIES, null, undefined, customConfig);
+            // Fix 10 + Dice 9 + Unique(default 5 + 8) = 32
+            expect(scoreDefault).toBe(32);
+            // 固有固定値 5 → 7 で +2
+            expect(scoreCustom).toBe(34);
+        });
+
+        it('カスタム設定（超ギャンブル fixValue -10→-3）で固有固定値加算が +7 される（Mid phase）', () => {
+            const startDice = { diceStr: '3d5', values: [3, 3, 3], sum: 9 };
+            const midDice = { diceStr: '3d5', values: [2, 2, 2], sum: 6 };
+            const uniqueDice = { diceStr: '1d35', values: [25], sum: 25 };
+            const uma: Umamusume = {
+                ...mockUma,
+                uniqueSkill: { type: 'SuperGamble', phases: ['Mid1'] },
+                history: {
+                    'Start': { baseDice: startDice, computedScore: 0 },
+                    'Mid1': { baseDice: midDice, uniqueDice: uniqueDice, computedScore: 0 }
+                }
+            };
+            const customConfig: UniqueDiceConfig = {
+                ...DEFAULT_UNIQUE_DICE_CONFIG,
+                SuperGamble: { fixValue: -3, diceStr: '1d35' },
+            };
+            const scoreDefault = Calculator.calculateTotalScore(uma, DEFAULT_STRATEGIES, null);
+            const scoreCustom = Calculator.calculateTotalScore(uma, DEFAULT_STRATEGIES, null, undefined, customConfig);
+            // Fix 10 + Start 9 + Mid1 6 + Unique(default -10 + 25) = 40
+            expect(scoreDefault).toBe(40);
+            // 固有固定値 -10 → -3 で +7
+            expect(scoreCustom).toBe(47);
+        });
+
+        it('カスタム設定（ギャンブル型 fixValue 0→4）で固有固定値が score に加算される（全 5 タイプ一律加算経路）', () => {
+            // 従来ハードコードでは Gamble は固定値加算分岐なし（= 0）。uniqueDiceConfig 参照化で
+            // 全 5 タイプ一律 fixValue 加算となるため、Gamble の fixValue 変更も反映される。
+            const startDice = { diceStr: '3d5', values: [3, 3, 3], sum: 9 };
+            const uniqueDice = { diceStr: '1d20', values: [15], sum: 15 };
+            const uma: Umamusume = {
+                ...mockUma,
+                uniqueSkill: { type: 'Gamble', phases: ['Start'] },
+                history: {
+                    'Start': { baseDice: startDice, uniqueDice: uniqueDice, computedScore: 0 }
+                }
+            };
+            const customConfig: UniqueDiceConfig = {
+                ...DEFAULT_UNIQUE_DICE_CONFIG,
+                Gamble: { fixValue: 4, diceStr: '1d20' },
+            };
+            const scoreDefault = Calculator.calculateTotalScore(uma, DEFAULT_STRATEGIES, null);
+            const scoreCustom = Calculator.calculateTotalScore(uma, DEFAULT_STRATEGIES, null, undefined, customConfig);
+            // Fix 10 + Dice 9 + Unique(default 0 + 15) = 34
+            expect(scoreDefault).toBe(34);
+            // 固有固定値 0 → 4 で +4
+            expect(scoreCustom).toBe(38);
+        });
+
+        it('引数省略時は DEFAULT_UNIQUE_DICE_CONFIG フォールバック（明示指定と完全一致 = 既存挙動完全維持）', () => {
+            const startDice = { diceStr: '3d5', values: [3, 3, 3], sum: 9 };
+            const uniqueDice = { diceStr: '1d10', values: [8], sum: 8 };
+            const uma: Umamusume = {
+                ...mockUma,
+                uniqueSkill: { type: 'Stability', phases: ['Start'] },
+                history: {
+                    'Start': { baseDice: startDice, uniqueDice: uniqueDice, computedScore: 0 }
+                }
+            };
+            const scoreOmitted = Calculator.calculateTotalScore(uma, DEFAULT_STRATEGIES, null);
+            const scoreExplicit = Calculator.calculateTotalScore(uma, DEFAULT_STRATEGIES, null, undefined, DEFAULT_UNIQUE_DICE_CONFIG);
+            expect(scoreOmitted).toBe(scoreExplicit);
+        });
     });
 });

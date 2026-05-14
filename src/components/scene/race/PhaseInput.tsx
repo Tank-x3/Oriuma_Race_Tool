@@ -134,12 +134,14 @@ export const PhaseInput: React.FC<PhaseInputProps> = ({ onErrors }) => {
                     // ハウスルール脚質ダイス × 固有期待ダイス衝突を解消（規則 R-1/R-2/R-3）。
                     // 旧 isUniqueDice 単独判定（diceStr ヒューリスティック）を置換。
                     const prevHistory = p.history[currentPhaseId] || {};
+                    // CR-SA-15-E2 / 2026-05-15: R-3 判定の固有期待値入力源を houseRules.uniqueDiceConfig 参照化
                     const classification = classifyDiceResultsForParticipant(
                         p.uniqueSkill.type,
                         p.uniqueSkill.phases,
                         parsedLines,
                         currentPhaseId,
                         prevHistory.baseDice,
+                        config.houseRules.uniqueDiceConfig,
                     );
 
                     const newHistoryEntry = {
@@ -154,12 +156,14 @@ export const PhaseInput: React.FC<PhaseInputProps> = ({ onErrors }) => {
                     };
 
                     // Calc Total Score with the Accumulated History
+                    // CR-SA-15-E2 / 2026-05-15: 固有固定値を houseRules.uniqueDiceConfig 参照化
                     const updatedPForCalc = { ...p, history: newTotalHistory };
                     const totalScore = Calculator.calculateTotalScore(
                         updatedPForCalc,
                         strategies,
                         paceResult.face,
-                        getActivePhaseIds(config.midPhaseCount)
+                        getActivePhaseIds(config.midPhaseCount),
+                        config.houseRules.uniqueDiceConfig
                     );
 
                     // Store updated state in map

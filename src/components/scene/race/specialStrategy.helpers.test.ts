@@ -6,8 +6,11 @@ import {
     computeSpecialStrategyTotalDelta,
     stripStrategyAnnotations,
     isPhaseResultLoaded,
+    calculateScoreWithSpecialStrategy,
 } from './specialStrategy.helpers';
-import type { Umamusume } from '../../../types';
+import type { Umamusume, UniqueDiceConfig } from '../../../types';
+import { DEFAULT_STRATEGIES, DEFAULT_UNIQUE_DICE_CONFIG } from '../../../core/strategies';
+import { getActivePhaseIds } from '../../../core/calculator';
 
 const makeParticipant = (override: Partial<Umamusume> = {}): Umamusume => ({
     id: 'p1',
@@ -334,6 +337,45 @@ describe('specialStrategy.helpers - Bundle-4 / P4-1, P4-5 / 2026-05-10', () => {
         it('部分的なパターン（括弧違い・別単語）は除去しない', () => {
             const input = '① a 5+dice1d10=5(5) [捲り]+15 / (溜め)-15';
             expect(stripStrategyAnnotations(input)).toBe(input);
+        });
+    });
+
+    // CR-SA-15-E2 / 2026-05-15: calculateScoreWithSpecialStrategy のシグネチャに追加した
+    // uniqueDiceConfig 引数が Calculator.calculateTotalScore へ伝播することの検証
+    // （houserule-features.md §5.4）。
+    describe('CR-SA-15-E2: calculateScoreWithSpecialStrategy uniqueDiceConfig 伝播', () => {
+        const activePhaseIds = getActivePhaseIds(1);
+
+        // 固有スキル安定型（発動フェーズ Start）+ Start に固有ダイス取り込み済の参加者
+        const makeUniqueParticipant = (): Umamusume => makeParticipant({
+            strategy: '先行',
+            uniqueSkill: { type: 'Stability', phases: ['Start'] },
+            history: {
+                Start: {
+                    baseDice: makeBaseDice('3d8', [3, 3, 3]),
+                    uniqueDice: makeBaseDice('1d10', [8]),
+                    computedScore: 0,
+                },
+            },
+        });
+
+        it('uniqueDiceConfig カスタム値（安定型 fixValue 5→9）が calculateTotalScore へ伝播し score に反映される', () => {
+            const p = makeUniqueParticipant();
+            const customConfig: UniqueDiceConfig = {
+                ...DEFAULT_UNIQUE_DICE_CONFIG,
+                Stability: { fixValue: 9, diceStr: '1d10' },
+            };
+            const scoreDefault = calculateScoreWithSpecialStrategy(p, DEFAULT_STRATEGIES, null, activePhaseIds, 15, false);
+            const scoreCustom = calculateScoreWithSpecialStrategy(p, DEFAULT_STRATEGIES, null, activePhaseIds, 15, false, customConfig);
+            // 固有固定値 5 → 9 の差分 +4 が score に反映される
+            expect(scoreCustom - scoreDefault).toBe(4);
+        });
+
+        it('uniqueDiceConfig 引数省略時は DEFAULT_UNIQUE_DICE_CONFIG フォールバック（明示指定と完全一致）', () => {
+            const p = makeUniqueParticipant();
+            const scoreOmitted = calculateScoreWithSpecialStrategy(p, DEFAULT_STRATEGIES, null, activePhaseIds, 15, false);
+            const scoreExplicit = calculateScoreWithSpecialStrategy(p, DEFAULT_STRATEGIES, null, activePhaseIds, 15, false, DEFAULT_UNIQUE_DICE_CONFIG);
+            expect(scoreOmitted).toBe(scoreExplicit);
         });
     });
 });

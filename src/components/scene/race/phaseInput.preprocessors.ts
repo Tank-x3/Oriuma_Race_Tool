@@ -12,9 +12,12 @@
 // 旧 isUniqueDice（ヒューリスティック完全一致判定）は export 維持で残置するが、
 // 新規 classifyDiceResultsForParticipant では呼び出さない（R-3 で fixValue + diceStr の
 // 組合せ完全一致を直接判定するため重複利用を避ける）。
-import type { UniqueSkillType, DiceResult } from '../../../types';
+import type { UniqueSkillType, DiceResult, UniqueDiceConfig } from '../../../types';
 import type { ParsedLine } from '../../../core/parser/interface';
 import { stripStrategyAnnotations } from './specialStrategy.helpers';
+// CR-SA-15-E2 / 2026-05-15: R-3 判定の固有期待値入力源（houseRules.uniqueDiceConfig）の
+// フォールバック値（scene3-race.md §2 規則 R-3 改訂分）。
+import { DEFAULT_UNIQUE_DICE_CONFIG } from '../../../core/strategies';
 import {
     getExpectedUniqueDiceStr,
     getExpectedUniqueFixValue,
@@ -46,13 +49,18 @@ export const sanitizeInputForParser = (inputText: string): string => {
  * ハウスルール脚質ダイス × 固有期待ダイス衝突時に誤判定するため、
  * PhaseInput.tsx:handleParse 内では呼び出さなくなった（既存テスト互換性のため export 維持）。
  * 新規振り分けロジックは {@link classifyDiceResultsForParticipant} を参照のこと。
+ *
+ * CR-SA-15-E2 / 2026-05-15: 固有スキル設定参照化（houserule-features.md §5.4）。
+ * `uniqueDiceConfig` を末尾オプショナル引数で受け取り `getExpectedUniqueDiceStr` へ伝播する。
+ * 省略時は `DEFAULT_UNIQUE_DICE_CONFIG` フォールバック。
  */
 export const isUniqueDice = (
     uniqueSkillType: UniqueSkillType | undefined,
-    diceStr: string
+    diceStr: string,
+    uniqueDiceConfig: UniqueDiceConfig = DEFAULT_UNIQUE_DICE_CONFIG
 ): boolean => {
     if (uniqueSkillType === undefined) return false;
-    const expectedUniqueDiceStr = getExpectedUniqueDiceStr(uniqueSkillType);
+    const expectedUniqueDiceStr = getExpectedUniqueDiceStr(uniqueSkillType, uniqueDiceConfig);
     return expectedUniqueDiceStr !== '' && diceStr === expectedUniqueDiceStr;
 };
 
@@ -98,11 +106,17 @@ export const isCurrentPhaseInUniquePhases = (
  *   `uniqueDice` 枠に振り分け、それ以外は `baseDice` 枠に上書きする。`uniqueDice` が既に
  *   設定済の場合は防御的に `baseDice` 枠へフォールバック。
  *
+ * CR-SA-15-E2 / 2026-05-15: 固有スキル設定参照化（scene3-race.md §2 規則 R-3 改訂分）。
+ * 規則 R-3 の `(fixValue, diceStr)` 完全一致判定の入力源を `uniqueDiceConfig` に切り替え。
+ * 三段判定ロジック自体は不変、固有期待値の入力源のみ差し替え。`uniqueDiceConfig` 省略時は
+ * `DEFAULT_UNIQUE_DICE_CONFIG` フォールバック。
+ *
  * @param uniqueSkillType 当該参加者の固有スキルタイプ（undefined のとき R-3 は常に baseDice 振り分け）
  * @param uniqueSkillPhases 当該参加者の固有スキル発動フェーズ配列
  * @param parsedLines 当該参加者宛にグループ化された Parser 結果（順序を保持）
  * @param currentPhaseId 現在のフェーズ ID
  * @param existingBaseDice 当該フェーズに既に格納されている baseDice（未設定なら undefined）
+ * @param uniqueDiceConfig 固有スキル設定（R-3 の固有期待値入力源、省略時はデフォルト）
  * @returns 振り分け後の baseDice / uniqueDice（undefined は当該枠を更新しないことを表す）
  */
 export interface DiceClassificationResult {
@@ -116,15 +130,16 @@ export const classifyDiceResultsForParticipant = (
     parsedLines: ReadonlyArray<Pick<ParsedLine, 'diceStr' | 'diceResult' | 'fixValue'>>,
     currentPhaseId: string,
     existingBaseDice: DiceResult | undefined,
+    uniqueDiceConfig: UniqueDiceConfig = DEFAULT_UNIQUE_DICE_CONFIG,
 ): DiceClassificationResult => {
     const result: DiceClassificationResult = {};
     if (parsedLines.length === 0) return result;
 
     const phaseMatches = isCurrentPhaseInUniquePhases(uniqueSkillPhases, currentPhaseId);
     const expectedDiceStr =
-        uniqueSkillType !== undefined ? getExpectedUniqueDiceStr(uniqueSkillType) : '';
+        uniqueSkillType !== undefined ? getExpectedUniqueDiceStr(uniqueSkillType, uniqueDiceConfig) : '';
     const expectedFixValue =
-        uniqueSkillType !== undefined ? getExpectedUniqueFixValue(uniqueSkillType) : 0;
+        uniqueSkillType !== undefined ? getExpectedUniqueFixValue(uniqueSkillType, uniqueDiceConfig) : 0;
 
     const toDiceResult = (
         line: Pick<ParsedLine, 'diceStr' | 'diceResult'>,

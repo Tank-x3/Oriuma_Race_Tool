@@ -153,13 +153,18 @@ export const calculateBondSkillDelta = (
  * useRaceStore の score 再計算経路すべて（setMidPhaseCount / updateHouseRules /
  * setSpecialStrategy / setManualModifier / clearManualModifier / updateParticipant /
  * setBondSkill）で本関数を呼ぶことで、絆スキル統合後の score 計算ロジックを一元化する。
+ *
+ * CR-SA-15-E2 / 2026-05-15: 固有スキル設定参照化（houserule-features.md §5.4）。
+ * `houseRules` の Pick 型に `'uniqueDiceConfig'` を追加し、`calculateScoreWithSpecialStrategy`
+ * へ伝播する。**引数の個数・並びは不変**（useRaceStore.ts の 13 呼び出しは `houseRules`
+ * オブジェクト全体を渡しているため、Pick 型拡張のみで無改修となる設計）。
  */
 export const calculateScoreWithBondSkill = (
     p: Umamusume,
     strategies: Strategy[],
     paceFace: number | null,
     activePhaseIds: readonly string[],
-    houseRules: Pick<HouseRules, 'effectValue' | 'enableSpecialStrategy' | 'enableBondSkill'>,
+    houseRules: Pick<HouseRules, 'effectValue' | 'enableSpecialStrategy' | 'enableBondSkill' | 'uniqueDiceConfig'>,
 ): number => {
     const baseScore = calculateScoreWithSpecialStrategy(
         p,
@@ -168,6 +173,7 @@ export const calculateScoreWithBondSkill = (
         activePhaseIds,
         houseRules.effectValue,
         houseRules.enableSpecialStrategy,
+        houseRules.uniqueDiceConfig,
     );
     return baseScore + calculateBondSkillDelta(p, houseRules);
 };

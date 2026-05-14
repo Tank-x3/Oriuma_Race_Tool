@@ -4,7 +4,8 @@ import {
     isUniqueDice,
     classifyDiceResultsForParticipant,
 } from './phaseInput.preprocessors';
-import type { UniqueSkillType } from '../../../types';
+import type { UniqueSkillType, UniqueDiceConfig } from '../../../types';
+import { DEFAULT_UNIQUE_DICE_CONFIG } from '../../../core/strategies';
 
 describe('CR-SA-11-Sub-B-E1: phaseInput preprocessors', () => {
     describe('sanitizeInputForParser', () => {
@@ -333,6 +334,80 @@ describe('CR-SA-13-E1: phaseInput dice classification (R-1/R-2/R-3)', () => {
             );
             expect(result.baseDice).toEqual({ diceStr: '1d7', values: [], sum: 5 });
             expect(result.uniqueDice).toBeUndefined();
+        });
+    });
+});
+
+// CR-SA-15-E2 / 2026-05-15: isUniqueDice / classifyDiceResultsForParticipant の
+// uniqueDiceConfig 参照化検証（scene3-race.md §2 規則 R-3 改訂分 / houserule-features.md §5.4）。
+// 規則 R-3 の固有期待値 (fixValue, diceStr) の入力源が uniqueDiceConfig に切り替わったことを検証する。
+describe('CR-SA-15-E2: phaseInput preprocessors uniqueDiceConfig 参照化', () => {
+    const makeLine = (diceStr: string, diceResult: number, fixValue: number) => ({
+        diceStr,
+        diceResult,
+        fixValue,
+    });
+
+    describe('isUniqueDice — uniqueDiceConfig 参照', () => {
+        it('カスタム設定（安定型 diceStr 1d11）→ "1d11" で true / "1d10" で false', () => {
+            const config: UniqueDiceConfig = {
+                ...DEFAULT_UNIQUE_DICE_CONFIG,
+                Stability: { fixValue: 5, diceStr: '1d11' },
+            };
+            expect(isUniqueDice('Stability', '1d11', config)).toBe(true);
+            expect(isUniqueDice('Stability', '1d10', config)).toBe(false);
+        });
+
+        it('引数省略時は DEFAULT_UNIQUE_DICE_CONFIG フォールバック（"1d10" で true）', () => {
+            expect(isUniqueDice('Stability', '1d10')).toBe(true);
+        });
+    });
+
+    describe('classifyDiceResultsForParticipant — R-3 固有期待値入力源の差替', () => {
+        it('カスタム設定（安定型 7+1d11）× baseDice 既存 + (7, 1d11) → uniqueDice 振り分け', () => {
+            const config: UniqueDiceConfig = {
+                ...DEFAULT_UNIQUE_DICE_CONFIG,
+                Stability: { fixValue: 7, diceStr: '1d11' },
+            };
+            const result = classifyDiceResultsForParticipant(
+                'Stability',
+                ['Mid1'],
+                [makeLine('1d11', 9, 7)],
+                'Mid1',
+                { diceStr: '3d8', values: [], sum: 12 },
+                config,
+            );
+            expect(result.uniqueDice).toEqual({ diceStr: '1d11', values: [], sum: 9 });
+            expect(result.baseDice).toBeUndefined();
+        });
+
+        it('カスタム設定（安定型 7+1d11）では従来期待値 (5, 1d10) は固有不一致 → baseDice 上書き', () => {
+            const config: UniqueDiceConfig = {
+                ...DEFAULT_UNIQUE_DICE_CONFIG,
+                Stability: { fixValue: 7, diceStr: '1d11' },
+            };
+            const result = classifyDiceResultsForParticipant(
+                'Stability',
+                ['Mid1'],
+                [makeLine('1d10', 8, 5)],
+                'Mid1',
+                { diceStr: '3d8', values: [], sum: 12 },
+                config,
+            );
+            expect(result.baseDice).toEqual({ diceStr: '1d10', values: [], sum: 8 });
+            expect(result.uniqueDice).toBeUndefined();
+        });
+
+        it('引数省略時は DEFAULT_UNIQUE_DICE_CONFIG フォールバック（従来期待値 (5, 1d10) で uniqueDice 振り分け）', () => {
+            const result = classifyDiceResultsForParticipant(
+                'Stability',
+                ['Mid1'],
+                [makeLine('1d10', 8, 5)],
+                'Mid1',
+                { diceStr: '3d8', values: [], sum: 12 },
+            );
+            expect(result.uniqueDice).toEqual({ diceStr: '1d10', values: [], sum: 8 });
+            expect(result.baseDice).toBeUndefined();
         });
     });
 });

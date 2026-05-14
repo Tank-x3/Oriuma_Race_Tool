@@ -1,5 +1,5 @@
-import type { Umamusume, Strategy } from '../types';
-import { getPaceModifier, getStrategy } from './strategies';
+import type { Umamusume, Strategy, UniqueDiceConfig } from '../types';
+import { getPaceModifier, getStrategy, DEFAULT_UNIQUE_DICE_CONFIG } from './strategies';
 
 /**
  * 現在の中盤回数設定からアクティブなフェーズ ID 集合を導出する。
@@ -25,12 +25,18 @@ export class Calculator {
      * Calculates the total score for a participant based on their history and current race state.
      * activePhaseIds を渡すと、history 上に残っているが現在のフェーズ設定外となっている
      * データ（Soft Delete 対象）を合算対象から除外する。未指定なら従来どおり全走査。
+     *
+     * CR-SA-15-E2 / 2026-05-15: 固有スキル設定参照化（houserule-features.md §5.4）。
+     * 固有固定値の加算を `uniqueDiceConfig` 参照へ切り替え。`uniqueDiceConfig` 省略時は
+     * `DEFAULT_UNIQUE_DICE_CONFIG` フォールバック（= 従来のハードコード値と完全一致、
+     * 既存挙動完全維持）。
      */
     static calculateTotalScore(
         participant: Umamusume,
         strategies: Strategy[],
         paceRoll: number | null,
-        activePhaseIds?: readonly string[]
+        activePhaseIds?: readonly string[],
+        uniqueDiceConfig: UniqueDiceConfig = DEFAULT_UNIQUE_DICE_CONFIG
     ): number {
         const activeSet = activePhaseIds ? new Set(activePhaseIds) : null;
         let total = 0;
@@ -65,10 +71,10 @@ export class Calculator {
             // Unique skill in Start? Allowed if configured.
             if (startData.uniqueDice && participant.uniqueSkill.phases.includes('Start')) {
                 const skillType = participant.uniqueSkill.type;
-                if (skillType === 'Stability') total += 5;
-                // Bundle-2 / D-1, D-14 / 2026-05-09: 拡張固有タイプ（houserule-features.md §2 [v]）
-                if (skillType === 'SuperGamble') total += -10;
-                if (skillType === 'SuperStability') total += 8;
+                // CR-SA-15-E2 / 2026-05-15: 固有固定値を uniqueDiceConfig 参照化（houserule-features.md §5.4）。
+                // 従来は Stability / SuperGamble / SuperStability の 3 タイプのみ分岐加算していたが、
+                // 全 5 タイプ一律 fixValue 加算に統一（Gamble / Persistent はデフォルト fixValue: 0 = 既存挙動と完全一致）。
+                total += uniqueDiceConfig[skillType].fixValue;
                 total += startData.uniqueDice.sum;
             }
         }
@@ -95,10 +101,9 @@ export class Calculator {
             // Add Unique (フェーズ制限チェック)
             if (data.uniqueDice && participant.uniqueSkill.phases.includes(phaseId)) {
                 const skillType = participant.uniqueSkill.type;
-                if (skillType === 'Stability') total += 5;
-                // Bundle-2 / D-1, D-14 / 2026-05-09: 拡張固有タイプ（houserule-features.md §2 [v]）
-                if (skillType === 'SuperGamble') total += -10;
-                if (skillType === 'SuperStability') total += 8;
+                // CR-SA-15-E2 / 2026-05-15: 固有固定値を uniqueDiceConfig 参照化（houserule-features.md §5.4）。
+                // Start phase と同じ「全 5 タイプ一律 fixValue 加算」に統一（既存挙動と完全一致）。
+                total += uniqueDiceConfig[skillType].fixValue;
                 total += data.uniqueDice.sum;
             }
             // Add Manual Modifier
