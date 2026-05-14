@@ -7,7 +7,11 @@ import {
     VALIDATION_ERROR_MESSAGE,
     EFFECT_VALUE_MIN,
     EFFECT_VALUE_MAX,
+    // CR-SA-15-E1 / 2026-05-14: 固有スキル設定スキーマ
+    uniqueDiceEntrySchema,
+    uniqueDiceConfigSchema,
 } from './houseRules';
+import { DEFAULT_UNIQUE_DICE_CONFIG } from '../strategies';
 
 // Bundle-7 / P4-6 / 2026-05-10:
 // houserule-features.md §4 zod 検証範囲表に対する正常系/異常系テスト。
@@ -216,5 +220,93 @@ describe('houseRulesSchema - Bundle-8-T1 / enableBondSkill 拡張', () => {
         };
         const result = houseRulesConfigSchema.safeParse(fullConfig);
         expect(result.success).toBe(true);
+    });
+});
+
+// CR-SA-15-E1 / 2026-05-14:
+// houserule-features.md §5.2 設定項目 + §4 zod 検証範囲表に対する固有スキル設定スキーマの検証。
+// - uniqueDiceEntrySchema: fixValue 整数 / diceStr XdY 形式（正規表現 /^\d+d\d+$/）
+// - uniqueDiceConfigSchema: 固有スキル 5 タイプすべてのキー必須（明示 object 方式）
+// - houseRulesSchema.uniqueDiceConfig: .default() による後方互換（フィールド欠落の旧データを補完）
+describe('CR-SA-15-E1 / 2026-05-14 uniqueDiceConfig schema', () => {
+    // uniqueDiceConfig フィールドを含まない旧 houseRules（6 フィールド = CR-SA-15-E1 以前の構造）
+    const validHouseRules6 = {
+        enableModifier: false,
+        enableSpecialStrategy: false,
+        enableCompositeUnique: false,
+        enableExtendedUnique: false,
+        enableBondSkill: false,
+        effectValue: 15,
+    };
+
+    describe('uniqueDiceEntrySchema', () => {
+        it('(i) diceStr が XdY 形式（1d10 / 1d11 / 3d6）で success', () => {
+            expect(uniqueDiceEntrySchema.safeParse({ fixValue: 5, diceStr: '1d10' }).success).toBe(true);
+            expect(uniqueDiceEntrySchema.safeParse({ fixValue: 0, diceStr: '1d11' }).success).toBe(true);
+            expect(uniqueDiceEntrySchema.safeParse({ fixValue: 0, diceStr: '3d6' }).success).toBe(true);
+        });
+
+        it('(ii) diceStr が非 XdY 形式（abc / 10 / 空文字 / 1d）で failure', () => {
+            expect(uniqueDiceEntrySchema.safeParse({ fixValue: 0, diceStr: 'abc' }).success).toBe(false);
+            expect(uniqueDiceEntrySchema.safeParse({ fixValue: 0, diceStr: '10' }).success).toBe(false);
+            expect(uniqueDiceEntrySchema.safeParse({ fixValue: 0, diceStr: '' }).success).toBe(false);
+            expect(uniqueDiceEntrySchema.safeParse({ fixValue: 0, diceStr: '1d' }).success).toBe(false);
+        });
+
+        it('(iii) fixValue が整数（5 / 0 / -10）で success', () => {
+            expect(uniqueDiceEntrySchema.safeParse({ fixValue: 5, diceStr: '1d10' }).success).toBe(true);
+            expect(uniqueDiceEntrySchema.safeParse({ fixValue: 0, diceStr: '1d10' }).success).toBe(true);
+            expect(uniqueDiceEntrySchema.safeParse({ fixValue: -10, diceStr: '1d35' }).success).toBe(true);
+        });
+
+        it('(iv) fixValue が小数（5.5）で failure（int 制約）', () => {
+            expect(uniqueDiceEntrySchema.safeParse({ fixValue: 5.5, diceStr: '1d10' }).success).toBe(false);
+        });
+    });
+
+    describe('uniqueDiceConfigSchema', () => {
+        it('(v) 固有スキル 5 タイプすべてのキー揃いで success', () => {
+            const result = uniqueDiceConfigSchema.safeParse(DEFAULT_UNIQUE_DICE_CONFIG);
+            expect(result.success).toBe(true);
+        });
+
+        it('(vi) 1 キー欠落（SuperStability なし）で failure', () => {
+            const { SuperStability: _omit, ...incomplete } = DEFAULT_UNIQUE_DICE_CONFIG;
+            void _omit;
+            const result = uniqueDiceConfigSchema.safeParse(incomplete);
+            expect(result.success).toBe(false);
+        });
+    });
+
+    describe('houseRulesSchema との統合（.default() 後方互換）', () => {
+        it('(vii) uniqueDiceConfig フィールド欠落の旧 houseRules が .default() で success + デフォルト補完', () => {
+            const result = houseRulesSchema.safeParse(validHouseRules6);
+            expect(result.success).toBe(true);
+            if (result.success) {
+                expect(result.data.uniqueDiceConfig).toEqual(DEFAULT_UNIQUE_DICE_CONFIG);
+            }
+        });
+
+        it('(viii) uniqueDiceConfig フィールドが存在するが 5 キー不揃いで failure（不完全構造は許容しない）', () => {
+            const result = houseRulesSchema.safeParse({
+                ...validHouseRules6,
+                uniqueDiceConfig: { Stability: { fixValue: 5, diceStr: '1d10' } },
+            });
+            expect(result.success).toBe(false);
+        });
+
+        it('(ix) uniqueDiceConfig を含む 7 フィールド完全データ（安定型 5+1d11 運用）で success', () => {
+            const result = houseRulesSchema.safeParse({
+                ...validHouseRules6,
+                uniqueDiceConfig: {
+                    ...DEFAULT_UNIQUE_DICE_CONFIG,
+                    Stability: { fixValue: 5, diceStr: '1d11' },
+                },
+            });
+            expect(result.success).toBe(true);
+            if (result.success) {
+                expect(result.data.uniqueDiceConfig.Stability.diceStr).toBe('1d11');
+            }
+        });
     });
 });

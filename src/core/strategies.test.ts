@@ -7,7 +7,13 @@
 //  - getStrategy: state.strategies 内の検索（DEFAULT 名 / カスタム名 / 不在名）
 //  - getPaceModifier: state 優先参照 + 固定テーブル PACE_MODIFIERS フォールバック
 import { describe, it, expect } from 'vitest';
-import { DEFAULT_STRATEGIES, getStrategy, getPaceModifier } from './strategies';
+import {
+    DEFAULT_STRATEGIES,
+    getStrategy,
+    getPaceModifier,
+    // CR-SA-15-E1 / 2026-05-14: 固有スキル設定のデフォルト値定数
+    DEFAULT_UNIQUE_DICE_CONFIG,
+} from './strategies';
 import type { Strategy } from '../types';
 
 const cloneDefaults = (): Strategy[] =>
@@ -107,5 +113,26 @@ describe('getPaceModifier - Bundle-10-Followup-runtime-sync', () => {
         // PACE_MODIFIERS は 1〜9 のみ定義。範囲外は 0 にフォールバック。
         expect(getPaceModifier('大逃げ', 0, strategies)).toBe(0);
         expect(getPaceModifier('大逃げ', 10, strategies)).toBe(0);
+    });
+});
+
+// CR-SA-15-E1 / 2026-05-14:
+// houserule-features.md §5.2 設定項目 デフォルト値表に対する DEFAULT_UNIQUE_DICE_CONFIG の検証。
+// E2 で既存ハードコード関数（phaseOutput.helpers.ts の getUniqueDiceFormula /
+// getExpectedUniqueDiceStr / getExpectedUniqueFixValue）が本定数 + state 参照へ切り替わるため、
+// デフォルト値がハードコード現行値と完全一致していることを保証する。
+describe('DEFAULT_UNIQUE_DICE_CONFIG - CR-SA-15-E1', () => {
+    it('(1) 固有スキル 5 タイプすべてのキーが存在する', () => {
+        expect(Object.keys(DEFAULT_UNIQUE_DICE_CONFIG).sort()).toEqual(
+            ['Gamble', 'Persistent', 'Stability', 'SuperGamble', 'SuperStability'],
+        );
+    });
+
+    it('(2) 各タイプの fixValue / diceStr が houserule-features.md §5.2 デフォルト値表と完全一致', () => {
+        expect(DEFAULT_UNIQUE_DICE_CONFIG.Stability).toEqual({ fixValue: 5, diceStr: '1d10' });
+        expect(DEFAULT_UNIQUE_DICE_CONFIG.Gamble).toEqual({ fixValue: 0, diceStr: '1d20' });
+        expect(DEFAULT_UNIQUE_DICE_CONFIG.Persistent).toEqual({ fixValue: 0, diceStr: '1d10' });
+        expect(DEFAULT_UNIQUE_DICE_CONFIG.SuperGamble).toEqual({ fixValue: -10, diceStr: '1d35' });
+        expect(DEFAULT_UNIQUE_DICE_CONFIG.SuperStability).toEqual({ fixValue: 8, diceStr: '1d3' });
     });
 });

@@ -6,6 +6,15 @@ export type PhaseType = 'Start' | 'Pace' | 'Mid' | 'End';
 // される 2 識別子（houserule-features.md §2 [v] 拡張固有タイプ §データ仕様 L96 例示準拠）
 export type UniqueSkillType = 'Stability' | 'Gamble' | 'Persistent' | 'SuperGamble' | 'SuperStability';
 
+// CR-SA-15-E1 / 2026-05-14: 固有スキル設定（houserule-features.md §5）。
+// 固有スキル各タイプの「固定値」「ダイス式」。デフォルト値は strategies.ts の
+// DEFAULT_UNIQUE_DICE_CONFIG、state（houseRules.uniqueDiceConfig）を SSoT として保持する。
+export interface UniqueDiceEntry {
+    fixValue: number; // 固定値（負の整数を許容、超ギャンブルの -10 等）
+    diceStr: string;  // ダイス式（XdY 形式、例: 1d10 / 1d11）
+}
+export type UniqueDiceConfig = Record<UniqueSkillType, UniqueDiceEntry>;
+
 // Represents "Start", "Pace", "Mid1", "Mid2", "End" etc.
 export interface PhaseConfig {
     id: string;
@@ -105,6 +114,10 @@ export interface RaceState {
             enableBondSkill: boolean;
             // Bundle-1 / D-5 / 2026-05-09: 状態異常効果値 (N)（houserule-features.md §3 デフォルト 15）
             effectValue: number;
+            // CR-SA-15-E1 / 2026-05-14: 固有スキル設定（houserule-features.md §5）。
+            // 固有スキル 5 タイプの固定値・ダイス式。state を SSoT とし、
+            // デフォルト値は strategies.ts DEFAULT_UNIQUE_DICE_CONFIG。
+            uniqueDiceConfig: UniqueDiceConfig;
         };
     };
     participants: Umamusume[];

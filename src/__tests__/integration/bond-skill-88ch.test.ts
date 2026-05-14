@@ -10,6 +10,8 @@
 //       それぞれの単体テストで網羅済のため、本ファイルは結合面の動作確認に絞る。
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useRaceStore, persistPartialize, persistMigrate } from '../../store/useRaceStore';
+// CR-SA-15-E1 / 2026-05-14: DEFAULT_UNIQUE_DICE_CONFIG = houseRules 型厳密化（uniqueDiceConfig 必須）に追従するため import
+import { DEFAULT_UNIQUE_DICE_CONFIG } from '../../core/strategies';
 import type { DiceResult, Umamusume } from '../../types';
 
 const makeDice = (str: string, values: number[]): DiceResult => ({
@@ -69,6 +71,8 @@ const installRace = (participants: Umamusume[]): void => {
                 enableExtendedUnique: false,
                 enableBondSkill: true,
                 effectValue: 15,
+                // CR-SA-15-E1 / 2026-05-14: houseRules 型厳密化（uniqueDiceConfig 必須）に追従
+                uniqueDiceConfig: DEFAULT_UNIQUE_DICE_CONFIG,
             },
         },
         participants,

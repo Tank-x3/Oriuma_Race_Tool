@@ -9,7 +9,8 @@ import {
     deserializeAndValidate,
     buildExportFilename,
 } from './presetManager.helpers';
-import { DEFAULT_STRATEGIES } from '../../../core/strategies';
+// CR-SA-15-E1 / 2026-05-14: DEFAULT_UNIQUE_DICE_CONFIG = HouseRulesData 型厳密化（uniqueDiceConfig 必須）に追従するため import
+import { DEFAULT_STRATEGIES, DEFAULT_UNIQUE_DICE_CONFIG } from '../../../core/strategies';
 import { VALIDATION_ERROR_MESSAGE } from '../../../core/schema/houseRules';
 import type { Strategy } from '../../../types';
 import type { HouseRulesData } from '../../../core/schema/houseRules';
@@ -21,6 +22,8 @@ const sampleHouseRules: HouseRulesData = {
     enableExtendedUnique: false,
     enableBondSkill: true,
     effectValue: 25,
+    // CR-SA-15-E1 / 2026-05-14: HouseRulesData 型厳密化（uniqueDiceConfig 必須）に追従
+    uniqueDiceConfig: DEFAULT_UNIQUE_DICE_CONFIG,
 };
 
 const customStrategy: Strategy = {

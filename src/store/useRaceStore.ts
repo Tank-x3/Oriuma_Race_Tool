@@ -1,7 +1,9 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Umamusume, RaceState, GateAssignment, Strategy } from '../types';
-import { DEFAULT_STRATEGIES as STRATEGIES } from '../core/strategies';
+// CR-SA-15-E1 / 2026-05-14: DEFAULT_UNIQUE_DICE_CONFIG = 固有スキル設定の初期値 +
+// 永続化マイグレーションのデフォルト補完値（houserule-features.md §5.2 / §5.4）。
+import { DEFAULT_STRATEGIES as STRATEGIES, DEFAULT_UNIQUE_DICE_CONFIG } from '../core/strategies';
 import { getActivePhaseIds } from '../core/calculator';
 import { isDefaultStrategy } from '../core/strategy.helpers';
 import { useNotificationStore } from './useNotificationStore';
@@ -134,12 +136,16 @@ export const PRESET_KEY_PREFIX = 'race-store-presets:';
 // Bundle-8-T1 / 2026-05-10: PERSIST_VERSION 2 → 3 にバンプ。
 // version=2 旧データ（Bundle-7 で houseRules 5 フィールド確定）→ version=3 へのデフォルト補完を
 // persistMigrate で実施（DEFAULT_HOUSE_RULES.enableBondSkill 追加で透過対応）。
-export const PERSIST_VERSION = 3;
+// CR-SA-15-E1 / 2026-05-14: PERSIST_VERSION 3 → 4 にバンプ。
+// version=3 旧データ（houseRules 6 フィールド確定）→ version=4 へのデフォルト補完を
+// persistMigrate で実施（DEFAULT_HOUSE_RULES.uniqueDiceConfig 追加で透過対応）。
+export const PERSIST_VERSION = 4;
 export const RESTORE_ERROR_MESSAGE = '保存データの復元に失敗しました。新規セッションを開始します。';
 
 // Bundle-7 / 2026-05-10: マイグレーション時の houseRules デフォルト補完値。
 // 下記 create() の初期 state と同一値を保持。新規セッションと旧データ補完で同じ初期値が使われる。
 // Bundle-8-T1 / CR-SA-4 / 2026-05-10: enableBondSkill 追加（5 → 6 フィールド）。
+// CR-SA-15-E1 / 2026-05-14: uniqueDiceConfig 追加（6 → 7 フィールド）。
 export const DEFAULT_HOUSE_RULES: HouseRulesData = {
     enableModifier: false,
     enableSpecialStrategy: false,
@@ -147,6 +153,7 @@ export const DEFAULT_HOUSE_RULES: HouseRulesData = {
     enableExtendedUnique: false,
     enableBondSkill: false,
     effectValue: 15,
+    uniqueDiceConfig: DEFAULT_UNIQUE_DICE_CONFIG,
 };
 
 export const persistPartialize = (state: RaceStoreState): PersistedRaceState => ({
@@ -164,8 +171,9 @@ export const persistPartialize = (state: RaceStoreState): PersistedRaceState => 
 // Bundle-7 / P4-6 / 2026-05-10: 実マイグレーション化。
 // version=1 旧データ: houseRules.enableExtendedUnique / effectValue を補完（Bundle-7 から）。
 // Bundle-8-T1 / 2026-05-10: version=2 旧データ: houseRules.enableBondSkill を補完（Bundle-8-T1 から）。
+// CR-SA-15-E1 / 2026-05-14: version=3 旧データ: houseRules.uniqueDiceConfig を補完（CR-SA-15-E1 から）。
 // 実装方針: DEFAULT_HOUSE_RULES でマージ補完するため version 引数分岐は不要（DEFAULT 拡張のみで透過対応）。
-// zod 検証で型不正・値域違反（effectValue 小数/負値/上限超等）を検知し、
+// zod 検証で型不正・値域違反（effectValue 小数/負値/上限超、uniqueDiceConfig の 5 キー不揃い等）を検知し、
 // 失敗時は throw → onRehydrateStorage の handleRehydrateError に合流（RESTORE_ERROR_MESSAGE 通知 +
 // デフォルト state 起動）。
 export const persistMigrate = (persistedState: unknown, version: number): PersistedRaceState => {
@@ -229,6 +237,9 @@ export const useRaceStore = create<RaceStoreState>()(
                     enableBondSkill: false,
                     // Bundle-1 / D-5 / 2026-05-09: 状態異常効果値 (N)（houserule-features.md §3 デフォルト 15）
                     effectValue: 15,
+                    // CR-SA-15-E1 / 2026-05-14: 固有スキル設定（houserule-features.md §5）。
+                    // DEFAULT_HOUSE_RULES と同一値を保持（新規セッションと旧データ補完で同じ初期値）。
+                    uniqueDiceConfig: DEFAULT_UNIQUE_DICE_CONFIG,
                 },
             },
             participants: [],
@@ -309,8 +320,23 @@ export const useRaceStore = create<RaceStoreState>()(
                         updates.enableBondSkill !== undefined &&
                         updates.enableBondSkill !==
                             state.config.houseRules.enableBondSkill;
+                    // CR-SA-15-E1 / 2026-05-14: 固有スキル設定（uniqueDiceConfig）変更時にも score 再計算を
+                    // トリガーする（basic-rules.md §6 Case 5「固定値のみの変更でもスコア再計算で反映」）。
+                    // 参照比較で十分（UI / Import 経路は新オブジェクトを渡す）。
+                    // E1 時点の挙動: calculator.ts はまだ uniqueDiceConfig を参照しない（固有固定値ハードコード
+                    // のまま、E2 スコープ）ため、score 再計算は実質 no-op（score 値は不変＝既存挙動完全維持）。
+                    // E2 完了で calculator.ts が uniqueDiceConfig 参照に切り替わった瞬間に本トリガーが意味を持つ。
+                    const uniqueDiceConfigChanged =
+                        updates.uniqueDiceConfig !== undefined &&
+                        updates.uniqueDiceConfig !==
+                            state.config.houseRules.uniqueDiceConfig;
 
-                    if (!effectValueChanged && !enableChanged && !bondSkillChanged) {
+                    if (
+                        !effectValueChanged &&
+                        !enableChanged &&
+                        !bondSkillChanged &&
+                        !uniqueDiceConfigChanged
+                    ) {
                         return { config: newConfig };
                     }
 

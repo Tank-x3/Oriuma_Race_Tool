@@ -7,6 +7,8 @@ import {
     getEntryListAnnotations,
 } from './gateScene.helpers';
 import type { Umamusume, RaceState } from '../../types';
+// CR-SA-15-E1 / 2026-05-14: DEFAULT_UNIQUE_DICE_CONFIG = houseRules 型厳密化（uniqueDiceConfig 必須）に追従するため import
+import { DEFAULT_UNIQUE_DICE_CONFIG } from '../../core/strategies';
 
 type HouseRules = RaceState['config']['houseRules'];
 
@@ -42,6 +44,8 @@ const baseHouseRules: HouseRules = {
     enableExtendedUnique: false,
     enableBondSkill: false,
     effectValue: 15,
+    // CR-SA-15-E1 / 2026-05-14: houseRules 型厳密化（uniqueDiceConfig 必須）に追従
+    uniqueDiceConfig: DEFAULT_UNIQUE_DICE_CONFIG,
 };
 
 describe('gateScene.helpers - Bundle-8-T3 / CR-SA-4 / 2026-05-10', () => {

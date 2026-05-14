@@ -1,4 +1,4 @@
-import type { Strategy } from '../types';
+import type { Strategy, UniqueDiceConfig } from '../types';
 
 export const PACE_MODIFIERS: Record<number, Record<string, number>> = {
     1: { '大逃げ': 12, '逃げ': 10, '先行': 5, '差し': 0, '追込': -5 },
@@ -49,6 +49,20 @@ export const DEFAULT_STRATEGIES: Strategy[] = [
         paceModifiers: {},
     },
 ];
+
+// CR-SA-15-E1 / 2026-05-14: 固有スキル設定のデフォルト値（houserule-features.md §5.2 設定項目表）。
+// 現行ハードコード（phaseOutput.helpers.ts の getUniqueDiceFormula / getExpectedUniqueDiceStr /
+// getExpectedUniqueFixValue）と完全一致。state.config.houseRules.uniqueDiceConfig の初期値 +
+// 永続化マイグレーションのデフォルト補完値として参照される。E2 で既存ハードコード関数が
+// 本定数 + state 参照（state 優先 + デフォルトフォールバック、getStrategy / getPaceModifier 同パターン）
+// へ切り替わる。
+export const DEFAULT_UNIQUE_DICE_CONFIG: UniqueDiceConfig = {
+    Stability: { fixValue: 5, diceStr: '1d10' },
+    Gamble: { fixValue: 0, diceStr: '1d20' },
+    Persistent: { fixValue: 0, diceStr: '1d10' },
+    SuperGamble: { fixValue: -10, diceStr: '1d35' },
+    SuperStability: { fixValue: 8, diceStr: '1d3' },
+};
 
 // Bundle-10-Followup-runtime-sync / 2026-05-11: state.strategies の paceModifiers を優先参照。
 // 未定義時のみ固定テーブル PACE_MODIFIERS にフォールバックし、DEFAULT 5 脚質互換性を維持する。

@@ -13,7 +13,8 @@ import {
 import { useNotificationStore } from './useNotificationStore';
 import type { DiceResult, GateAssignment, Strategy, Umamusume } from '../types';
 import { getActivePhaseIds } from '../core/calculator';
-import { DEFAULT_STRATEGIES } from '../core/strategies';
+// CR-SA-15-E1 / 2026-05-14: DEFAULT_UNIQUE_DICE_CONFIG = 固有スキル設定の初期値 / マイグレーション補完値
+import { DEFAULT_STRATEGIES, DEFAULT_UNIQUE_DICE_CONFIG } from '../core/strategies';
 
 // 固有ダイス DiceResult の生成ヘルパー
 const makeDice = (str: string, values: number[]): DiceResult => ({
@@ -52,6 +53,8 @@ const installParticipant = (uma: Umamusume) => {
                 // Bundle-8-T1 / CR-SA-4 / 2026-05-10: 型定義拡張に追従（6 フィールド）
                 enableBondSkill: false,
                 effectValue: 15,
+                // CR-SA-15-E1 / 2026-05-14: 型定義拡張に追従（7 フィールド）
+                uniqueDiceConfig: DEFAULT_UNIQUE_DICE_CONFIG,
             },
         },
         participants: [uma],
@@ -189,6 +192,8 @@ describe('useRaceStore.updateParticipant - CR-38 / basic-rules §6 Case 4', () =
                     // Bundle-8-T1 / CR-SA-4 / 2026-05-10: 型定義拡張に追従（6 フィールド）
                     enableBondSkill: false,
                     effectValue: 15,
+                    // CR-SA-15-E1 / 2026-05-14: 型定義拡張に追従（7 フィールド）
+                    uniqueDiceConfig: DEFAULT_UNIQUE_DICE_CONFIG,
                 },
             },
             participants: [initial],
@@ -292,6 +297,8 @@ describe('useRaceStore.setMidPhaseCount - CR-3 / scene1-setup.md §4 Soft Delete
                     // Bundle-8-T1 / CR-SA-4 / 2026-05-10: 型定義拡張に追従（6 フィールド）
                     enableBondSkill: false,
                     effectValue: 15,
+                    // CR-SA-15-E1 / 2026-05-14: 型定義拡張に追従（7 フィールド）
+                    uniqueDiceConfig: DEFAULT_UNIQUE_DICE_CONFIG,
                 },
             },
             participants: [initial],
@@ -448,13 +455,16 @@ describe('CR-5a: zustand persist 設定', () => {
     it('PERSIST_VERSION / PERSIST_NAME: 想定値が export されている', () => {
         // Bundle-7 / P4-6 / 2026-05-10: 1 → 2 にバンプ
         // Bundle-8-T1 / CR-SA-4 / 2026-05-10: 2 → 3 にバンプ
-        expect(PERSIST_VERSION).toBe(3);
+        // CR-SA-15-E1 / 2026-05-14: 3 → 4 にバンプ
+        expect(PERSIST_VERSION).toBe(4);
         expect(PERSIST_NAME).toBe('race-store');
     });
 
-    it('persistMigrate: 完全な version=3 データはそのまま通過する（基本動作）', () => {
+    it('persistMigrate: version=3 データは uniqueDiceConfig 補完で通過する（基本動作）', () => {
         // Bundle-7 / 2026-05-10: 旧 passthrough テストを「正常な version=2 データの通過」テストに書き換え
         // Bundle-8-T1 / 2026-05-10: enableBondSkill 追加（6 フィールド）に伴い version=3 データ通過テストへ更新
+        // CR-SA-15-E1 / 2026-05-14: PERSIST_VERSION 3→4 バンプに伴い、version=3 旧データ（uniqueDiceConfig 欠落）は
+        // DEFAULT_HOUSE_RULES マージ + houseRulesSchema.default() で uniqueDiceConfig がデフォルト補完されて通過する
         const validPersisted = {
             config: {
                 midPhaseCount: 3,
@@ -477,8 +487,11 @@ describe('CR-5a: zustand persist 設定', () => {
 
         const result = persistMigrate(validPersisted, 3);
 
-        // houseRules は補完なしで通過
-        expect(result.config.houseRules).toEqual(validPersisted.config.houseRules);
+        // CR-SA-15-E1 / 2026-05-14: 既存 6 フィールドはそのまま、uniqueDiceConfig がデフォルト補完されて通過
+        expect(result.config.houseRules).toEqual({
+            ...validPersisted.config.houseRules,
+            uniqueDiceConfig: DEFAULT_UNIQUE_DICE_CONFIG,
+        });
         // その他フィールドも保持される
         expect(result.config.midPhaseCount).toBe(3);
         expect(result.currentPhaseId).toBe('Mid1');
@@ -645,6 +658,8 @@ describe('useRaceStore - Bundle-6 / scene3-race.md §6 完全な状態復元', (
                     // Bundle-8-T1 / CR-SA-4 / 2026-05-10: 6 フィールドに拡張
                     enableBondSkill: false,
                     effectValue: 15,
+                    // CR-SA-15-E1 / 2026-05-14: 7 フィールドに拡張（override より前に置きデフォルトを基底とする）
+                    uniqueDiceConfig: DEFAULT_UNIQUE_DICE_CONFIG,
                     ...houseRulesOverride,
                 },
             },
@@ -980,6 +995,8 @@ describe('Bundle-4 / P4-1, P4-5 / 2026-05-10 useRaceStore.setSpecialStrategy', (
                     // Bundle-8-T1 / CR-SA-4 / 2026-05-10: 6 フィールドに拡張
                     enableBondSkill: false,
                     effectValue: 15,
+                    // CR-SA-15-E1 / 2026-05-14: 7 フィールドに拡張
+                    uniqueDiceConfig: DEFAULT_UNIQUE_DICE_CONFIG,
                 },
             },
             participants: [uma],
@@ -1136,6 +1153,8 @@ describe('Bundle-4 / P4-1, P4-5 / 2026-05-10 useRaceStore.updateHouseRules effec
                     // Bundle-8-T1 / CR-SA-4 / 2026-05-10: 6 フィールドに拡張
                     enableBondSkill: false,
                     effectValue: 15,
+                    // CR-SA-15-E1 / 2026-05-14: 7 フィールドに拡張
+                    uniqueDiceConfig: DEFAULT_UNIQUE_DICE_CONFIG,
                 },
             },
             participants: [uma],
@@ -1219,6 +1238,7 @@ describe('Bundle-7 / P4-6 / 2026-05-10 persistMigrate (zod 検証 + デフォル
         const result = persistMigrate(oldPersisted, 1);
 
         // Bundle-8-T1 / 2026-05-10: 補完済の 6 フィールド構造になる（enableBondSkill 追加）
+        // CR-SA-15-E1 / 2026-05-14: uniqueDiceConfig 追加で 7 フィールド構造になる
         expect(result.config.houseRules).toEqual({
             enableModifier: true,
             enableSpecialStrategy: true,
@@ -1226,6 +1246,7 @@ describe('Bundle-7 / P4-6 / 2026-05-10 persistMigrate (zod 検証 + デフォル
             enableExtendedUnique: false, // デフォルト補完
             enableBondSkill: false, // Bundle-8-T1 デフォルト補完
             effectValue: 15, // デフォルト補完
+            uniqueDiceConfig: DEFAULT_UNIQUE_DICE_CONFIG, // CR-SA-15-E1 デフォルト補完
         });
         // 既存フィールドは維持
         expect(result.config.midPhaseCount).toBe(2);
@@ -1245,6 +1266,7 @@ describe('Bundle-7 / P4-6 / 2026-05-10 persistMigrate (zod 検証 + デフォル
         const result = persistMigrate(noHouseRules, 1);
 
         // Bundle-8-T1 / 2026-05-10: デフォルト補完は 6 フィールド構造
+        // CR-SA-15-E1 / 2026-05-14: uniqueDiceConfig 追加で 7 フィールド構造
         expect(result.config.houseRules).toEqual({
             enableModifier: false,
             enableSpecialStrategy: false,
@@ -1252,6 +1274,7 @@ describe('Bundle-7 / P4-6 / 2026-05-10 persistMigrate (zod 検証 + デフォル
             enableExtendedUnique: false,
             enableBondSkill: false,
             effectValue: 15,
+            uniqueDiceConfig: DEFAULT_UNIQUE_DICE_CONFIG,
         });
     });
 
@@ -1369,6 +1392,8 @@ describe('Bundle-5 / P4-2, P4-3, CR-22 / 2026-05-10 useRaceStore.setManualModifi
                     // Bundle-8-T1 / CR-SA-4 / 2026-05-10: 6 フィールドに拡張
                     enableBondSkill: false,
                     effectValue: 15,
+                    // CR-SA-15-E1 / 2026-05-14: 7 フィールドに拡張
+                    uniqueDiceConfig: DEFAULT_UNIQUE_DICE_CONFIG,
                 },
             },
             participants: [uma],
@@ -1676,7 +1701,9 @@ describe('useRaceStore.persistMigrate - Bundle-8-T1 / v2→v3 マイグレーシ
         expect(result.config.houseRules.effectValue).toBe(25);
     });
 
-    it('(ii) v3 完全データ → 検証成功で通過（補完なし）', () => {
+    it('(ii) v3 データ → uniqueDiceConfig 補完で検証成功通過', () => {
+        // CR-SA-15-E1 / 2026-05-14: PERSIST_VERSION 3→4 バンプにより、v3 データ（uniqueDiceConfig 欠落）は
+        // DEFAULT_HOUSE_RULES マージ + houseRulesSchema.default() で uniqueDiceConfig がデフォルト補完される
         const v3Persisted = {
             config: {
                 midPhaseCount: 2,
@@ -1699,7 +1726,10 @@ describe('useRaceStore.persistMigrate - Bundle-8-T1 / v2→v3 マイグレーシ
         } as unknown as PersistedRaceState;
 
         const result = persistMigrate(v3Persisted, 3);
-        expect(result.config.houseRules).toEqual(v3Persisted.config.houseRules);
+        expect(result.config.houseRules).toEqual({
+            ...v3Persisted.config.houseRules,
+            uniqueDiceConfig: DEFAULT_UNIQUE_DICE_CONFIG,
+        });
     });
 
     it('(iii) v2 旧データ + houseRules 他 5 フィールドも欠落 → DEFAULT_HOUSE_RULES の 6 フィールド全補完', () => {
@@ -1720,6 +1750,7 @@ describe('useRaceStore.persistMigrate - Bundle-8-T1 / v2→v3 マイグレーシ
 
         const result = persistMigrate(v2Minimal, 2);
         // すべてデフォルト補完
+        // CR-SA-15-E1 / 2026-05-14: uniqueDiceConfig 追加で 7 フィールド構造
         expect(result.config.houseRules).toEqual({
             enableModifier: false,
             enableSpecialStrategy: false,
@@ -1727,6 +1758,7 @@ describe('useRaceStore.persistMigrate - Bundle-8-T1 / v2→v3 マイグレーシ
             enableExtendedUnique: false,
             enableBondSkill: false,
             effectValue: 15,
+            uniqueDiceConfig: DEFAULT_UNIQUE_DICE_CONFIG,
         });
     });
 
@@ -1804,6 +1836,8 @@ describe('useRaceStore - Bundle-8-T6 / 絆スキル スコア最終加算', () =
                     enableExtendedUnique: false,
                     enableBondSkill: opts.enableBondSkill,
                     effectValue: 15,
+                    // CR-SA-15-E1 / 2026-05-14: 7 フィールドに拡張
+                    uniqueDiceConfig: DEFAULT_UNIQUE_DICE_CONFIG,
                 },
             },
             participants: [p],
@@ -2474,5 +2508,110 @@ describe('listPresetNames - Bundle-11-T1', () => {
         useRaceStore.getState().deletePreset('a');
         const names = useRaceStore.getState().listPresetNames();
         expect(names).toEqual(['b']);
+    });
+});
+
+// CR-SA-15-E1 / 2026-05-14:
+// 固有スキル設定（uniqueDiceConfig）のストア統合検証（houserule-features.md §5.4 / basic-rules.md §6 Case 5）。
+// - 初期 state の uniqueDiceConfig が DEFAULT_UNIQUE_DICE_CONFIG と一致
+// - updateHouseRules({ uniqueDiceConfig }) で値が更新される + score 再計算がトリガーされる
+//   （E1 時点では calculator.ts が uniqueDiceConfig 未参照のため score 値自体は不変＝既存挙動完全維持。
+//    E2 で calculator.ts が参照化されて初めて basic-rules.md §6 Case 5 が成立する）
+// - persistMigrate: version=3 旧データ（uniqueDiceConfig 欠落）→ DEFAULT_UNIQUE_DICE_CONFIG 補完
+describe('CR-SA-15-E1 / 2026-05-14 uniqueDiceConfig store integration', () => {
+    // resetRace は houseRules を保持する設計のため、uniqueDiceConfig を明示的に初期値へ戻す
+    // （Bundle-9 / Bundle-6 describe と同パターン、次 describe への状態リーク防止）。
+    const resetUniqueDiceConfig = () => {
+        useRaceStore.getState().resetRace();
+        useRaceStore.getState().updateHouseRules({
+            uniqueDiceConfig: DEFAULT_UNIQUE_DICE_CONFIG,
+        });
+    };
+    beforeEach(resetUniqueDiceConfig);
+    afterEach(resetUniqueDiceConfig);
+
+    it('(1) 初期 state の config.houseRules.uniqueDiceConfig が DEFAULT_UNIQUE_DICE_CONFIG と一致', () => {
+        const houseRules = useRaceStore.getState().config.houseRules;
+        expect(houseRules.uniqueDiceConfig).toEqual(DEFAULT_UNIQUE_DICE_CONFIG);
+    });
+
+    it('(2) updateHouseRules({ uniqueDiceConfig }) で uniqueDiceConfig が更新される（他フィールドは現状維持）', () => {
+        const customConfig = {
+            ...DEFAULT_UNIQUE_DICE_CONFIG,
+            // ハウスルール郡の安定型 5+1d11 運用
+            Stability: { fixValue: 5, diceStr: '1d11' },
+        };
+        useRaceStore.getState().updateHouseRules({ uniqueDiceConfig: customConfig });
+
+        const houseRules = useRaceStore.getState().config.houseRules;
+        expect(houseRules.uniqueDiceConfig.Stability).toEqual({ fixValue: 5, diceStr: '1d11' });
+        // 他タイプはデフォルト維持
+        expect(houseRules.uniqueDiceConfig.Gamble).toEqual(DEFAULT_UNIQUE_DICE_CONFIG.Gamble);
+        // 他 6 フィールドは部分更新で現状維持
+        expect(houseRules.enableModifier).toBe(false);
+        expect(houseRules.effectValue).toBe(15);
+    });
+
+    it('(3) updateHouseRules({ uniqueDiceConfig }) で score 再計算がトリガーされる（E1 時点では score 値自体は不変＝既存挙動維持）', () => {
+        const uma: Umamusume = {
+            id: 'p1',
+            entryIndex: 1,
+            name: 'Test',
+            strategy: '先行',
+            uniqueSkill: { type: 'Stability', phases: [] },
+            gate: 1,
+            score: 0,
+            history: {
+                Start: { baseDice: makeDice('3d8', [3, 4, 3]), computedScore: 20 },
+            },
+        };
+        useRaceStore.setState({ participants: [uma] });
+        // setMidPhaseCount で score を初期計算（既存値と同じだが unconditional に再計算する仕様を活用）
+        useRaceStore.getState().setMidPhaseCount(1);
+        const scoreBefore = useRaceStore.getState().participants[0].score;
+
+        useRaceStore.getState().updateHouseRules({
+            uniqueDiceConfig: {
+                ...DEFAULT_UNIQUE_DICE_CONFIG,
+                Stability: { fixValue: 99, diceStr: '1d11' },
+            },
+        });
+        const scoreAfter = useRaceStore.getState().participants[0].score;
+
+        // E1 時点では calculator.ts が uniqueDiceConfig を未参照のため score 値は不変
+        // （再計算経路自体は走るが結果は同値＝既存挙動完全維持）。
+        expect(scoreAfter).toBe(scoreBefore);
+        expect(typeof scoreAfter).toBe('number');
+    });
+
+    it('(4) persistMigrate: version=3 旧データ（uniqueDiceConfig 欠落）→ DEFAULT_UNIQUE_DICE_CONFIG 補完 + zod 検証通過', () => {
+        const v3Persisted = {
+            config: {
+                midPhaseCount: 1,
+                fullGateSize: null,
+                houseRules: {
+                    enableModifier: false,
+                    enableSpecialStrategy: false,
+                    enableCompositeUnique: false,
+                    enableExtendedUnique: false,
+                    enableBondSkill: false,
+                    effectValue: 15,
+                    // uniqueDiceConfig が欠落している = version=3 旧データ
+                },
+            },
+            participants: [],
+            currentPhaseId: 'setup',
+            paceResult: { face: null, label: null },
+            strategies: [],
+            gateAssignments: null,
+            uiState: { scene: 'setup' },
+        } as unknown as PersistedRaceState;
+
+        const result = persistMigrate(v3Persisted, 3);
+        // uniqueDiceConfig がデフォルト補完される
+        expect(result.config.houseRules.uniqueDiceConfig).toEqual(DEFAULT_UNIQUE_DICE_CONFIG);
+        // 既存 6 フィールドは旧データの値を維持
+        expect(result.config.houseRules.effectValue).toBe(15);
+        expect(result.config.houseRules.enableBondSkill).toBe(false);
     });
 });

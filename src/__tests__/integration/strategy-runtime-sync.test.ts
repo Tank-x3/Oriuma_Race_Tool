@@ -9,7 +9,8 @@
 //       本ファイルは useRaceStore の score 再計算フロー全体を end-to-end で検証する。
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useRaceStore } from '../../store/useRaceStore';
-import { DEFAULT_STRATEGIES } from '../../core/strategies';
+// CR-SA-15-E1 / 2026-05-14: DEFAULT_UNIQUE_DICE_CONFIG = houseRules 型厳密化（uniqueDiceConfig 必須）に追従するため import
+import { DEFAULT_STRATEGIES, DEFAULT_UNIQUE_DICE_CONFIG } from '../../core/strategies';
 import type { DiceResult, Strategy, Umamusume } from '../../types';
 
 const makeDice = (str: string, values: number[]): DiceResult => ({
@@ -42,6 +43,8 @@ const installParticipant = (uma: Umamusume) => {
                 enableExtendedUnique: false,
                 enableBondSkill: false,
                 effectValue: 15,
+                // CR-SA-15-E1 / 2026-05-14: houseRules 型厳密化（uniqueDiceConfig 必須）に追従
+                uniqueDiceConfig: DEFAULT_UNIQUE_DICE_CONFIG,
             },
         },
         participants: [uma],
