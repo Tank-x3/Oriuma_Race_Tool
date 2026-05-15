@@ -20,12 +20,25 @@ import {
  * 現 state の houseRules + strategies を JSON 文字列化する。
  * 既存 `loadPreset` の payload 形式 (`{ houseRules, strategies }`) と完全整合。
  * インデント 2 スペース固定 (ユーザーがテキストエディタで開いて目視確認しやすい想定)。
+ *
+ * CR-SA-16-E2 / 2026-05-15: 末尾オプショナル引数 appliedPresetName を追加
+ * （modal-houserule.md §3.1 JSON 構造）。非 null 時は payload に `name` フィールドを含めて
+ * 出力し、null / undefined 時は含めない（旧 2 キー構造と完全互換）。既存呼び出し
+ * （integration テスト等）は無改修で旧挙動を維持する（CR-SA-15-E2 calculator.ts と同パターン）。
  */
 export function serializeHouseRulesConfig(
     houseRules: HouseRulesData,
     strategies: Strategy[],
+    appliedPresetName?: string | null,
 ): string {
-    return JSON.stringify({ houseRules, strategies }, null, 2);
+    // `!= null` ガードで null と undefined の両方を「name 非含有」側に倒す（modal-houserule.md §3.1
+    // 「name 欠落時の挙動」と整合）。空文字列は非 null 扱いのため name として含める
+    // （Engineer 裁量範囲、P4 テストで明示）。
+    const payload =
+        appliedPresetName != null
+            ? { name: appliedPresetName, houseRules, strategies }
+            : { houseRules, strategies };
+    return JSON.stringify(payload, null, 2);
 }
 
 /**

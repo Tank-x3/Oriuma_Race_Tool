@@ -135,7 +135,14 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({ onClose 
 
     const handleExportClick = () => {
         const state = useRaceStore.getState();
-        const json = serializeHouseRulesConfig(state.config.houseRules, state.strategies);
+        // CR-SA-16-E2 / 2026-05-15: 適用中プリセット名を出力 JSON に含める（modal-houserule.md §3.1）。
+        // appliedPresetName が null の場合は旧 2 キー構造（後方互換）、非 null の場合は
+        // 先頭に `name` フィールドを含めた 3 キー構造で書き出される。
+        const json = serializeHouseRulesConfig(
+            state.config.houseRules,
+            state.strategies,
+            state.appliedPresetName,
+        );
         const blob = new Blob([json], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const anchor = document.createElement('a');

@@ -695,6 +695,14 @@ export const useRaceStore = create<RaceStoreState>()(
                     return;
                 }
                 useRaceStore.getState().importHouseRulesConfig(validationResult.data);
+                // CR-SA-16-E2 Round 2 / 2026-05-15: scene1-setup.md §0-4 SSoT「loadPreset(name)
+                // 成功時 = name をセット」に従い、importHouseRulesConfig 内の `config.name ?? null`
+                // セットを引数 name で上書きする（採用案 c 例外、ユーザー Round 2 承認済 = ESCALATION 案 X2）。
+                // E1 実装以前の LocalStorage プリセット（JSON 内 `name` フィールド欠落）でも、
+                // LocalStorage キー末尾（= 引数 name = `保存済みプリセット` 一覧の表示名）が
+                // 透過的に appliedPresetName に反映される。これにより新形式・旧形式両方のプリセットで
+                // ヘッダー右側の「適用中: <プリセット名>」表示が成立する。
+                useRaceStore.setState({ appliedPresetName: trimmed });
             },
 
             // deletePreset: LocalStorage から該当キーを削除。trim 空 / 未定義 storage / 不存在キーはすべて no-op。

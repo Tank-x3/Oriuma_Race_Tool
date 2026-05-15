@@ -3,6 +3,7 @@
 // Bundle-10-T2 / CR-SA-12 / 2026-05-11: 「🎴 脚質エディタを開く」ボタン追加（採用案 a 例外、modal-houserule.md §2）。
 // Bundle-11-T1 / CR-SA-12 / 2026-05-11: 「💾 設定の保存・読込」ボタン追加（modal-houserule.md §3 ワイヤーフレーム）。
 // CR-SA-15-E3 / 2026-05-15: 「🎲 固有スキル設定」ボタン追加（modal-houserule.md §4 ワイヤーフレーム）。
+// CR-SA-16-E2 / 2026-05-15: ヘッダー右側に適用中プリセット名表示を追加（scene1-setup.md §0-2 状態 4 種）。
 import React, { Fragment, useState } from 'react';
 import { Dices, Layers, Save, SlidersHorizontal } from 'lucide-react';
 import { useRaceStore } from '../../../store/useRaceStore';
@@ -15,11 +16,22 @@ import {
 import { StrategyEditorModal } from './StrategyEditorModal';
 import { PresetManagerModal } from './PresetManagerModal';
 import { UniqueSkillEditorModal } from './UniqueSkillEditorModal';
+// CR-SA-16-E2 / 2026-05-15: 適用中プリセット名表示の派生状態判定（scene1-setup.md §0-2 / §0-3）。
+import { getAppliedPresetStatus } from './appliedPresetStatus.helpers';
 
 export const HouseRulesForm: React.FC = () => {
-    const { config, updateHouseRules } = useRaceStore();
+    const { config, updateHouseRules, strategies, appliedPresetName, isPresetDirty } = useRaceStore();
     const houseRules = config.houseRules;
     const checkboxes = getHouseRuleCheckboxes();
+    // CR-SA-16-E2 / 2026-05-15: 4 状態判定（scene1-setup.md §0-2）。
+    // useRaceStore subscription により houseRules / strategies / appliedPresetName / isPresetDirty
+    // のいずれかが変化すると本コンポーネントが再レンダリングされ、ヘッダー右側表示も自動追従する。
+    const appliedPresetStatus = getAppliedPresetStatus(
+        houseRules,
+        strategies,
+        appliedPresetName,
+        isPresetDirty,
+    );
 
     const [effectValueInput, setEffectValueInput] = useState<string>(
         String(houseRules.effectValue)
@@ -54,11 +66,24 @@ export const HouseRulesForm: React.FC = () => {
 
     return (
         <div className="bg-white/80 dark:bg-slate-800/50 backdrop-blur-sm border border-slate-200 dark:border-slate-700/50 rounded-xl p-6 shadow-xl space-y-6 transition-colors">
-            <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-700/50 pb-4">
-                <SlidersHorizontal className="w-5 h-5 text-primary-600 dark:text-primary-400" />
-                <h2 className="text-lg font-display font-bold text-slate-900 dark:text-white">
-                    ハウスルール設定 (House Rules)
-                </h2>
+            {/* CR-SA-16-E2 / 2026-05-15: ヘッダー行を flex justify-between 化、
+                左側 = アイコン + 見出し、右側 = 適用中プリセット名表示（scene1-setup.md §0-2）。
+                強調なし（text-slate-600 / dark:text-slate-300）、長文プリセット名は truncate +
+                title 属性でホバー時全文確認可、max-w-[50%] で表示幅制限。 */}
+            <div className="flex items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-700/50 pb-4">
+                <div className="flex items-center gap-2 min-w-0">
+                    <SlidersHorizontal className="w-5 h-5 text-primary-600 dark:text-primary-400 shrink-0" />
+                    <h2 className="text-lg font-display font-bold text-slate-900 dark:text-white">
+                        ハウスルール設定 (House Rules)
+                    </h2>
+                </div>
+                <span
+                    className="text-sm text-slate-600 dark:text-slate-300 truncate max-w-[50%]"
+                    title={appliedPresetStatus.label}
+                    data-testid="applied-preset-status"
+                >
+                    {appliedPresetStatus.label}
+                </span>
             </div>
 
             <div className="space-y-3">

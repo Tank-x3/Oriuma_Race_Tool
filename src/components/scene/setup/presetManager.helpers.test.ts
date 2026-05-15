@@ -301,3 +301,58 @@ describe('uniqueDiceConfig - CR-SA-15-E4', () => {
         }
     });
 });
+
+// CR-SA-16-E2 / 2026-05-15:
+// serializeHouseRulesConfig の末尾オプショナル引数 appliedPresetName 拡張に対する検証
+// （modal-houserule.md §3.1 JSON 構造、Export 経路で `name` フィールドを含めるかどうかの分岐）。
+// 既存呼び出し（引数省略 / null）は旧 2 キー構造を維持し、非 null 時のみ 3 キー構造になる。
+describe('serializeHouseRulesConfig with appliedPresetName - CR-SA-16-E2', () => {
+    // CR-SA-16-E2 / 2026-05-15:
+    // (P1) appliedPresetName 引数省略時: 既存挙動（{houseRules, strategies} 2 キー構造）。
+    // Bundle-11-T2 (S1) 既存テストと同等の構造 = 後方互換性の機械的証跡。
+    it('(P1) appliedPresetName 引数省略時は旧 2 キー構造（name フィールドなし）で出力される', () => {
+        const json = serializeHouseRulesConfig(sampleHouseRules, [...DEFAULT_STRATEGIES]);
+        const parsed = JSON.parse(json);
+        expect(parsed.name).toBeUndefined();
+        expect(Object.keys(parsed).sort()).toEqual(['houseRules', 'strategies']);
+        expect(parsed.houseRules).toEqual(sampleHouseRules);
+    });
+
+    // CR-SA-16-E2 / 2026-05-15:
+    // (P2) appliedPresetName=null 時: name フィールドを含めない（!= null ガードで null は非含有側）。
+    // modal-houserule.md §3.1「name 欠落時の挙動」と整合（appliedPresetName=null → 旧 2 キー構造）。
+    it('(P2) appliedPresetName=null 時は name フィールドを含めず 2 キー構造で出力される', () => {
+        const json = serializeHouseRulesConfig(sampleHouseRules, [...DEFAULT_STRATEGIES], null);
+        const parsed = JSON.parse(json);
+        expect(parsed.name).toBeUndefined();
+        expect(Object.keys(parsed).sort()).toEqual(['houseRules', 'strategies']);
+    });
+
+    // CR-SA-16-E2 / 2026-05-15:
+    // (P3) appliedPresetName='My House Rule A' 時: 先頭に name フィールドを含めた 3 キー構造。
+    // Stage 1 動作確認 §3.3 ステップ 7（Export JSON に `name` フィールド含有）の構造的証跡。
+    it('(P3) appliedPresetName が非 null 文字列なら name フィールドを含めた 3 キー構造で出力される', () => {
+        const json = serializeHouseRulesConfig(
+            sampleHouseRules,
+            [...DEFAULT_STRATEGIES],
+            'My House Rule A',
+        );
+        const parsed = JSON.parse(json);
+        expect(parsed.name).toBe('My House Rule A');
+        expect(Object.keys(parsed).sort()).toEqual(['houseRules', 'name', 'strategies']);
+        expect(parsed.houseRules).toEqual(sampleHouseRules);
+        expect(parsed.strategies).toHaveLength(DEFAULT_STRATEGIES.length);
+    });
+
+    // CR-SA-16-E2 / 2026-05-15:
+    // (P4) appliedPresetName=空文字列 '': 空文字列も `name` として含める
+    // （`!= null` ガードで空文字列は非 null 扱い、Engineer 裁量範囲の選択）。
+    // 空文字 name は Import 経路（zod の z.string()）で受理されるため、Export → Import の
+    // 往復で構造的整合性を保つ。
+    it('(P4) appliedPresetName=空文字列 でも name フィールドとして含められる', () => {
+        const json = serializeHouseRulesConfig(sampleHouseRules, [...DEFAULT_STRATEGIES], '');
+        const parsed = JSON.parse(json);
+        expect(parsed.name).toBe('');
+        expect(Object.keys(parsed).sort()).toEqual(['houseRules', 'name', 'strategies']);
+    });
+});

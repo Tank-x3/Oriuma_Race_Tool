@@ -2884,10 +2884,14 @@ describe('CR-SA-16-E1 / 2026-05-15 appliedPresetName + isPresetDirty', () => {
         expect(state.isPresetDirty).toBe(false);
     });
 
-    // (S5) loadPreset で name 欠落の古いプリセット読込時: appliedPresetName === null（後方互換性）
-    // CR-SA-15-E4 P3 と同パターン、CR-SA-16-E1 拡張前の旧 JSON プリセット保証
-    it('(S5) loadPreset で name 欠落の古いプリセット読込: appliedPresetName === null + isPresetDirty === false', () => {
-        // name フィールドを含まない旧形式 payload を直接格納（CR-SA-15-E4 以前の savePreset 出力相当）
+    // (S5) loadPreset で name 欠落の古いプリセット読込時: appliedPresetName === 引数 name（後方互換性）
+    // CR-SA-16-E2 Round 2 / 2026-05-15: scene1-setup.md §0-4 SSoT「loadPreset(name) 成功時 = name をセット」
+    // に厳密準拠する形に修正（E1 では `config.name ?? null` のみ反映 → null になっていた）。
+    // 旧形式プリセット（JSON 内 name フィールド欠落）でも、LocalStorage キー末尾（= 引数 name =
+    // `保存済みプリセット` 一覧の表示名）が透過的に appliedPresetName に反映されることの構造的証跡。
+    // 採用案 c 例外（useRaceStore.ts loadPreset 1 行改修、ユーザー Round 2 承認済）の追従テスト。
+    it('(S5) loadPreset で name 欠落の古いプリセット読込: appliedPresetName === 引数 name + isPresetDirty === false', () => {
+        // name フィールドを含まない旧形式 payload を直接格納（CR-SA-16-E1 以前の savePreset 出力相当）
         const legacyPayload = JSON.stringify({
             houseRules: {
                 enableModifier: false,
@@ -2907,7 +2911,8 @@ describe('CR-SA-16-E1 / 2026-05-15 appliedPresetName + isPresetDirty', () => {
 
         useRaceStore.getState().loadPreset('旧プリセット');
         const state = useRaceStore.getState();
-        expect(state.appliedPresetName).toBeNull();
+        // CR-SA-16-E2 Round 2: 引数 name が透過的に appliedPresetName に反映される（旧形式 JSON 後方互換）。
+        expect(state.appliedPresetName).toBe('旧プリセット');
         expect(state.isPresetDirty).toBe(false);
     });
 
@@ -3144,5 +3149,88 @@ describe('CR-SA-16-E1 / 2026-05-15 appliedPresetName + isPresetDirty', () => {
     // (S18) PERSIST_VERSION === 5（バンプの構造的証跡）
     it('(S18) PERSIST_VERSION === 5', () => {
         expect(PERSIST_VERSION).toBe(5);
+    });
+});
+
+// CR-SA-16-E2 Round 2 / 2026-05-15:
+// loadPreset(name) の appliedPresetName 反映が「JSON 内 name フィールド」依存ではなく
+// 「引数 name（= LocalStorage キー末尾 = `保存済みプリセット` 一覧の表示名）」に統一されたことの検証。
+// scene1-setup.md §0-4 SSoT「loadPreset(name) 成功時 = name をセット」を厳密に満たす後方互換修正。
+// 採用案 c 例外（useRaceStore.ts loadPreset 1 行改修、ユーザー Round 2 承認済 = ESCALATION 案 X2）。
+//
+// localStorage は vi.stubGlobal 経由でモック注入（Bundle-11-T1 loadPreset テストと同パターン）。
+describe('CR-SA-16-E2 Round 2 / 2026-05-15 loadPreset 引数 name 優先', () => {
+    let mockStorage: ReturnType<typeof createMockLocalStorage>;
+    beforeEach(() => {
+        mockStorage = createMockLocalStorage();
+        vi.stubGlobal('localStorage', mockStorage);
+        useRaceStore.getState().resetRace();
+        resetStrategies();
+        useNotificationStore.setState({ notifications: [] });
+    });
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    // CR-SA-16-E2 Round 2 / 2026-05-15:
+    // (S19) E1 実装以前の LocalStorage プリセット（JSON 内 `name` フィールド欠落、旧形式）でも、
+    // loadPreset(name) 成功時に引数 name が appliedPresetName に反映される（後方互換の要）。
+    it('(S19) loadPreset 成功時、JSON に name フィールドがなくても引数 name が appliedPresetName にセットされる', () => {
+        const legacyPayload = JSON.stringify({
+            // `name` フィールド欠落（E1 実装以前のプリセット相当）
+            houseRules: {
+                enableModifier: true,
+                enableSpecialStrategy: false,
+                enableCompositeUnique: false,
+                enableExtendedUnique: false,
+                enableBondSkill: false,
+                effectValue: 15,
+                uniqueDiceConfig: DEFAULT_UNIQUE_DICE_CONFIG,
+            },
+            strategies: DEFAULT_STRATEGIES.map((s) => ({
+                ...s,
+                paceModifiers: s.paceModifiers as Record<string, number>,
+            })),
+        });
+        mockStorage.setItem(`${PRESET_KEY_PREFIX}旧プリセット`, legacyPayload);
+
+        useRaceStore.getState().loadPreset('旧プリセット');
+
+        const state = useRaceStore.getState();
+        expect(state.appliedPresetName).toBe('旧プリセット');
+        expect(state.isPresetDirty).toBe(false);
+        // houseRules も正しく反映されていることを併せて確認（既存挙動完全維持）
+        expect(state.config.houseRules.enableModifier).toBe(true);
+    });
+
+    // CR-SA-16-E2 Round 2 / 2026-05-15:
+    // (S20) LocalStorage 内 JSON の `name` フィールドが引数 name と異なる場合でも、
+    // 引数 name（= LocalStorage キー末尾 = `保存済みプリセット` 一覧の表示名）が優先される。
+    // scene1-setup.md §0-4 SSoT 厳密準拠 + ユーザー期待動作（命名の一貫性）。
+    it('(S20) loadPreset 成功時、JSON 内 name と引数 name が異なる場合は引数 name が優先される', () => {
+        const payloadWithMismatchedName = JSON.stringify({
+            name: 'JSON 内別名', // 引数 name と異なる
+            houseRules: {
+                enableModifier: false,
+                enableSpecialStrategy: true,
+                enableCompositeUnique: false,
+                enableExtendedUnique: false,
+                enableBondSkill: false,
+                effectValue: 20,
+                uniqueDiceConfig: DEFAULT_UNIQUE_DICE_CONFIG,
+            },
+            strategies: DEFAULT_STRATEGIES.map((s) => ({
+                ...s,
+                paceModifiers: s.paceModifiers as Record<string, number>,
+            })),
+        });
+        mockStorage.setItem(`${PRESET_KEY_PREFIX}実キー名`, payloadWithMismatchedName);
+
+        useRaceStore.getState().loadPreset('実キー名');
+
+        const state = useRaceStore.getState();
+        // 引数 name（LocalStorage キー末尾）が優先される
+        expect(state.appliedPresetName).toBe('実キー名');
+        expect(state.isPresetDirty).toBe(false);
     });
 });
