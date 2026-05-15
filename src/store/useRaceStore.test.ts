@@ -419,6 +419,8 @@ describe('CR-5a: zustand persist 設定', () => {
 
         const partialized = persistPartialize(stateWithParsing);
 
+        // CR-SA-16-E1 / 2026-05-15: appliedPresetName / isPresetDirty 永続化対象拡張に追従
+        // （§4 案 X1 = 既存テスト構造的検証への期待値追加は DoD 内対応）
         expect(partialized).toEqual({
             config: fullState.config,
             participants: fullState.participants,
@@ -426,6 +428,8 @@ describe('CR-5a: zustand persist 設定', () => {
             paceResult: fullState.paceResult,
             strategies: fullState.strategies,
             gateAssignments: fullState.gateAssignments,
+            appliedPresetName: fullState.appliedPresetName,
+            isPresetDirty: fullState.isPresetDirty,
             uiState: { scene: 'race' },
         });
         // uiState.isParsingInput が確実に除外されていること
@@ -441,10 +445,14 @@ describe('CR-5a: zustand persist 設定', () => {
         expect(partializedKeys).not.toContain('setMidPhaseCount');
         expect(partializedKeys).not.toContain('resetRace');
         expect(partializedKeys).not.toContain('moveToGate');
+        // CR-SA-16-E1 / 2026-05-15: appliedPresetName / isPresetDirty 永続化対象拡張に追従
+        // （§4 案 X1 = 既存テスト構造的検証への期待値追加は DoD 内対応）
         expect(partializedKeys.sort()).toEqual([
+            'appliedPresetName',
             'config',
             'currentPhaseId',
             'gateAssignments',
+            'isPresetDirty',
             'paceResult',
             'participants',
             'strategies',
@@ -456,7 +464,8 @@ describe('CR-5a: zustand persist 設定', () => {
         // Bundle-7 / P4-6 / 2026-05-10: 1 → 2 にバンプ
         // Bundle-8-T1 / CR-SA-4 / 2026-05-10: 2 → 3 にバンプ
         // CR-SA-15-E1 / 2026-05-14: 3 → 4 にバンプ
-        expect(PERSIST_VERSION).toBe(4);
+        // CR-SA-16-E1 / 2026-05-15: 4 → 5 にバンプ（§4 案 X1 = 期待値追加は DoD 内対応）
+        expect(PERSIST_VERSION).toBe(5);
         expect(PERSIST_NAME).toBe('race-store');
     });
 
@@ -2809,5 +2818,331 @@ describe('CR-SA-15-E4 / 2026-05-15 uniqueDiceConfig JSON I/O', () => {
         expect(state.config.houseRules.uniqueDiceConfig).toEqual(customUniqueDiceConfig);
         expect(state.strategies).toHaveLength(1);
         expect(state.strategies[0].name).toBe('カスタム脚質X');
+    });
+});
+
+// CR-SA-16-E1 / 2026-05-15:
+// 配布運用対応 UI の基盤となる appliedPresetName + isPresetDirty フィールド + 各 action 更新ロジック +
+// 永続化マイグレーション + LocalStorage payload に `name` 含める拡張の検証
+// （scene1-setup.md §0-2 / §0-4 + modal-houserule.md §3.1 / §3.2 SSoT）。
+// 既存 savePreset / loadPreset / importHouseRulesConfig describe と同パターン:
+// in-memory localStorage モック化 + resetRace + resetStrategies で前段リーク防止。
+describe('CR-SA-16-E1 / 2026-05-15 appliedPresetName + isPresetDirty', () => {
+    let mockStorage: ReturnType<typeof createMockLocalStorage>;
+    beforeEach(() => {
+        mockStorage = createMockLocalStorage();
+        vi.stubGlobal('localStorage', mockStorage);
+        useRaceStore.getState().resetRace();
+        resetStrategies();
+    });
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    // (S1) 初期 state: appliedPresetName === null + isPresetDirty === false
+    it('(S1) 初期 state: appliedPresetName === null + isPresetDirty === false', () => {
+        const state = useRaceStore.getState();
+        expect(state.appliedPresetName).toBeNull();
+        expect(state.isPresetDirty).toBe(false);
+    });
+
+    // (S2) savePreset(name) 成功時: appliedPresetName === trimmed + isPresetDirty === false
+    it('(S2) savePreset(name) 成功時: appliedPresetName === trimmed + isPresetDirty === false', () => {
+        // 事前に dirty 状態を作る（updateHouseRules で isPresetDirty=true）
+        useRaceStore.getState().updateHouseRules({ enableModifier: true });
+        expect(useRaceStore.getState().isPresetDirty).toBe(true);
+
+        useRaceStore.getState().savePreset('  プリセットA  ');
+        const state = useRaceStore.getState();
+        expect(state.appliedPresetName).toBe('プリセットA');
+        expect(state.isPresetDirty).toBe(false);
+    });
+
+    // (S3) savePreset 時 LocalStorage payload に name フィールド含有
+    // （modal-houserule.md §3.1 SSoT、loadPreset 経路で zod 検証経由復元の前提）
+    it('(S3) savePreset 時 LocalStorage payload に name フィールドが含まれる', () => {
+        useRaceStore.getState().savePreset('プリセットB');
+        const raw = mockStorage.getItem(`${PRESET_KEY_PREFIX}プリセットB`);
+        expect(raw).not.toBeNull();
+        const parsed = JSON.parse(raw!);
+        expect(parsed.name).toBe('プリセットB');
+        // 既存 houseRules + strategies も維持（後方互換）
+        expect(parsed.houseRules).toBeDefined();
+        expect(Array.isArray(parsed.strategies)).toBe(true);
+    });
+
+    // (S4) loadPreset(name) 成功時: name を含む payload を事前格納 → appliedPresetName セット + dirty リセット
+    it('(S4) loadPreset(name) 成功時: appliedPresetName === name + isPresetDirty === false', () => {
+        useRaceStore.getState().savePreset('プリセットC');
+        // dirty 状態を作る + appliedPresetName を一旦変更
+        useRaceStore.getState().updateHouseRules({ enableBondSkill: true });
+        expect(useRaceStore.getState().isPresetDirty).toBe(true);
+
+        useRaceStore.getState().loadPreset('プリセットC');
+        const state = useRaceStore.getState();
+        expect(state.appliedPresetName).toBe('プリセットC');
+        expect(state.isPresetDirty).toBe(false);
+    });
+
+    // (S5) loadPreset で name 欠落の古いプリセット読込時: appliedPresetName === null（後方互換性）
+    // CR-SA-15-E4 P3 と同パターン、CR-SA-16-E1 拡張前の旧 JSON プリセット保証
+    it('(S5) loadPreset で name 欠落の古いプリセット読込: appliedPresetName === null + isPresetDirty === false', () => {
+        // name フィールドを含まない旧形式 payload を直接格納（CR-SA-15-E4 以前の savePreset 出力相当）
+        const legacyPayload = JSON.stringify({
+            houseRules: {
+                enableModifier: false,
+                enableSpecialStrategy: false,
+                enableCompositeUnique: false,
+                enableExtendedUnique: false,
+                enableBondSkill: false,
+                effectValue: 15,
+                uniqueDiceConfig: DEFAULT_UNIQUE_DICE_CONFIG,
+            },
+            strategies: DEFAULT_STRATEGIES.map((s) => ({
+                ...s,
+                paceModifiers: s.paceModifiers as Record<string, number>,
+            })),
+        });
+        mockStorage.setItem(`${PRESET_KEY_PREFIX}旧プリセット`, legacyPayload);
+
+        useRaceStore.getState().loadPreset('旧プリセット');
+        const state = useRaceStore.getState();
+        expect(state.appliedPresetName).toBeNull();
+        expect(state.isPresetDirty).toBe(false);
+    });
+
+    // (S6) importHouseRulesConfig(config) with name: config.name 反映 + dirty リセット
+    it('(S6) importHouseRulesConfig(config) with name: appliedPresetName === config.name + isPresetDirty === false', () => {
+        // dirty 状態を作る
+        useRaceStore.getState().updateHouseRules({ enableModifier: true });
+        expect(useRaceStore.getState().isPresetDirty).toBe(true);
+
+        useRaceStore.getState().importHouseRulesConfig({
+            name: 'ImportedX',
+            houseRules: {
+                enableModifier: false,
+                enableSpecialStrategy: false,
+                enableCompositeUnique: false,
+                enableExtendedUnique: false,
+                enableBondSkill: false,
+                effectValue: 15,
+                uniqueDiceConfig: DEFAULT_UNIQUE_DICE_CONFIG,
+            },
+            strategies: DEFAULT_STRATEGIES.map((s) => ({
+                ...s,
+                paceModifiers: s.paceModifiers as Record<string, number>,
+            })),
+        });
+        const state = useRaceStore.getState();
+        expect(state.appliedPresetName).toBe('ImportedX');
+        expect(state.isPresetDirty).toBe(false);
+    });
+
+    // (S7) importHouseRulesConfig(config) without name: appliedPresetName === null + dirty リセット
+    it('(S7) importHouseRulesConfig(config) without name: appliedPresetName === null + isPresetDirty === false', () => {
+        // 事前に名前付きで Import した状態を作る
+        useRaceStore.getState().importHouseRulesConfig({
+            name: 'Previous',
+            houseRules: {
+                enableModifier: false,
+                enableSpecialStrategy: false,
+                enableCompositeUnique: false,
+                enableExtendedUnique: false,
+                enableBondSkill: false,
+                effectValue: 15,
+                uniqueDiceConfig: DEFAULT_UNIQUE_DICE_CONFIG,
+            },
+            strategies: DEFAULT_STRATEGIES.map((s) => ({
+                ...s,
+                paceModifiers: s.paceModifiers as Record<string, number>,
+            })),
+        });
+        expect(useRaceStore.getState().appliedPresetName).toBe('Previous');
+
+        // name フィールドを省略した Import → null リセット
+        useRaceStore.getState().importHouseRulesConfig({
+            houseRules: {
+                enableModifier: true,
+                enableSpecialStrategy: false,
+                enableCompositeUnique: false,
+                enableExtendedUnique: false,
+                enableBondSkill: false,
+                effectValue: 15,
+                uniqueDiceConfig: DEFAULT_UNIQUE_DICE_CONFIG,
+            },
+            strategies: DEFAULT_STRATEGIES.map((s) => ({
+                ...s,
+                paceModifiers: s.paceModifiers as Record<string, number>,
+            })),
+        });
+        const state = useRaceStore.getState();
+        expect(state.appliedPresetName).toBeNull();
+        expect(state.isPresetDirty).toBe(false);
+    });
+
+    // (S8) updateHouseRules({ ... }): isPresetDirty === true + appliedPresetName 不変
+    it('(S8) updateHouseRules({ enableModifier: true }): isPresetDirty === true + appliedPresetName 不変', () => {
+        useRaceStore.getState().savePreset('keepName');
+        expect(useRaceStore.getState().appliedPresetName).toBe('keepName');
+        expect(useRaceStore.getState().isPresetDirty).toBe(false);
+
+        useRaceStore.getState().updateHouseRules({ enableModifier: true });
+        const state = useRaceStore.getState();
+        expect(state.isPresetDirty).toBe(true);
+        expect(state.appliedPresetName).toBe('keepName'); // 不変
+    });
+
+    // (S9) addStrategy 成功時: isPresetDirty === true + appliedPresetName 不変
+    it('(S9) addStrategy 成功時: isPresetDirty === true + appliedPresetName 不変', () => {
+        useRaceStore.getState().savePreset('keepName2');
+        const customX: Strategy = {
+            name: 'カスタムX',
+            fixValue: 5,
+            dice: { start: '2d5', mid: '2d5', end: '2d5' },
+            paceModifiers: {},
+        };
+        useRaceStore.getState().addStrategy('逃げ', customX);
+        const state = useRaceStore.getState();
+        expect(state.isPresetDirty).toBe(true);
+        expect(state.appliedPresetName).toBe('keepName2'); // 不変
+    });
+
+    // (S10) addStrategy no-op（存在しない insertAfterName）: isPresetDirty 不変
+    it('(S10) addStrategy no-op（存在しない insertAfterName）: isPresetDirty 不変', () => {
+        // savePreset 後で dirty=false 状態にする
+        useRaceStore.getState().savePreset('noOpCase');
+        expect(useRaceStore.getState().isPresetDirty).toBe(false);
+
+        const customY: Strategy = {
+            name: 'カスタムY',
+            fixValue: 5,
+            dice: { start: '2d5', mid: '2d5', end: '2d5' },
+            paceModifiers: {},
+        };
+        useRaceStore.getState().addStrategy('存在しない脚質', customY);
+        expect(useRaceStore.getState().isPresetDirty).toBe(false); // 不変
+    });
+
+    // (S11) updateStrategy 成功時: isPresetDirty === true
+    it('(S11) updateStrategy 成功時: isPresetDirty === true', () => {
+        useRaceStore.getState().savePreset('keepName3');
+        useRaceStore.getState().updateStrategy('先行', { fixValue: 99 });
+        expect(useRaceStore.getState().isPresetDirty).toBe(true);
+        expect(useRaceStore.getState().appliedPresetName).toBe('keepName3');
+    });
+
+    // (S12) removeStrategy 成功時: isPresetDirty === true（カスタム脚質を事前追加した状態で）
+    it('(S12) removeStrategy 成功時: isPresetDirty === true', () => {
+        const customZ: Strategy = {
+            name: 'カスタムZ',
+            fixValue: 5,
+            dice: { start: '2d5', mid: '2d5', end: '2d5' },
+            paceModifiers: {},
+        };
+        useRaceStore.getState().addStrategy('逃げ', customZ);
+        useRaceStore.getState().savePreset('keepName4'); // ここで dirty=false
+        expect(useRaceStore.getState().isPresetDirty).toBe(false);
+
+        useRaceStore.getState().removeStrategy('カスタムZ');
+        expect(useRaceStore.getState().isPresetDirty).toBe(true);
+        expect(useRaceStore.getState().appliedPresetName).toBe('keepName4');
+    });
+
+    // (S13) resetRace(): appliedPresetName === null + isPresetDirty === false
+    it('(S13) resetRace(): appliedPresetName === null + isPresetDirty === false（事前に非デフォルト値にセット）', () => {
+        useRaceStore.getState().savePreset('beforeReset');
+        useRaceStore.getState().updateHouseRules({ enableModifier: true });
+        expect(useRaceStore.getState().appliedPresetName).toBe('beforeReset');
+        expect(useRaceStore.getState().isPresetDirty).toBe(true);
+
+        useRaceStore.getState().resetRace();
+        const state = useRaceStore.getState();
+        expect(state.appliedPresetName).toBeNull();
+        expect(state.isPresetDirty).toBe(false);
+    });
+
+    // (S14) deletePreset(name) で name === appliedPresetName: appliedPresetName === null + dirty リセット
+    it('(S14) deletePreset(name) で name === appliedPresetName: appliedPresetName === null + isPresetDirty === false', () => {
+        useRaceStore.getState().savePreset('deleteMe');
+        useRaceStore.getState().updateHouseRules({ enableModifier: true });
+        expect(useRaceStore.getState().appliedPresetName).toBe('deleteMe');
+        expect(useRaceStore.getState().isPresetDirty).toBe(true);
+
+        useRaceStore.getState().deletePreset('deleteMe');
+        const state = useRaceStore.getState();
+        expect(state.appliedPresetName).toBeNull();
+        expect(state.isPresetDirty).toBe(false);
+    });
+
+    // (S15) deletePreset(name) で name !== appliedPresetName: appliedPresetName / isPresetDirty 不変
+    it('(S15) deletePreset(name) で name !== appliedPresetName: appliedPresetName / isPresetDirty 不変', () => {
+        useRaceStore.getState().savePreset('keepThis');
+        useRaceStore.getState().savePreset('alsoSaved'); // appliedPresetName = 'alsoSaved' に更新
+        useRaceStore.getState().updateHouseRules({ enableModifier: true });
+        expect(useRaceStore.getState().appliedPresetName).toBe('alsoSaved');
+        expect(useRaceStore.getState().isPresetDirty).toBe(true);
+
+        // 'keepThis' を削除しても 'alsoSaved' は不変
+        useRaceStore.getState().deletePreset('keepThis');
+        const state = useRaceStore.getState();
+        expect(state.appliedPresetName).toBe('alsoSaved'); // 不変
+        expect(state.isPresetDirty).toBe(true); // 不変
+    });
+
+    // (S16) persistPartialize 出力に 2 フィールド含有
+    it('(S16) persistPartialize 出力に appliedPresetName / isPresetDirty が含まれる', () => {
+        useRaceStore.getState().savePreset('partializeTest');
+        const state = useRaceStore.getState();
+        const partial = persistPartialize(state);
+        expect(partial.appliedPresetName).toBe('partializeTest');
+        expect(partial.isPresetDirty).toBe(false);
+        // 既存 6 フィールド + 2 フィールド = 8 フィールド + uiState
+        expect(Object.keys(partial)).toEqual(
+            expect.arrayContaining([
+                'config',
+                'participants',
+                'currentPhaseId',
+                'paceResult',
+                'strategies',
+                'gateAssignments',
+                'appliedPresetName',
+                'isPresetDirty',
+                'uiState',
+            ])
+        );
+    });
+
+    // (S17) persistMigrate で 2 フィールド欠落の旧データ補完
+    it('(S17) persistMigrate で旧データ（2 フィールド欠落 version=4 相当）が null / false で補完される', () => {
+        // version=4 相当の旧データ（appliedPresetName / isPresetDirty 欠落）
+        const legacyState = {
+            config: {
+                midPhaseCount: 1,
+                fullGateSize: null,
+                houseRules: {
+                    enableModifier: false,
+                    enableSpecialStrategy: false,
+                    enableCompositeUnique: false,
+                    enableExtendedUnique: false,
+                    enableBondSkill: false,
+                    effectValue: 15,
+                    uniqueDiceConfig: DEFAULT_UNIQUE_DICE_CONFIG,
+                },
+            },
+            participants: [],
+            currentPhaseId: 'setup',
+            paceResult: { face: null, label: null },
+            strategies: DEFAULT_STRATEGIES,
+            gateAssignments: null,
+            uiState: { scene: 'setup' },
+        };
+        const migrated = persistMigrate(legacyState, 4);
+        expect(migrated.appliedPresetName).toBeNull();
+        expect(migrated.isPresetDirty).toBe(false);
+    });
+
+    // (S18) PERSIST_VERSION === 5（バンプの構造的証跡）
+    it('(S18) PERSIST_VERSION === 5', () => {
+        expect(PERSIST_VERSION).toBe(5);
     });
 });

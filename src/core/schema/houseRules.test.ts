@@ -310,3 +310,109 @@ describe('CR-SA-15-E1 / 2026-05-14 uniqueDiceConfig schema', () => {
         });
     });
 });
+
+// CR-SA-16-E1 / 2026-05-15:
+// houserule-features.md §4 zod 検証範囲表 + modal-houserule.md §3.1 JSON 構造に基づく
+// houseRulesConfigSchema.name フィールドの検証。
+// - 型: string、optional（後方互換、`name` 欠落 JSON も受理）
+// - 配置: houseRulesConfigSchema 内のみ（houseRulesSchema 本体には不在）
+describe('CR-SA-16-E1 / 2026-05-15 houseRulesConfigSchema name field (optional)', () => {
+    const validHouseRules7 = {
+        enableModifier: false,
+        enableSpecialStrategy: false,
+        enableCompositeUnique: false,
+        enableExtendedUnique: false,
+        enableBondSkill: false,
+        effectValue: 15,
+        uniqueDiceConfig: DEFAULT_UNIQUE_DICE_CONFIG,
+    };
+    const validStrategies = [
+        {
+            name: '先行',
+            fixValue: 10,
+            dice: { start: '3d5', mid: '3d5', end: '4d5' },
+            paceModifiers: {},
+        },
+    ];
+
+    // CR-SA-16-E1 / 2026-05-15: (N1) name 含有 JSON 受理 + data.name 同値復元
+    it('(N1) name 含有 JSON で success + data.name に値が保持される', () => {
+        const result = houseRulesConfigSchema.safeParse({
+            name: 'My House Rule A',
+            houseRules: validHouseRules7,
+            strategies: validStrategies,
+        });
+        expect(result.success).toBe(true);
+        if (result.success) {
+            expect(result.data.name).toBe('My House Rule A');
+        }
+    });
+
+    // CR-SA-16-E1 / 2026-05-15: (N2) name 欠落 JSON も受理（後方互換、CR-SA-15 系列以前の旧 JSON プリセット保証）
+    it('(N2) name 欠落 JSON で success + data.name は undefined（後方互換）', () => {
+        const result = houseRulesConfigSchema.safeParse({
+            houseRules: validHouseRules7,
+            strategies: validStrategies,
+        });
+        expect(result.success).toBe(true);
+        if (result.success) {
+            expect(result.data.name).toBeUndefined();
+        }
+    });
+
+    // CR-SA-16-E1 / 2026-05-15: (N3) name 非文字列（数値 / null / boolean）で failure
+    it('(N3) name 非文字列（数値 / null / boolean）で failure', () => {
+        const numberResult = houseRulesConfigSchema.safeParse({
+            name: 123 as unknown as string,
+            houseRules: validHouseRules7,
+            strategies: validStrategies,
+        });
+        const nullResult = houseRulesConfigSchema.safeParse({
+            name: null as unknown as string,
+            houseRules: validHouseRules7,
+            strategies: validStrategies,
+        });
+        const booleanResult = houseRulesConfigSchema.safeParse({
+            name: true as unknown as string,
+            houseRules: validHouseRules7,
+            strategies: validStrategies,
+        });
+        expect(numberResult.success).toBe(false);
+        expect(nullResult.success).toBe(false);
+        expect(booleanResult.success).toBe(false);
+    });
+
+    // CR-SA-16-E1 / 2026-05-15: (N4) validateHouseRulesConfig 経由でも同様の挙動
+    // （PresetManagerModal ファイル Import 経路 + loadPreset 経路が共通でこの関数を呼ぶため）
+    it('(N4) validateHouseRulesConfig 経由でも N1〜N3 と同等の挙動', () => {
+        // 含有
+        const withName = validateHouseRulesConfig({
+            name: 'XYZ',
+            houseRules: validHouseRules7,
+            strategies: validStrategies,
+        });
+        expect(withName.success).toBe(true);
+        if (withName.success) {
+            expect(withName.data.name).toBe('XYZ');
+        }
+        // 欠落
+        const without = validateHouseRulesConfig({
+            houseRules: validHouseRules7,
+            strategies: validStrategies,
+        });
+        expect(without.success).toBe(true);
+        if (without.success) {
+            expect(without.data.name).toBeUndefined();
+        }
+        // 非文字列
+        const invalid = validateHouseRulesConfig({
+            name: 123 as unknown as string,
+            houseRules: validHouseRules7,
+            strategies: validStrategies,
+        });
+        expect(invalid.success).toBe(false);
+        if (!invalid.success) {
+            expect(invalid.error).toBe(VALIDATION_ERROR_MESSAGE);
+        }
+    });
+});

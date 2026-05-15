@@ -75,7 +75,13 @@ export type CustomStrategyData = z.infer<typeof customStrategySchema>;
 
 // Bundle-7 / 2026-05-10: modal-houserule.md §3 設定プリセット管理 + ⚠️ Import Validation
 // JSON ファイル取り込み機能で利用予定（UI 接続は別 Bundle 候補、本 Bundle では関数 export のみ）。
+// CR-SA-16-E1 / 2026-05-15: 適用中プリセット名識別用 `name` フィールドを optional 追加。
+// modal-houserule.md §3.1 JSON 構造 / houserule-features.md §4 zod 検証範囲表 SSoT。
+// optional = 後方互換（`name` 欠落の旧 JSON プリセットも受理）。Import 時に存在すれば
+// useRaceStore.importHouseRulesConfig 側で `appliedPresetName` にセット、欠落時は `null` 扱い。
+// `houseRulesSchema` 本体には追加しない（JSON I/O ラッパー `houseRulesConfigSchema` のみ）。
 export const houseRulesConfigSchema = z.object({
+    name: z.string().optional(),
     houseRules: houseRulesSchema,
     strategies: z.array(customStrategySchema),
 });

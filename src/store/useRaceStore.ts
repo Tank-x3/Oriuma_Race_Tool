@@ -24,6 +24,14 @@ interface RaceStoreState extends RaceState {
         isParsingInput: boolean;
     };
 
+    // CR-SA-16-E1 / 2026-05-15: 適用中プリセット名 + dirty 状態（配布運用対応 UI の基盤）。
+    // scene1-setup.md §0-2「適用中プリセット名表示 状態 4 種」/ §0-4「更新タイミング」SSoT。
+    // E2 で派生状態判定の入力となり、E3 で折りたたみ UI ヘッダーに表示される。
+    // 配置判断: RaceState（types/index.ts）配下ではなく RaceStoreState 拡張側（uiState と並列）。
+    // 理由 = レース実体データではなくストアの UI 派生状態のため、責務分離として types/index.ts は不変。
+    appliedPresetName: string | null;
+    isPresetDirty: boolean;
+
     // Actions
     setMidPhaseCount: (count: number) => void;
     setFullGateSize: (size: number) => void;
@@ -117,9 +125,11 @@ interface RaceStoreState extends RaceState {
 // CR-5a: localStorage に永続化される state の形。
 // uiState.isParsingInput は一時 UI フラグのため除外（リロード後 false で初期化）。
 // CR-5a-2: gateAssignments を中間状態として永続化対象に含める（houserule-features.md §4.2 #6）。
+// CR-SA-16-E1 / 2026-05-15: appliedPresetName / isPresetDirty を永続化対象に追加
+// （scene1-setup.md §0-4 SA24 ユーザー判断「論点 6 永続化: 含める」）。
 export type PersistedRaceState = Pick<
     RaceStoreState,
-    'config' | 'participants' | 'currentPhaseId' | 'paceResult' | 'strategies' | 'gateAssignments'
+    'config' | 'participants' | 'currentPhaseId' | 'paceResult' | 'strategies' | 'gateAssignments' | 'appliedPresetName' | 'isPresetDirty'
 > & {
     uiState: { scene: RaceStoreState['uiState']['scene'] };
 };
@@ -139,7 +149,10 @@ export const PRESET_KEY_PREFIX = 'race-store-presets:';
 // CR-SA-15-E1 / 2026-05-14: PERSIST_VERSION 3 → 4 にバンプ。
 // version=3 旧データ（houseRules 6 フィールド確定）→ version=4 へのデフォルト補完を
 // persistMigrate で実施（DEFAULT_HOUSE_RULES.uniqueDiceConfig 追加で透過対応）。
-export const PERSIST_VERSION = 4;
+// CR-SA-16-E1 / 2026-05-15: PERSIST_VERSION 4 → 5 にバンプ。
+// version=4 旧データ（appliedPresetName / isPresetDirty フィールド欠落）→ version=5 へのデフォルト補完を
+// persistMigrate で実施（`?? null` / `?? false` 加法的補完で透過対応）。
+export const PERSIST_VERSION = 5;
 export const RESTORE_ERROR_MESSAGE = '保存データの復元に失敗しました。新規セッションを開始します。';
 
 // Bundle-7 / 2026-05-10: マイグレーション時の houseRules デフォルト補完値。
@@ -163,6 +176,9 @@ export const persistPartialize = (state: RaceStoreState): PersistedRaceState => 
     paceResult: state.paceResult,
     strategies: state.strategies,
     gateAssignments: state.gateAssignments,
+    // CR-SA-16-E1 / 2026-05-15: 適用中プリセット名 + dirty 状態の永続化（SA24 論点 6 採択）。
+    appliedPresetName: state.appliedPresetName,
+    isPresetDirty: state.isPresetDirty,
     uiState: {
         scene: state.uiState.scene,
     },
@@ -209,6 +225,10 @@ export const persistMigrate = (persistedState: unknown, version: number): Persis
             ...baseConfig,
             houseRules: validation.data,
         },
+        // CR-SA-16-E1 / 2026-05-15: 旧データ（version=4 以前）の 2 フィールド欠落補完。
+        // `?? null` / `?? false` 加法的補完で透過対応（既存 houseRules マージと同方針）。
+        appliedPresetName: state.appliedPresetName ?? null,
+        isPresetDirty: state.isPresetDirty ?? false,
     } as PersistedRaceState;
 };
 
@@ -255,6 +275,11 @@ export const useRaceStore = create<RaceStoreState>()(
                 scene: 'setup',
                 isParsingInput: false,
             },
+
+            // CR-SA-16-E1 / 2026-05-15: 適用中プリセット名 + dirty 状態の初期 state
+            // （scene1-setup.md §0-2 「基本ルール」状態 = appliedPresetName: null, isPresetDirty: false）。
+            appliedPresetName: null,
+            isPresetDirty: false,
 
             setCurrentPhase: (phaseId) => set({ currentPhaseId: phaseId }),
             setPaceResult: (face, label) => set({ paceResult: { face, label } }),
@@ -337,12 +362,16 @@ export const useRaceStore = create<RaceStoreState>()(
                         !bondSkillChanged &&
                         !uniqueDiceConfigChanged
                     ) {
-                        return { config: newConfig };
+                        // CR-SA-16-E1 / 2026-05-15: updateHouseRules は dirty フラグを ON（変更があったとみなす）。
+                        // scene1-setup.md §0-4 SSoT: updateHouseRules → isPresetDirty: true セット。
+                        return { config: newConfig, isPresetDirty: true };
                     }
 
                     const activePhaseIds = getActivePhaseIds(state.config.midPhaseCount);
                     return {
                         config: newConfig,
+                        // CR-SA-16-E1 / 2026-05-15: updateHouseRules は dirty フラグを ON（変更があったとみなす）。
+                        isPresetDirty: true,
                         participants: state.participants.map((p) => ({
                             ...p,
                             score: calculateScoreWithBondSkill(
@@ -521,7 +550,8 @@ export const useRaceStore = create<RaceStoreState>()(
                     }
                     const next = [...state.strategies];
                     next.splice(idx + 1, 0, strategy);
-                    return { strategies: next };
+                    // CR-SA-16-E1 / 2026-05-15: 脚質追加は dirty フラグを ON（no-op パスは dirty 不変）。
+                    return { strategies: next, isPresetDirty: true };
                 }),
 
             // Bundle-10-T1 / CR-SA-12 / 2026-05-11: 脚質エディタ Edit 用 action
@@ -541,6 +571,8 @@ export const useRaceStore = create<RaceStoreState>()(
                     const activePhaseIds = getActivePhaseIds(state.config.midPhaseCount);
                     return {
                         strategies: newStrategies,
+                        // CR-SA-16-E1 / 2026-05-15: 脚質更新は dirty フラグを ON（no-op パスは dirty 不変）。
+                        isPresetDirty: true,
                         participants: state.participants.map((p) => ({
                             ...p,
                             score: calculateScoreWithBondSkill(
@@ -573,6 +605,8 @@ export const useRaceStore = create<RaceStoreState>()(
                     const activePhaseIds = getActivePhaseIds(state.config.midPhaseCount);
                     return {
                         strategies: newStrategies,
+                        // CR-SA-16-E1 / 2026-05-15: 脚質削除は dirty フラグを ON（no-op パスは dirty 不変）。
+                        isPresetDirty: true,
                         participants: state.participants.map((p) => {
                             const next: Umamusume =
                                 p.strategy === name ? { ...p, strategy: '' } : p;
@@ -601,11 +635,19 @@ export const useRaceStore = create<RaceStoreState>()(
                 if (trimmed === '') return;
                 if (typeof globalThis.localStorage === 'undefined') return;
                 const state = useRaceStore.getState();
+                // CR-SA-16-E1 / 2026-05-15: LocalStorage payload に `name` を含める
+                // （modal-houserule.md §3.1 SSoT 推奨形 + 後方互換性は zod optional で保証）。
+                // loadPreset 経路で zod 検証経由（validateHouseRulesConfig → importHouseRulesConfig）
+                // により `config.name` が透過的に反映される。
                 const payload = JSON.stringify({
+                    name: trimmed,
                     houseRules: state.config.houseRules,
                     strategies: state.strategies,
                 });
                 globalThis.localStorage.setItem(`${PRESET_KEY_PREFIX}${trimmed}`, payload);
+                // CR-SA-16-E1 / 2026-05-15: 保存成功時に appliedPresetName セット + dirty リセット
+                // （scene1-setup.md §0-4 SSoT）。
+                useRaceStore.setState({ appliedPresetName: trimmed, isPresetDirty: false });
             },
 
             // loadPreset: LocalStorage から該当プリセットを読込し、houseRules + strategies を上書き。
@@ -661,6 +703,11 @@ export const useRaceStore = create<RaceStoreState>()(
                 if (trimmed === '') return;
                 if (typeof globalThis.localStorage === 'undefined') return;
                 globalThis.localStorage.removeItem(`${PRESET_KEY_PREFIX}${trimmed}`);
+                // CR-SA-16-E1 / 2026-05-15: 削除対象が現在の適用中プリセットと一致する場合のみリセット
+                // （scene1-setup.md §0-4 SSoT、不一致時は不変）。
+                if (useRaceStore.getState().appliedPresetName === trimmed) {
+                    useRaceStore.setState({ appliedPresetName: null, isPresetDirty: false });
+                }
             },
 
             // listPresetNames: LocalStorage 内の PRESET_KEY_PREFIX で始まるキーを列挙し、名前部分のみ返却。
@@ -691,6 +738,12 @@ export const useRaceStore = create<RaceStoreState>()(
                     return {
                         config: newConfig,
                         strategies: newStrategies,
+                        // CR-SA-16-E1 / 2026-05-15: Import 成功時に appliedPresetName セット + dirty リセット
+                        // （scene1-setup.md §0-4 SSoT、`config.name` 不在時は null 扱い）。
+                        // loadPreset 経路は zod 検証経由（CR-SA-15-E4 / ENG51 で確立済）で
+                        // LocalStorage payload に保存された `name` が透過的に反映される。
+                        appliedPresetName: config.name ?? null,
+                        isPresetDirty: false,
                         participants: state.participants.map((p) => ({
                             ...p,
                             score: calculateScoreWithBondSkill(
@@ -866,6 +919,10 @@ export const useRaceStore = create<RaceStoreState>()(
                     paceResult: { face: null, label: null },
                     // CR-5a-2: 中間状態もリセット（houserule-features.md §4.5）
                     gateAssignments: null,
+                    // CR-SA-16-E1 / 2026-05-15: レースリセット時は適用中プリセット名 + dirty 状態もリセット
+                    // （scene1-setup.md §0-4 SSoT）。
+                    appliedPresetName: null,
+                    isPresetDirty: false,
                 }));
                 // CR-5a: localStorage 側もクリア（storage 未提供環境では persist API 自体が未付与のため no-op）
                 void useRaceStore.persist?.clearStorage?.();
