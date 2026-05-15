@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
+import type { UniqueDiceConfig } from '../../../types';
+import { DEFAULT_UNIQUE_DICE_CONFIG } from '../../../core/strategies';
 import {
+    formatUniqueDiceLabel,
     getUniqueSkillTypeOptions,
     shouldUseTwoRowLayout,
     getSecondRowFields,
@@ -82,6 +85,32 @@ describe('entryForm.helpers - Bundle-2 / D-1, D-14 / 2026-05-09', () => {
             const options = getUniqueSkillTypeOptions(false, true);
             expect(options[2].type).toBe('Persistent');
             expect(options[2].label).toBe('持続型 (1d10)');
+        });
+
+        // CR-SA-15-E3 Round 2 / 2026-05-15 ユーザーフィードバック対応:
+        // formatUniqueDiceLabel 符号別ルール + getUniqueSkillTypeOptions の uniqueDiceConfig 連動。
+        // 引数省略時は DEFAULT_UNIQUE_DICE_CONFIG フォールバック = 既存ハードコードラベルと完全一致
+        // （上記既存テストが無改修で全件 Pass する機械的証跡 = 既存挙動完全維持）。
+        it('CR-SA-15-E3 Round 2: formatUniqueDiceLabel 符号別 + カスタム uniqueDiceConfig でラベルが連動変化する', () => {
+            // formatUniqueDiceLabel: fixValue > 0 / < 0 / === 0 の 3 分岐（短縮表記、houserule-features.md §5.3 派生形式）
+            expect(formatUniqueDiceLabel('安定', { fixValue: 5, diceStr: '1d10' })).toBe('安定 (5+1d10)');
+            expect(formatUniqueDiceLabel('超ギャンブル', { fixValue: -10, diceStr: '1d35' })).toBe(
+                '超ギャンブル (-10+1d35)',
+            );
+            expect(formatUniqueDiceLabel('ギャンブル', { fixValue: 0, diceStr: '1d20' })).toBe(
+                'ギャンブル (1d20)',
+            );
+
+            // カスタム uniqueDiceConfig（安定型 5→7 / 1d10→1d11、ギャンブル型 0→4）で
+            // getUniqueSkillTypeOptions のラベルが連動する。
+            const customConfig: UniqueDiceConfig = {
+                ...DEFAULT_UNIQUE_DICE_CONFIG,
+                Stability: { fixValue: 7, diceStr: '1d11' },
+                Gamble: { fixValue: 4, diceStr: '1d20' },
+            };
+            const options = getUniqueSkillTypeOptions(false, false, customConfig);
+            expect(options.find((o) => o.type === 'Stability')?.label).toBe('安定 (7+1d11)');
+            expect(options.find((o) => o.type === 'Gamble')?.label).toBe('ギャンブル (4+1d20)');
         });
     });
 });

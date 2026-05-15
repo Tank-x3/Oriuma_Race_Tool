@@ -76,12 +76,19 @@ export const EntryForm: React.FC = () => {
 
     // Bundle-2 / D-1, D-14 / 2026-05-09: 固有タイプ選択肢を `enableExtendedUnique` 連動で動的生成
     // Bundle-3 / D-2 / 2026-05-09: `enableCompositeUnique` 連動で `Persistent` 動的追加対応
+    // CR-SA-15-E3 Round 2 / 2026-05-15: ラベルを `uniqueDiceConfig` 連動の動的生成に切替
+    // （ユーザーフィードバック「プルダウンテキストが固有スキル設定と連動しない」対応）。
     const uniqueSkillTypes = useMemo(
         () => getUniqueSkillTypeOptions(
             config.houseRules.enableExtendedUnique,
             config.houseRules.enableCompositeUnique,
+            config.houseRules.uniqueDiceConfig,
         ),
-        [config.houseRules.enableExtendedUnique, config.houseRules.enableCompositeUnique]
+        [
+            config.houseRules.enableExtendedUnique,
+            config.houseRules.enableCompositeUnique,
+            config.houseRules.uniqueDiceConfig,
+        ]
     );
 
     // --- Validation Logic ---

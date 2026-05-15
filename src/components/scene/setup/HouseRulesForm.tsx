@@ -2,8 +2,9 @@
 // Scene 1 上部に配置し、4 チェックボックス + 特殊戦法 ON 時のみ効果値入力欄を表示する。
 // Bundle-10-T2 / CR-SA-12 / 2026-05-11: 「🎴 脚質エディタを開く」ボタン追加（採用案 a 例外、modal-houserule.md §2）。
 // Bundle-11-T1 / CR-SA-12 / 2026-05-11: 「💾 設定の保存・読込」ボタン追加（modal-houserule.md §3 ワイヤーフレーム）。
+// CR-SA-15-E3 / 2026-05-15: 「🎲 固有スキル設定」ボタン追加（modal-houserule.md §4 ワイヤーフレーム）。
 import React, { Fragment, useState } from 'react';
-import { Layers, Save, SlidersHorizontal } from 'lucide-react';
+import { Dices, Layers, Save, SlidersHorizontal } from 'lucide-react';
 import { useRaceStore } from '../../../store/useRaceStore';
 import {
     getHouseRuleCheckboxes,
@@ -13,6 +14,7 @@ import {
 } from './houseRulesForm.helpers';
 import { StrategyEditorModal } from './StrategyEditorModal';
 import { PresetManagerModal } from './PresetManagerModal';
+import { UniqueSkillEditorModal } from './UniqueSkillEditorModal';
 
 export const HouseRulesForm: React.FC = () => {
     const { config, updateHouseRules } = useRaceStore();
@@ -27,6 +29,8 @@ export const HouseRulesForm: React.FC = () => {
     const [strategyEditorOpen, setStrategyEditorOpen] = useState<boolean>(false);
     // Bundle-11-T1 / CR-SA-12 / 2026-05-11: 設定プリセット管理モーダル開閉状態
     const [presetManagerOpen, setPresetManagerOpen] = useState<boolean>(false);
+    // CR-SA-15-E3 / 2026-05-15: 固有スキル設定モーダル開閉状態
+    const [uniqueSkillEditorOpen, setUniqueSkillEditorOpen] = useState<boolean>(false);
 
     const handleCheckboxChange = (key: ReturnType<typeof getHouseRuleCheckboxes>[number]['key']) =>
         (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -111,6 +115,7 @@ export const HouseRulesForm: React.FC = () => {
 
             {/* Bundle-10-T2 / CR-SA-12 / 2026-05-11: 脚質エディタモーダルへのアクセス導線 */}
             {/* Bundle-11-T1 / CR-SA-12 / 2026-05-11: 設定プリセット管理モーダルへのアクセス導線を並列追加 */}
+            {/* CR-SA-15-E3 / 2026-05-15: 固有スキル設定モーダルへのアクセス導線を脚質エディタと設定の保存・読込の間に追加 */}
             <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-200 dark:border-slate-700/50">
                 <button
                     type="button"
@@ -121,6 +126,16 @@ export const HouseRulesForm: React.FC = () => {
                 >
                     <Layers className="w-4 h-4" />
                     🎴 脚質エディタを開く
+                </button>
+                <button
+                    type="button"
+                    onClick={() => setUniqueSkillEditorOpen(true)}
+                    aria-haspopup="dialog"
+                    aria-expanded={uniqueSkillEditorOpen}
+                    className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-primary-700 dark:text-primary-300 bg-primary-50 dark:bg-primary-900/30 hover:bg-primary-100 dark:hover:bg-primary-900/50 border border-primary-200 dark:border-primary-800 rounded-lg transition-colors"
+                >
+                    <Dices className="w-4 h-4" />
+                    🎲 固有スキル設定
                 </button>
                 <button
                     type="button"
@@ -137,6 +152,11 @@ export const HouseRulesForm: React.FC = () => {
             <StrategyEditorModal
                 isOpen={strategyEditorOpen}
                 onClose={() => setStrategyEditorOpen(false)}
+            />
+            {/* CR-SA-15-E3 / 2026-05-15: 固有スキル設定モーダル（isOpen props 制御、StrategyEditorModal と同パターン）*/}
+            <UniqueSkillEditorModal
+                isOpen={uniqueSkillEditorOpen}
+                onClose={() => setUniqueSkillEditorOpen(false)}
             />
             {/* Bundle-11-T1 / CR-SA-12 / 2026-05-11: 条件描画で mount/unmount を制御する */}
             {/* （PresetManagerModal は内部で lazy initial pattern を使い useEffect 経由 setState を回避）*/}
