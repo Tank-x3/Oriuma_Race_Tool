@@ -115,3 +115,189 @@ describe('buildExportFilename - Bundle-11-T2', () => {
         expect(buildExportFilename(now)).toBe('race-house-rules-20260105-030409.json');
     });
 });
+
+// CR-SA-15-E4 / 2026-05-15:
+// 固有スキル設定（uniqueDiceConfig）の JSON I/O 動作確認（modal-houserule.md §3 + §4 + ⚠️ Import Validation
+// / houserule-features.md §4 zod 検証範囲表 + §5.2 設定項目 + §5.5 既存ロジック整合）。
+// E1 で組み込んだ zod スキーマ（`.default(DEFAULT_UNIQUE_DICE_CONFIG)` + 5 キー明示 object）が、
+// `serializeHouseRulesConfig` / `deserializeAndValidate` を通じて期待どおりに動作することの構造的証跡。
+describe('uniqueDiceConfig - CR-SA-15-E4', () => {
+    // ユーザーリクエスト由来の代表的なカスタム値（ハウスルール郡の安定型 5+1d11 運用相当）
+    const customUniqueDiceConfig = {
+        Stability: { fixValue: 7, diceStr: '1d11' },
+        Gamble: { fixValue: 3, diceStr: '1d24' },
+        Persistent: { fixValue: 2, diceStr: '1d12' },
+        SuperGamble: { fixValue: -5, diceStr: '1d20' },
+        SuperStability: { fixValue: 10, diceStr: '1d4' },
+    };
+
+    const customHouseRules: HouseRulesData = {
+        ...sampleHouseRules,
+        uniqueDiceConfig: customUniqueDiceConfig,
+    };
+
+    // (U1) カスタム uniqueDiceConfig が serialize 出力 JSON に正しく含まれる
+    it('(U1) カスタム uniqueDiceConfig が serialize 出力 JSON に反映される', () => {
+        const json = serializeHouseRulesConfig(customHouseRules, [...DEFAULT_STRATEGIES]);
+        const parsed = JSON.parse(json);
+        expect(parsed.houseRules.uniqueDiceConfig.Stability).toEqual({ fixValue: 7, diceStr: '1d11' });
+        expect(parsed.houseRules.uniqueDiceConfig.SuperGamble).toEqual({ fixValue: -5, diceStr: '1d20' });
+        expect(parsed.houseRules.uniqueDiceConfig.SuperStability).toEqual({ fixValue: 10, diceStr: '1d4' });
+        // 5 キー揃っていること
+        expect(Object.keys(parsed.houseRules.uniqueDiceConfig).sort()).toEqual(
+            ['Gamble', 'Persistent', 'Stability', 'SuperGamble', 'SuperStability'].sort(),
+        );
+    });
+
+    // (U2) カスタム uniqueDiceConfig 含有 JSON が deserialize で復元される
+    it('(U2) カスタム uniqueDiceConfig 含有 JSON が deserializeAndValidate で復元される', () => {
+        const json = serializeHouseRulesConfig(customHouseRules, [...DEFAULT_STRATEGIES]);
+        const result = deserializeAndValidate(json);
+        expect(result.success).toBe(true);
+        if (result.success) {
+            expect(result.data.houseRules.uniqueDiceConfig).toEqual(customUniqueDiceConfig);
+        }
+    });
+
+    // (U3) 後方互換性 = uniqueDiceConfig フィールド欠落 JSON のデフォルト補完
+    // E1 で `.default(DEFAULT_UNIQUE_DICE_CONFIG)` を付与した最大の理由 = 旧プリセット .json
+    // （CR-SA-15-E1 以前に Export されたもの）を読み込めるようにするための後方互換性。
+    it('(U3) uniqueDiceConfig フィールド欠落 JSON は DEFAULT_UNIQUE_DICE_CONFIG で補完されて成功する', () => {
+        const legacyJson = JSON.stringify({
+            houseRules: {
+                enableModifier: true,
+                enableSpecialStrategy: true,
+                enableCompositeUnique: false,
+                enableExtendedUnique: false,
+                enableBondSkill: true,
+                effectValue: 25,
+                // uniqueDiceConfig フィールドそのものが欠落（旧形式プリセット相当）
+            },
+            strategies: [],
+        });
+        const result = deserializeAndValidate(legacyJson);
+        expect(result.success).toBe(true);
+        if (result.success) {
+            expect(result.data.houseRules.uniqueDiceConfig).toEqual(DEFAULT_UNIQUE_DICE_CONFIG);
+        }
+    });
+
+    // (U4-a) 5 キー不揃い = `.default()` の補完対象外。フィールド存在で内部キー欠落の場合は検証失敗
+    // （明示 object 方式の真価。z.record 不採用の SSoT 根拠）
+    it('(U4-a) uniqueDiceConfig が存在するが 5 キー不揃い（Stability 欠落）は拒否される', () => {
+        const invalidJson = JSON.stringify({
+            houseRules: {
+                ...sampleHouseRules,
+                uniqueDiceConfig: {
+                    // Stability キー欠落
+                    Gamble: { fixValue: 0, diceStr: '1d20' },
+                    Persistent: { fixValue: 0, diceStr: '1d10' },
+                    SuperGamble: { fixValue: -10, diceStr: '1d35' },
+                    SuperStability: { fixValue: 8, diceStr: '1d3' },
+                },
+            },
+            strategies: [],
+        });
+        const result = deserializeAndValidate(invalidJson);
+        expect(result.success).toBe(false);
+        if (!result.success) {
+            expect(result.error).toBe(VALIDATION_ERROR_MESSAGE);
+        }
+    });
+
+    // (U4-b) fixValue が小数 → `z.number().int()` で拒否（houserule-features.md §5.2 整数 SSoT）
+    it('(U4-b) fixValue が小数（1.5）は拒否される', () => {
+        const invalidJson = JSON.stringify({
+            houseRules: {
+                ...sampleHouseRules,
+                uniqueDiceConfig: {
+                    ...DEFAULT_UNIQUE_DICE_CONFIG,
+                    Stability: { fixValue: 1.5, diceStr: '1d10' },
+                },
+            },
+            strategies: [],
+        });
+        const result = deserializeAndValidate(invalidJson);
+        expect(result.success).toBe(false);
+        if (!result.success) {
+            expect(result.error).toBe(VALIDATION_ERROR_MESSAGE);
+        }
+    });
+
+    // (U4-c) fixValue が文字列 → `z.number()` で拒否
+    it('(U4-c) fixValue が文字列（"5"）は拒否される', () => {
+        const invalidJson = JSON.stringify({
+            houseRules: {
+                ...sampleHouseRules,
+                uniqueDiceConfig: {
+                    ...DEFAULT_UNIQUE_DICE_CONFIG,
+                    Gamble: { fixValue: '5', diceStr: '1d20' },
+                },
+            },
+            strategies: [],
+        });
+        const result = deserializeAndValidate(invalidJson);
+        expect(result.success).toBe(false);
+        if (!result.success) {
+            expect(result.error).toBe(VALIDATION_ERROR_MESSAGE);
+        }
+    });
+
+    // (U4-d) diceStr が XdY 形式違反 → /^\d+d\d+$/ で拒否（houserule-features.md §5.2 SSoT）
+    it('(U4-d) diceStr が XdY 形式違反（"1x10"）は拒否される', () => {
+        const invalidJson = JSON.stringify({
+            houseRules: {
+                ...sampleHouseRules,
+                uniqueDiceConfig: {
+                    ...DEFAULT_UNIQUE_DICE_CONFIG,
+                    Stability: { fixValue: 5, diceStr: '1x10' },
+                },
+            },
+            strategies: [],
+        });
+        const result = deserializeAndValidate(invalidJson);
+        expect(result.success).toBe(false);
+        if (!result.success) {
+            expect(result.error).toBe(VALIDATION_ERROR_MESSAGE);
+        }
+    });
+
+    // (U4-e) diceStr が完全非数値（"abc"）→ 拒否
+    it('(U4-e) diceStr が完全非数値（"abc"）は拒否される', () => {
+        const invalidJson = JSON.stringify({
+            houseRules: {
+                ...sampleHouseRules,
+                uniqueDiceConfig: {
+                    ...DEFAULT_UNIQUE_DICE_CONFIG,
+                    Gamble: { fixValue: 0, diceStr: 'abc' },
+                },
+            },
+            strategies: [],
+        });
+        const result = deserializeAndValidate(invalidJson);
+        expect(result.success).toBe(false);
+        if (!result.success) {
+            expect(result.error).toBe(VALIDATION_ERROR_MESSAGE);
+        }
+    });
+
+    // (U4-f) diceStr に負号付き（"-1d10"）→ 拒否（houserule-features.md §5.2 SSoT = 負号なし、
+    // validator.ts の validateDiceFormat の負号許容とは差異あり、§4 案 V2 で PM73 既知）
+    it('(U4-f) diceStr 負号付き（"-1d10"）は固有ダイス側で拒否される（脚質エディタとの差異）', () => {
+        const invalidJson = JSON.stringify({
+            houseRules: {
+                ...sampleHouseRules,
+                uniqueDiceConfig: {
+                    ...DEFAULT_UNIQUE_DICE_CONFIG,
+                    Stability: { fixValue: 5, diceStr: '-1d10' },
+                },
+            },
+            strategies: [],
+        });
+        const result = deserializeAndValidate(invalidJson);
+        expect(result.success).toBe(false);
+        if (!result.success) {
+            expect(result.error).toBe(VALIDATION_ERROR_MESSAGE);
+        }
+    });
+});

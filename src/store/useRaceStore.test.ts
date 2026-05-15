@@ -2625,3 +2625,189 @@ describe('CR-SA-15-E1 / 2026-05-14 uniqueDiceConfig store integration', () => {
         expect(result.config.houseRules.enableBondSkill).toBe(false);
     });
 });
+
+// CR-SA-15-E4 / 2026-05-15:
+// 固有スキル設定（uniqueDiceConfig）の JSON I/O 動作確認（modal-houserule.md §3 設定プリセット管理 + §4
+// 固有スキル設定 — JSON I/O 連動 / houserule-features.md §4 + §5.5 既存ロジック整合 — JSON プリセット I/O）。
+// E1 で組み込み済の savePreset / loadPreset / importHouseRulesConfig 経路が `uniqueDiceConfig` を含めて
+// 正しく往復することの構造的証跡。プロダクトコード完全不変、テスト追加のみで動作を「テストで保証」する。
+describe('CR-SA-15-E4 / 2026-05-15 uniqueDiceConfig JSON I/O', () => {
+    // 既存 savePreset / loadPreset describe と同パターン: in-memory localStorage モック化
+    // + resetStrategies (前 describe の state.strategies リーク防止)
+    // + uniqueDiceConfig を初期値に戻す。
+    let mockStorage: ReturnType<typeof createMockLocalStorage>;
+    beforeEach(() => {
+        mockStorage = createMockLocalStorage();
+        vi.stubGlobal('localStorage', mockStorage);
+        useRaceStore.getState().resetRace();
+        resetStrategies();
+        useRaceStore.getState().updateHouseRules({
+            uniqueDiceConfig: DEFAULT_UNIQUE_DICE_CONFIG,
+        });
+    });
+    afterEach(() => {
+        vi.unstubAllGlobals();
+        useRaceStore.getState().resetRace();
+        resetStrategies();
+        useRaceStore.getState().updateHouseRules({
+            uniqueDiceConfig: DEFAULT_UNIQUE_DICE_CONFIG,
+        });
+    });
+
+    // ユーザーリクエスト由来の代表的なカスタム値（DEFAULT と明確に差分が出る組合せ）
+    const customUniqueDiceConfig = {
+        Stability: { fixValue: 7, diceStr: '1d11' },
+        Gamble: { fixValue: 3, diceStr: '1d24' },
+        Persistent: { fixValue: 2, diceStr: '1d12' },
+        SuperGamble: { fixValue: -5, diceStr: '1d20' },
+        SuperStability: { fixValue: 10, diceStr: '1d4' },
+    };
+
+    // (P1) savePreset → loadPreset 経路でカスタム uniqueDiceConfig が往復復元される
+    it('(P1) savePreset → loadPreset でカスタム uniqueDiceConfig が往復復元される', () => {
+        // カスタム値を適用 → savePreset
+        useRaceStore.getState().updateHouseRules({ uniqueDiceConfig: customUniqueDiceConfig });
+        useRaceStore.getState().savePreset('e4-test');
+
+        // 別のカスタム値に変更（往復前の混入を確認するため明確に異なる値）
+        useRaceStore.getState().updateHouseRules({
+            uniqueDiceConfig: {
+                ...DEFAULT_UNIQUE_DICE_CONFIG,
+                Stability: { fixValue: 99, diceStr: '9d9' },
+            },
+        });
+        expect(useRaceStore.getState().config.houseRules.uniqueDiceConfig.Stability.fixValue).toBe(99);
+
+        // loadPreset で savePreset 時点のカスタム値に復元されることを検証
+        useRaceStore.getState().loadPreset('e4-test');
+        expect(useRaceStore.getState().config.houseRules.uniqueDiceConfig).toEqual(customUniqueDiceConfig);
+    });
+
+    // (P2) savePreset 時 LocalStorage 内 JSON に uniqueDiceConfig が含まれる（構造的証跡）
+    it('(P2) savePreset 時 LocalStorage の JSON に uniqueDiceConfig が含まれる', () => {
+        useRaceStore.getState().updateHouseRules({ uniqueDiceConfig: customUniqueDiceConfig });
+        useRaceStore.getState().savePreset('p2-test');
+
+        const raw = mockStorage.getItem(`${PRESET_KEY_PREFIX}p2-test`);
+        expect(raw).not.toBeNull();
+        const parsed = JSON.parse(raw as string);
+        expect(parsed.houseRules.uniqueDiceConfig).toEqual(customUniqueDiceConfig);
+        // 5 キー揃っていること
+        expect(Object.keys(parsed.houseRules.uniqueDiceConfig).sort()).toEqual(
+            ['Gamble', 'Persistent', 'Stability', 'SuperGamble', 'SuperStability'].sort(),
+        );
+    });
+
+    // (P3) 後方互換性 = uniqueDiceConfig 欠落の古いプリセット JSON の loadPreset で
+    // DEFAULT_UNIQUE_DICE_CONFIG が補完される（E1 `.default()` の真価をプリセット経路で証跡化）。
+    // loadPreset は内部で deserializeAndValidate（zod safeParse 経由）を介して importHouseRulesConfig
+    // に渡す経路のため、`.default()` 補完が validateHouseRulesConfig の戻り値時点で発動済となる。
+    it('(P3) uniqueDiceConfig 欠落の古いプリセット JSON は loadPreset で DEFAULT 補完される', () => {
+        const legacyPreset = JSON.stringify({
+            houseRules: {
+                enableModifier: true,
+                enableSpecialStrategy: true,
+                enableCompositeUnique: false,
+                enableExtendedUnique: false,
+                enableBondSkill: true,
+                effectValue: 20,
+                // uniqueDiceConfig フィールドそのものが欠落（CR-SA-15-E1 以前の旧形式相当）
+            },
+            strategies: [],
+        });
+        mockStorage.setItem(`${PRESET_KEY_PREFIX}legacy`, legacyPreset);
+
+        useRaceStore.getState().loadPreset('legacy');
+        const houseRules = useRaceStore.getState().config.houseRules;
+        expect(houseRules.uniqueDiceConfig).toEqual(DEFAULT_UNIQUE_DICE_CONFIG);
+        // 既存 6 フィールドは旧データの値で上書きされる
+        expect(houseRules.effectValue).toBe(20);
+        expect(houseRules.enableBondSkill).toBe(true);
+    });
+
+    // (P4) importHouseRulesConfig 経路でカスタム uniqueDiceConfig が state に反映され、
+    // E2 で配線済のスコア再計算が走る（固有固定値変更で score が変わる = test (3) のプリセット経路版）。
+    it('(P4) importHouseRulesConfig でカスタム uniqueDiceConfig 適用 + score 再計算が走る', () => {
+        // 固有スキル安定型・発動フェーズ Start の参加者を配置（test (3) と同構成）
+        const uma: Umamusume = {
+            id: 'p1',
+            entryIndex: 1,
+            name: 'Test',
+            strategy: '先行',
+            uniqueSkill: { type: 'Stability', phases: ['Start'] },
+            gate: 1,
+            score: 0,
+            history: {
+                Start: {
+                    baseDice: makeDice('3d8', [3, 4, 3]),
+                    uniqueDice: makeDice('1d10', [8]),
+                    computedScore: 0,
+                },
+            },
+        };
+        useRaceStore.setState({ participants: [uma] });
+        useRaceStore.getState().setMidPhaseCount(1);
+        const scoreBefore = useRaceStore.getState().participants[0].score;
+
+        // importHouseRulesConfig 経由で安定型固定値を 5 → 12 に変更
+        useRaceStore.getState().importHouseRulesConfig({
+            houseRules: {
+                enableModifier: false,
+                enableSpecialStrategy: false,
+                enableCompositeUnique: false,
+                enableExtendedUnique: false,
+                enableBondSkill: false,
+                effectValue: 15,
+                uniqueDiceConfig: {
+                    ...DEFAULT_UNIQUE_DICE_CONFIG,
+                    Stability: { fixValue: 12, diceStr: '1d10' },
+                },
+            },
+            strategies: DEFAULT_STRATEGIES.map((s) => ({
+                ...s,
+                paceModifiers: s.paceModifiers as Record<string, number>,
+            })),
+        });
+
+        // state.config.houseRules.uniqueDiceConfig がカスタム値で上書きされる
+        const houseRules = useRaceStore.getState().config.houseRules;
+        expect(houseRules.uniqueDiceConfig.Stability).toEqual({ fixValue: 12, diceStr: '1d10' });
+
+        // E2 で配線済の score 再計算が走り、固有固定値 5 → 12 の差分 +7 が反映される
+        const scoreAfter = useRaceStore.getState().participants[0].score;
+        expect(scoreAfter - scoreBefore).toBe(7);
+    });
+
+    // (P5) importHouseRulesConfig 経路でカスタム strategies も同時に上書きされる
+    // （CR-SA-15 系列の主スコープではないが、houseRules + strategies 同一トランザクション保証の証跡）
+    it('(P5) importHouseRulesConfig で houseRules + strategies が同一トランザクションで上書きされる', () => {
+        const customStrategy: Strategy = {
+            name: 'カスタム脚質X',
+            fixValue: 99,
+            dice: { start: '3d6', mid: '3d6', end: '3d6' },
+            paceModifiers: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0 },
+        };
+        useRaceStore.getState().importHouseRulesConfig({
+            houseRules: {
+                enableModifier: false,
+                enableSpecialStrategy: false,
+                enableCompositeUnique: false,
+                enableExtendedUnique: false,
+                enableBondSkill: false,
+                effectValue: 15,
+                uniqueDiceConfig: customUniqueDiceConfig,
+            },
+            strategies: [
+                {
+                    ...customStrategy,
+                    paceModifiers: customStrategy.paceModifiers as Record<string, number>,
+                },
+            ],
+        });
+
+        const state = useRaceStore.getState();
+        expect(state.config.houseRules.uniqueDiceConfig).toEqual(customUniqueDiceConfig);
+        expect(state.strategies).toHaveLength(1);
+        expect(state.strategies[0].name).toBe('カスタム脚質X');
+    });
+});

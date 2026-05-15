@@ -16,7 +16,7 @@ import { useNotificationStore } from './useNotificationStore';
 import { calculateScoreWithBondSkill } from '../components/scene/race/bondSkill.helpers';
 // Bundle-7 / P4-6 / 2026-05-10: 永続化マイグレーションで houseRules を zod 検証する。
 // houserule-features.md §4 zod 検証範囲表に基づく検証 + Bundle-1 で追加された 2 フィールドの補完。
-import { houseRulesSchema, type HouseRulesData, type HouseRulesConfig } from '../core/schema/houseRules';
+import { houseRulesSchema, validateHouseRulesConfig, type HouseRulesData, type HouseRulesConfig } from '../core/schema/houseRules';
 
 interface RaceStoreState extends RaceState {
     uiState: {
@@ -624,9 +624,9 @@ export const useRaceStore = create<RaceStoreState>()(
                         .addNotification('error', `プリセット '${trimmed}' が見つかりません`);
                     return;
                 }
-                let parsed: HouseRulesConfig;
+                let parsedRaw: unknown;
                 try {
-                    parsed = JSON.parse(raw) as HouseRulesConfig;
+                    parsedRaw = JSON.parse(raw);
                 } catch {
                     useNotificationStore
                         .getState()
@@ -636,7 +636,23 @@ export const useRaceStore = create<RaceStoreState>()(
                         );
                     return;
                 }
-                useRaceStore.getState().importHouseRulesConfig(parsed);
+                // CR-SA-15-E4 / 2026-05-15: zod 検証経由で `.default()` 補完を発動させる
+                // （PERSIST_VERSION バンプ前 = uniqueDiceConfig 欠落の旧プリセット JSON は
+                //  houseRulesSchema.uniqueDiceConfig.default(DEFAULT_UNIQUE_DICE_CONFIG) で
+                //  デフォルト補完されて検証通過する後方互換の要）。
+                //  ファイル Import 経路（PresetManagerModal → deserializeAndValidate）と
+                //  同じ zod 検証パスを経由することで、両経路で挙動を統一する。
+                const validationResult = validateHouseRulesConfig(parsedRaw);
+                if (!validationResult.success) {
+                    useNotificationStore
+                        .getState()
+                        .addNotification(
+                            'error',
+                            `プリセット '${trimmed}' の読み込みに失敗しました`,
+                        );
+                    return;
+                }
+                useRaceStore.getState().importHouseRulesConfig(validationResult.data);
             },
 
             // deletePreset: LocalStorage から該当キーを削除。trim 空 / 未定義 storage / 不存在キーはすべて no-op。
