@@ -4,8 +4,9 @@
 // Bundle-11-T1 / CR-SA-12 / 2026-05-11: 「💾 設定の保存・読込」ボタン追加（modal-houserule.md §3 ワイヤーフレーム）。
 // CR-SA-15-E3 / 2026-05-15: 「🎲 固有スキル設定」ボタン追加（modal-houserule.md §4 ワイヤーフレーム）。
 // CR-SA-16-E2 / 2026-05-15: ヘッダー右側に適用中プリセット名表示を追加（scene1-setup.md §0-2 状態 4 種）。
+// CR-SA-16-E3 / 2026-05-15: ヘッダー左側を折りたたみトグルボタン化（scene1-setup.md §0-1、初期 = 折りたたみ）。
 import React, { Fragment, useState } from 'react';
-import { Dices, Layers, Save, SlidersHorizontal } from 'lucide-react';
+import { ChevronDown, ChevronRight, Dices, Layers, Save, SlidersHorizontal } from 'lucide-react';
 import { useRaceStore } from '../../../store/useRaceStore';
 import {
     getHouseRuleCheckboxes,
@@ -43,6 +44,10 @@ export const HouseRulesForm: React.FC = () => {
     const [presetManagerOpen, setPresetManagerOpen] = useState<boolean>(false);
     // CR-SA-15-E3 / 2026-05-15: 固有スキル設定モーダル開閉状態
     const [uniqueSkillEditorOpen, setUniqueSkillEditorOpen] = useState<boolean>(false);
+    // CR-SA-16-E3 / 2026-05-15: ハウスルール設定セクションの折りたたみ state
+    // scene1-setup.md §0-1「折りたたみ動作」SSoT、初期 = 折りたたみ（Progressive Disclosure 原則）
+    // 永続化対象外（コンポーネントローカル state、リロードで初期状態 = 折りたたみに戻る）
+    const [isCollapsed, setIsCollapsed] = useState<boolean>(true);
 
     const handleCheckboxChange = (key: ReturnType<typeof getHouseRuleCheckboxes>[number]['key']) =>
         (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -71,12 +76,26 @@ export const HouseRulesForm: React.FC = () => {
                 強調なし（text-slate-600 / dark:text-slate-300）、長文プリセット名は truncate +
                 title 属性でホバー時全文確認可、max-w-[50%] で表示幅制限。 */}
             <div className="flex items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-700/50 pb-4">
-                <div className="flex items-center gap-2 min-w-0">
+                {/* CR-SA-16-E3 / 2026-05-15: ヘッダー左側を折りたたみトグルボタン化。
+                    chevron + SlidersHorizontal + 見出しを一体のボタンとして配置（クリック領域広め）。
+                    scene1-setup.md §0-1「ヘッダー左端に折りたたみトグル」SSoT、aria-expanded 必須。 */}
+                <button
+                    type="button"
+                    onClick={() => setIsCollapsed((prev) => !prev)}
+                    aria-expanded={!isCollapsed}
+                    aria-controls="house-rules-body"
+                    className="flex items-center gap-2 min-w-0 cursor-pointer rounded-md px-1 -mx-1 py-0.5 hover:bg-slate-100 dark:hover:bg-slate-700/50 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-colors"
+                >
+                    {isCollapsed ? (
+                        <ChevronRight className="w-5 h-5 text-slate-500 dark:text-slate-400 shrink-0" />
+                    ) : (
+                        <ChevronDown className="w-5 h-5 text-slate-500 dark:text-slate-400 shrink-0" />
+                    )}
                     <SlidersHorizontal className="w-5 h-5 text-primary-600 dark:text-primary-400 shrink-0" />
                     <h2 className="text-lg font-display font-bold text-slate-900 dark:text-white">
                         ハウスルール設定 (House Rules)
                     </h2>
-                </div>
+                </button>
                 <span
                     className="text-sm text-slate-600 dark:text-slate-300 truncate max-w-[50%]"
                     title={appliedPresetStatus.label}
@@ -86,7 +105,12 @@ export const HouseRulesForm: React.FC = () => {
                 </span>
             </div>
 
-            <div className="space-y-3">
+            {/* CR-SA-16-E3 / 2026-05-15: 折りたたみ中は基本オプション 5 ボックス + 効果値入力欄 +
+                3 ボタン領域を DOM 除外（scene1-setup.md §0-1「折りたたみ中の表示制御」SSoT）。
+                Modal 系は条件分岐外 = state false 維持で透過（既存パターン）。 */}
+            {!isCollapsed && (
+                <>
+            <div className="space-y-3" id="house-rules-body">
                 {checkboxes.map((cb) => {
                     const checkboxId = `house-rule-${cb.key}`;
                     return (
@@ -173,6 +197,8 @@ export const HouseRulesForm: React.FC = () => {
                     💾 設定の保存・読込
                 </button>
             </div>
+                </>
+            )}
 
             <StrategyEditorModal
                 isOpen={strategyEditorOpen}
