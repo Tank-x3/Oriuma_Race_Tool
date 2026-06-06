@@ -435,3 +435,77 @@ describe('CR-SA-16-E1 / 2026-05-15 houseRulesConfigSchema name field (optional)'
         }
     });
 });
+
+// CR-SA-17-E1 / 2026-06-06:
+// houserule-features.md §7 フェーズ構成変更 + §4 zod 検証範囲表に基づく enablePhaseConfig フィールドの検証。
+// - 型: boolean、.default(false)（後方互換、enablePhaseConfig 欠落の旧 persist / 旧 JSON プリセットを補完）
+// - 序盤・終盤回数 / ペース位置（config 直下のレース個別設定）は §7.8 によりプリセット非対象 = houseRulesSchema に含めない
+describe('CR-SA-17-E1 / 2026-06-06 houseRulesSchema enablePhaseConfig (default false)', () => {
+    // enablePhaseConfig フィールドを含まない旧 houseRules（CR-SA-15/19 期の 7 フィールド構造）
+    const validHouseRulesNoPhaseConfig = {
+        enableModifier: false,
+        enableSpecialStrategy: false,
+        enableCompositeUnique: false,
+        enableExtendedUnique: false,
+        enableBondSkill: false,
+        effectValue: 15,
+        uniqueDiceConfig: DEFAULT_UNIQUE_DICE_CONFIG,
+    };
+
+    // (P1) enablePhaseConfig 欠落の旧 houseRules が .default(false) で success + false 補完（後方互換の要）
+    it('(P1) enablePhaseConfig 欠落の旧 houseRules が .default(false) で success + false 補完', () => {
+        const result = houseRulesSchema.safeParse(validHouseRulesNoPhaseConfig);
+        expect(result.success).toBe(true);
+        if (result.success) {
+            expect(result.data.enablePhaseConfig).toBe(false);
+        }
+    });
+
+    // (P2) enablePhaseConfig = true / false を含む完全データで success + 値保持
+    it('(P2) enablePhaseConfig = true / false を含む完全データで success + 値保持', () => {
+        const trueResult = houseRulesSchema.safeParse({
+            ...validHouseRulesNoPhaseConfig,
+            enablePhaseConfig: true,
+        });
+        const falseResult = houseRulesSchema.safeParse({
+            ...validHouseRulesNoPhaseConfig,
+            enablePhaseConfig: false,
+        });
+        expect(trueResult.success).toBe(true);
+        expect(falseResult.success).toBe(true);
+        if (trueResult.success) {
+            expect(trueResult.data.enablePhaseConfig).toBe(true);
+        }
+    });
+
+    // (P3) enablePhaseConfig が boolean 以外（string / number / null）で failure
+    it('(P3) enablePhaseConfig が boolean 以外（string / number / null）で failure', () => {
+        const stringResult = houseRulesSchema.safeParse({
+            ...validHouseRulesNoPhaseConfig,
+            enablePhaseConfig: 'true' as unknown as boolean,
+        });
+        const numberResult = houseRulesSchema.safeParse({
+            ...validHouseRulesNoPhaseConfig,
+            enablePhaseConfig: 1 as unknown as boolean,
+        });
+        const nullResult = houseRulesSchema.safeParse({
+            ...validHouseRulesNoPhaseConfig,
+            enablePhaseConfig: null as unknown as boolean,
+        });
+        expect(stringResult.success).toBe(false);
+        expect(numberResult.success).toBe(false);
+        expect(nullResult.success).toBe(false);
+    });
+
+    // (P4) houseRulesConfigSchema（JSON プリセット）経由でも enablePhaseConfig が .default(false) 補完される
+    it('(P4) houseRulesConfigSchema 経由で enablePhaseConfig 欠落 JSON が false 補完されて success', () => {
+        const result = houseRulesConfigSchema.safeParse({
+            houseRules: validHouseRulesNoPhaseConfig,
+            strategies: [],
+        });
+        expect(result.success).toBe(true);
+        if (result.success) {
+            expect(result.data.houseRules.enablePhaseConfig).toBe(false);
+        }
+    });
+});

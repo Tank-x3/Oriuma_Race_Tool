@@ -109,9 +109,23 @@ export interface GateAssignment {
     gate: number;
 }
 
+// CR-SA-17-E1 / 2026-06-06: ペース挿入位置の内部表現（houserule-features.md §7.5 アンカー方式）。
+// 「どのフェーズの直後にペースを挟むか」を当該フェーズの ID（例: 'Start' / 'Mid1'）で保持する。
+// null = ペースなし（ペース 0 回。§7.2 の「なし」許可）。
+// デフォルト = 'Start'（序盤 1 回構成の最後の序盤フェーズ ID = 「序盤ブロック直後」を表す、§7.5）。
+// アンカー候補の動的生成・禁止構成バリデーション（start 前 / end 後）・フェーズ列への実挿入は E2/E3 スコープ。
+export type PacePosition = string | null;
+
 export interface RaceState {
     config: {
         midPhaseCount: number;
+        // CR-SA-17-E1 / 2026-06-06: フェーズ構成変更（houserule-features.md §7.2）。
+        // 序盤回数 / 終盤回数（各 1〜4、デフォルト 1）+ ペース挿入位置（PacePosition）。
+        // midPhaseCount と並列のレース個別設定（ハウスルール JSON プリセット非対象、§7.8）。
+        // enablePhaseConfig=false（デフォルト）時は UI 非表示・既定値固定で現行構成を維持（OFF 透過）。
+        startPhaseCount: number;
+        endPhaseCount: number;
+        pacePosition: PacePosition;
         fullGateSize: number | null;
         houseRules: {
             enableModifier: boolean;
@@ -127,6 +141,10 @@ export interface RaceState {
             // 固有スキル 5 タイプの固定値・ダイス式。state を SSoT とし、
             // デフォルト値は strategies.ts DEFAULT_UNIQUE_DICE_CONFIG。
             uniqueDiceConfig: UniqueDiceConfig;
+            // CR-SA-17-E1 / 2026-06-06: フェーズ構成変更ハウスルールの ON/OFF（houserule-features.md §7 / §2 [v]）。
+            // ハウスルールトグル = JSON プリセット対象（§7.8）。デフォルト false。
+            // ON 時のみ序盤・終盤回数 / ペース位置の設定 UI を開放（E3 スコープ）。
+            enablePhaseConfig: boolean;
         };
     };
     participants: Umamusume[];

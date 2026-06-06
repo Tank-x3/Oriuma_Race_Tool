@@ -61,6 +61,11 @@ export const houseRulesSchema = z.object({
     // フィールドは存在するが 5 キー不揃いのデータは uniqueDiceConfigSchema が検証失敗させる
     // （「フィールド欠落の補完」と「不完全構造の許容」は別、§4「5 キー必須」と矛盾しない）。
     uniqueDiceConfig: uniqueDiceConfigSchema.default(DEFAULT_UNIQUE_DICE_CONFIG),
+    // CR-SA-17-E1 / 2026-06-06: フェーズ構成変更ハウスルールの ON/OFF（houserule-features.md §7 / §4 zod 検証範囲表）。
+    // .default(false) により、enablePhaseConfig フィールドが欠落した旧データ
+    // （旧 persist データ / 旧 JSON プリセット）が検証通過し、false で補完される（後方互換）。
+    // 序盤・終盤回数 / ペース位置（config 直下のレース個別設定）は §7.8 によりプリセット非対象のため本スキーマに含めない。
+    enablePhaseConfig: z.boolean().default(false),
 });
 
 export type HouseRulesData = z.infer<typeof houseRulesSchema>;

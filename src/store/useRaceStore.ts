@@ -158,13 +158,24 @@ export const PRESET_KEY_PREFIX = 'race-store-presets:';
 // CR-SA-19 / 2026-06-06: PERSIST_VERSION 5 → 6 にバンプ。
 // version=5 旧データ（uniqueDiceConfig が旧 5 キー = GambleII / StabilityII 欠落）→ version=6 への
 // 補完を persistMigrate の uniqueDiceConfig ネスト補完で実施（★既存ユーザーデータ保護、下記参照）。
-export const PERSIST_VERSION = 6;
+// CR-SA-17-E1 / 2026-06-06: PERSIST_VERSION 6 → 7 にバンプ。
+// version=6 旧データ（houseRules.enablePhaseConfig 欠落 + config.startPhaseCount / endPhaseCount /
+// pacePosition 欠落）→ version=7 への補完を persistMigrate で実施。enablePhaseConfig は
+// `...DEFAULT_HOUSE_RULES` の浅いマージで透過補完、config 直下 3 フィールドは明示補完
+// （★既存ユーザーデータ保護、下記 persistMigrate 参照）。
+export const PERSIST_VERSION = 7;
 export const RESTORE_ERROR_MESSAGE = '保存データの復元に失敗しました。新規セッションを開始します。';
+
+// CR-SA-17-E1 / 2026-06-06: ペース挿入位置のデフォルト値（houserule-features.md §7.2 / §7.5）。
+// 'Start' = 序盤 1 回構成の最後（唯一）の序盤フェーズ ID。「序盤ブロック直後にペース」= 現行固定構成と一致。
+// 初期 state / persistMigrate（config 欠落補完）の双方で使用。
+export const DEFAULT_PACE_POSITION = 'Start';
 
 // Bundle-7 / 2026-05-10: マイグレーション時の houseRules デフォルト補完値。
 // 下記 create() の初期 state と同一値を保持。新規セッションと旧データ補完で同じ初期値が使われる。
 // Bundle-8-T1 / CR-SA-4 / 2026-05-10: enableBondSkill 追加（5 → 6 フィールド）。
 // CR-SA-15-E1 / 2026-05-14: uniqueDiceConfig 追加（6 → 7 フィールド）。
+// CR-SA-17-E1 / 2026-06-06: enablePhaseConfig 追加（7 → 8 フィールド）。
 export const DEFAULT_HOUSE_RULES: HouseRulesData = {
     enableModifier: false,
     enableSpecialStrategy: false,
@@ -173,6 +184,7 @@ export const DEFAULT_HOUSE_RULES: HouseRulesData = {
     enableBondSkill: false,
     effectValue: 15,
     uniqueDiceConfig: DEFAULT_UNIQUE_DICE_CONFIG,
+    enablePhaseConfig: false,
 };
 
 export const persistPartialize = (state: RaceStoreState): PersistedRaceState => ({
@@ -234,11 +246,26 @@ export const persistMigrate = (persistedState: unknown, version: number): Persis
         );
     }
 
-    const baseConfig = state.config ?? { midPhaseCount: 1, fullGateSize: null };
+    // CR-SA-17-E1 / 2026-06-06: config 自体が欠落する超旧データの fallback にも新 3 フィールドを含める。
+    const baseConfig = state.config ?? {
+        midPhaseCount: 1,
+        fullGateSize: null,
+        startPhaseCount: 1,
+        endPhaseCount: 1,
+        pacePosition: DEFAULT_PACE_POSITION,
+    };
     return {
         ...state,
         config: {
             ...baseConfig,
+            // CR-SA-17-E1 / 2026-06-06: 旧データ（version=6 以前）の config 直下フェーズ構成フィールド欠落補完。
+            // これらは houseRulesSchema 非対象（§7.8 プリセット非対象）のため zod の .default() 経路を通らず、
+            // ここで明示補完しないと undefined のまま残る → version=7 以降での参照で破綻するため明示補完が必須。
+            // 旧データに pacePosition は存在しない（フィールド自体が欠落 = undefined）ため `??` で安全に既定補完できる
+            // （null = ペースなしの明示値が保存されるのは E3 以降・version=7 形式のみで、本マイグレーションは通らない）。
+            startPhaseCount: state.config?.startPhaseCount ?? 1,
+            endPhaseCount: state.config?.endPhaseCount ?? 1,
+            pacePosition: state.config?.pacePosition ?? DEFAULT_PACE_POSITION,
             houseRules: validation.data,
         },
         // CR-SA-16-E1 / 2026-05-15: 旧データ（version=4 以前）の 2 フィールド欠落補完。
@@ -262,6 +289,11 @@ export const useRaceStore = create<RaceStoreState>()(
         (set) => ({
             config: {
                 midPhaseCount: 1,
+                // CR-SA-17-E1 / 2026-06-06: フェーズ構成変更のデフォルト（houserule-features.md §7.2）。
+                // 序盤 1 回 / 終盤 1 回 / ペース = 序盤直後（'Start'）= 現行固定構成。enablePhaseConfig=false（下記）時は不変。
+                startPhaseCount: 1,
+                endPhaseCount: 1,
+                pacePosition: DEFAULT_PACE_POSITION,
                 fullGateSize: null,
                 houseRules: {
                     enableModifier: false,
@@ -276,6 +308,8 @@ export const useRaceStore = create<RaceStoreState>()(
                     // CR-SA-15-E1 / 2026-05-14: 固有スキル設定（houserule-features.md §5）。
                     // DEFAULT_HOUSE_RULES と同一値を保持（新規セッションと旧データ補完で同じ初期値）。
                     uniqueDiceConfig: DEFAULT_UNIQUE_DICE_CONFIG,
+                    // CR-SA-17-E1 / 2026-06-06: フェーズ構成変更ハウスルール ON/OFF（デフォルト false = OFF 透過）。
+                    enablePhaseConfig: false,
                 },
             },
             participants: [],

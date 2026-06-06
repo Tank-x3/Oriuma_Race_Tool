@@ -35,6 +35,10 @@ const installParticipant = (uma: Umamusume) => {
     useRaceStore.setState({
         config: {
             midPhaseCount: 1,
+            // CR-SA-17-E1 / 2026-06-06: 型定義拡張に追従
+            startPhaseCount: 1,
+            endPhaseCount: 1,
+            pacePosition: 'Start',
             fullGateSize: null,
             houseRules: {
                 enableModifier: false,
@@ -45,6 +49,8 @@ const installParticipant = (uma: Umamusume) => {
                 effectValue: 15,
                 // CR-SA-15-E1 / 2026-05-14: houseRules 型厳密化（uniqueDiceConfig 必須）に追従
                 uniqueDiceConfig: DEFAULT_UNIQUE_DICE_CONFIG,
+                // CR-SA-17-E1 / 2026-06-06: 型定義拡張に追従
+                enablePhaseConfig: false,
             },
         },
         participants: [uma],
