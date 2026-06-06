@@ -8,6 +8,7 @@ import {
     PERSIST_VERSION,
     PRESET_KEY_PREFIX,
     RESTORE_ERROR_MESSAGE,
+    DEFAULT_HOUSE_RULES,
     type PersistedRaceState,
 } from './useRaceStore';
 import { useNotificationStore } from './useNotificationStore';
@@ -3232,5 +3233,152 @@ describe('CR-SA-16-E2 Round 2 / 2026-05-15 loadPreset 引数 name 優先', () =>
         // 引数 name（LocalStorage キー末尾）が優先される
         expect(state.appliedPresetName).toBe('実キー名');
         expect(state.isPresetDirty).toBe(false);
+    });
+});
+
+// CR-SA-16-Followup-reset-houserules / 2026-06-06:
+// ハウスルール設定のみをデフォルトへ初期化する resetHouseRules action の検証
+// （modal-houserule.md §5「設定の初期化」/ scene1-setup.md §0-2 状態 ① 基本ルール到達 SSoT）。
+// importHouseRulesConfig と同じ score 再計算経路を使い、houseRules + strategies をデフォルト化 +
+// appliedPresetName=null / isPresetDirty=false へ。participants / midPhaseCount / fullGateSize 等は保持。
+describe('useRaceStore - CR-SA-16-Followup-reset-houserules / 2026-06-06 resetHouseRules action', () => {
+    let mockStorage: ReturnType<typeof createMockLocalStorage>;
+    beforeEach(() => {
+        mockStorage = createMockLocalStorage();
+        vi.stubGlobal('localStorage', mockStorage);
+        useRaceStore.getState().resetRace();
+        resetStrategies();
+    });
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    // (R1) カスタム設定 → 初期化: houseRules / strategies / effectValue / uniqueDiceConfig がデフォルト復帰
+    it('(R1) カスタム houseRules + カスタム脚質 + effectValue≠15 → resetHouseRules でデフォルト復帰', () => {
+        // カスタム脚質を 6 番目として追加（DEFAULT 5 脚質 + 1）
+        const customStrategy: Strategy = {
+            name: 'カスタム脚質X',
+            fixValue: 99,
+            dice: { start: '3d6', mid: '3d6', end: '3d6' },
+            paceModifiers: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0 },
+        };
+        useRaceStore.setState({
+            strategies: [
+                ...DEFAULT_STRATEGIES.map((s) => ({
+                    ...s,
+                    dice: { ...s.dice },
+                    paceModifiers: { ...s.paceModifiers },
+                })),
+                customStrategy,
+            ],
+        });
+        // houseRules フラグ ON + effectValue 変更 + uniqueDiceConfig カスタム化
+        useRaceStore.getState().updateHouseRules({
+            enableModifier: true,
+            enableSpecialStrategy: true,
+            enableExtendedUnique: true,
+            effectValue: 25,
+            uniqueDiceConfig: {
+                ...DEFAULT_UNIQUE_DICE_CONFIG,
+                Stability: { fixValue: 12, diceStr: '2d10' },
+            },
+        });
+        // 事前条件確認（カスタム化されていること）
+        expect(useRaceStore.getState().strategies).toHaveLength(DEFAULT_STRATEGIES.length + 1);
+        expect(useRaceStore.getState().config.houseRules.effectValue).toBe(25);
+        expect(useRaceStore.getState().config.houseRules.enableModifier).toBe(true);
+
+        useRaceStore.getState().resetHouseRules();
+
+        const state = useRaceStore.getState();
+        // houseRules 全体がデフォルト（effectValue=15 + uniqueDiceConfig=DEFAULT を内包）
+        expect(state.config.houseRules).toEqual(DEFAULT_HOUSE_RULES);
+        expect(state.config.houseRules.effectValue).toBe(15);
+        expect(state.config.houseRules.uniqueDiceConfig).toEqual(DEFAULT_UNIQUE_DICE_CONFIG);
+        // strategies はデフォルト 5 脚質に戻る（カスタム脚質X 消滅）
+        expect(state.strategies).toHaveLength(DEFAULT_STRATEGIES.length);
+        expect(state.strategies.map((s) => s.name)).toEqual(DEFAULT_STRATEGIES.map((s) => s.name));
+    });
+
+    // (R2) プリセット名 / dirty が初期化後に null / false（状態 ① 基本ルール到達）
+    it('(R2) appliedPresetName / isPresetDirty が初期化後に null / false へ', () => {
+        useRaceStore.setState({ appliedPresetName: 'マイ設定', isPresetDirty: true });
+        expect(useRaceStore.getState().appliedPresetName).toBe('マイ設定');
+
+        useRaceStore.getState().resetHouseRules();
+
+        const state = useRaceStore.getState();
+        expect(state.appliedPresetName).toBeNull();
+        expect(state.isPresetDirty).toBe(false);
+    });
+
+    // (R3) 初期化対象外（保持）: 出走者リスト・名前・脚質・history / midPhaseCount / fullGateSize
+    it('(R3) 出走者リスト・中盤回数・フルゲート人数は初期化対象外（保持）', () => {
+        const umaA = setupParticipant({
+            id: 'a',
+            name: 'アルファ',
+            strategy: '先行',
+            history: {
+                Mid1: { baseDice: makeDice('3d8', [1, 2, 3]), computedScore: 0 },
+            },
+        });
+        const umaB = setupParticipant({ id: 'b', name: 'ベータ', strategy: '差し' });
+        useRaceStore.setState({
+            participants: [umaA, umaB],
+            config: {
+                midPhaseCount: 3,
+                fullGateSize: 12,
+                houseRules: { ...DEFAULT_HOUSE_RULES },
+            },
+        });
+
+        useRaceStore.getState().resetHouseRules();
+
+        const state = useRaceStore.getState();
+        // participants リスト自体・名前・脚質・history は保持される
+        expect(state.participants).toHaveLength(2);
+        expect(state.participants.map((p) => p.name)).toEqual(['アルファ', 'ベータ']);
+        expect(state.participants.map((p) => p.strategy)).toEqual(['先行', '差し']);
+        expect(state.participants[0].history).toHaveProperty('Mid1');
+        // midPhaseCount / fullGateSize は不変
+        expect(state.config.midPhaseCount).toBe(3);
+        expect(state.config.fullGateSize).toBe(12);
+    });
+
+    // (R4) 全 participants の score がデフォルト houseRules / strategies で再計算される
+    // （P4 = importHouseRulesConfig で Stability fixValue 5→12 = +7 の対称ケース、reset で 12→5 = -7）
+    it('(R4) 全 participants の score がデフォルト houseRules / strategies で再計算される', () => {
+        const uma: Umamusume = {
+            id: 'p1',
+            entryIndex: 1,
+            name: 'Test',
+            strategy: '先行',
+            uniqueSkill: { type: 'Stability', phases: ['Start'] },
+            gate: 1,
+            score: 0,
+            history: {
+                Start: {
+                    baseDice: makeDice('3d8', [3, 4, 3]),
+                    uniqueDice: makeDice('1d10', [8]),
+                    computedScore: 0,
+                },
+            },
+        };
+        useRaceStore.setState({ participants: [uma] });
+        useRaceStore.getState().setMidPhaseCount(1);
+        // カスタム uniqueDiceConfig（安定型固定値 5 → 12）を適用し score を底上げ
+        useRaceStore.getState().updateHouseRules({
+            uniqueDiceConfig: {
+                ...DEFAULT_UNIQUE_DICE_CONFIG,
+                Stability: { fixValue: 12, diceStr: '1d10' },
+            },
+        });
+        const scoreBefore = useRaceStore.getState().participants[0].score;
+
+        useRaceStore.getState().resetHouseRules();
+        const scoreAfter = useRaceStore.getState().participants[0].score;
+
+        // デフォルト安定型固定値 5 に戻るため差分 -7（固定値 12 → 5）
+        expect(scoreBefore - scoreAfter).toBe(7);
     });
 });

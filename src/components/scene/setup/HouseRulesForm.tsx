@@ -5,8 +5,9 @@
 // CR-SA-15-E3 / 2026-05-15: 「🎲 固有スキル設定」ボタン追加（modal-houserule.md §4 ワイヤーフレーム）。
 // CR-SA-16-E2 / 2026-05-15: ヘッダー右側に適用中プリセット名表示を追加（scene1-setup.md §0-2 状態 4 種）。
 // CR-SA-16-E3 / 2026-05-15: ヘッダー左側を折りたたみトグルボタン化（scene1-setup.md §0-1、初期 = 折りたたみ）。
-import React, { Fragment, useState } from 'react';
-import { ChevronDown, ChevronRight, Dices, Layers, Save, SlidersHorizontal } from 'lucide-react';
+import React, { Fragment, useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { ChevronDown, ChevronRight, Dices, Layers, RotateCcw, Save, SlidersHorizontal } from 'lucide-react';
 import { useRaceStore } from '../../../store/useRaceStore';
 import {
     getHouseRuleCheckboxes,
@@ -21,7 +22,7 @@ import { UniqueSkillEditorModal } from './UniqueSkillEditorModal';
 import { getAppliedPresetStatus } from './appliedPresetStatus.helpers';
 
 export const HouseRulesForm: React.FC = () => {
-    const { config, updateHouseRules, strategies, appliedPresetName, isPresetDirty } = useRaceStore();
+    const { config, updateHouseRules, resetHouseRules, strategies, appliedPresetName, isPresetDirty } = useRaceStore();
     const houseRules = config.houseRules;
     const checkboxes = getHouseRuleCheckboxes();
     // CR-SA-16-E2 / 2026-05-15: 4 状態判定（scene1-setup.md §0-2）。
@@ -48,6 +49,9 @@ export const HouseRulesForm: React.FC = () => {
     // scene1-setup.md §0-1「折りたたみ動作」SSoT、初期 = 折りたたみ（Progressive Disclosure 原則）
     // 永続化対象外（コンポーネントローカル state、リロードで初期状態 = 折りたたみに戻る）
     const [isCollapsed, setIsCollapsed] = useState<boolean>(true);
+    // CR-SA-16-Followup-reset-houserules / 2026-06-06: ハウスルール設定初期化の確認ダイアログ開閉状態
+    // （modal-houserule.md §5、破壊的アクションのため確認ダイアログ必須）。
+    const [resetConfirmOpen, setResetConfirmOpen] = useState<boolean>(false);
 
     const handleCheckboxChange = (key: ReturnType<typeof getHouseRuleCheckboxes>[number]['key']) =>
         (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -196,6 +200,19 @@ export const HouseRulesForm: React.FC = () => {
                     <Save className="w-4 h-4" />
                     💾 設定の保存・読込
                 </button>
+                {/* CR-SA-16-Followup-reset-houserules / 2026-06-06: ハウスルール設定のみをデフォルトへ初期化する
+                    4 つ目の導線（modal-houserule.md §5 / §1 ワイヤーフレーム L42-52）。破壊的アクションのため
+                    確認ダイアログ必須 + 控えめな warning 系（amber）配色で他 3 ボタンと視覚的に区別する。 */}
+                <button
+                    type="button"
+                    onClick={() => setResetConfirmOpen(true)}
+                    aria-haspopup="dialog"
+                    aria-expanded={resetConfirmOpen}
+                    className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/30 hover:bg-amber-100 dark:hover:bg-amber-900/50 border border-amber-200 dark:border-amber-800 rounded-lg transition-colors"
+                >
+                    <RotateCcw className="w-4 h-4" />
+                    ♻️ 設定をデフォルトに戻す
+                </button>
             </div>
                 </>
             )}
@@ -214,6 +231,90 @@ export const HouseRulesForm: React.FC = () => {
             {presetManagerOpen && (
                 <PresetManagerModal onClose={() => setPresetManagerOpen(false)} />
             )}
+            {/* CR-SA-16-Followup-reset-houserules / 2026-06-06: 初期化確認ダイアログ（採用案 b 局所配置）。
+                折りたたみ body の外側に置き、承認時のみ resetHouseRules を実行する。 */}
+            {resetConfirmOpen && (
+                <HouseRulesResetConfirmDialog
+                    onConfirm={() => {
+                        resetHouseRules();
+                        setResetConfirmOpen(false);
+                    }}
+                    onCancel={() => setResetConfirmOpen(false)}
+                />
+            )}
         </div>
+    );
+};
+
+// ===== 確認ダイアログ（ハウスルール設定初期化） =====
+// CR-SA-16-Followup-reset-houserules / 2026-06-06: 採用案 b（局所複製）。
+// 既存の PresetManagerModal 内 ConfirmDialog / StrategyEditorModal と同じく「各 UI が自前の確認ダイアログを
+// 保持する」既存慣例に揃える（PresetManagerModal を不変に保ち、その既存テストへの影響をゼロにする選択）。
+// createPortal + role="alertdialog" + aria-modal で modal-houserule.md ℹ️ Confirmations の
+// 「プリセット読込時の既存確認ダイアログと同パターン」要件（アプリ内モーダル・ダーク対応）を満たす。
+// 文言「現在のハウスルール設定が失われます。デフォルトに戻しますか？」は modal-houserule.md ℹ️ Confirmations SSoT。
+interface HouseRulesResetConfirmDialogProps {
+    onConfirm: () => void;
+    onCancel: () => void;
+}
+
+const HouseRulesResetConfirmDialog: React.FC<HouseRulesResetConfirmDialogProps> = ({
+    onConfirm,
+    onCancel,
+}) => {
+    // Escape キーでキャンセル（PresetManagerModal の確認ダイアログ Escape 挙動に揃える）。
+    useEffect(() => {
+        const handleKey = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') onCancel();
+        };
+        window.addEventListener('keydown', handleKey);
+        return () => window.removeEventListener('keydown', handleKey);
+    }, [onCancel]);
+
+    return createPortal(
+        <div
+            className="fixed inset-0 z-[60] bg-black/70 flex items-center justify-center p-4"
+            onClick={onCancel}
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="house-rules-reset-confirm-title"
+        >
+            <div
+                className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl w-full max-w-md p-6 space-y-4"
+                onClick={(e) => e.stopPropagation()}
+            >
+                <div className="border-b border-slate-200 dark:border-slate-700 pb-3">
+                    <h4
+                        id="house-rules-reset-confirm-title"
+                        className="text-base font-display font-bold text-slate-900 dark:text-white"
+                    >
+                        設定の初期化
+                    </h4>
+                </div>
+
+                <p className="text-sm text-slate-700 dark:text-slate-200 leading-relaxed">
+                    現在のハウスルール設定が失われます。デフォルトに戻しますか？
+                </p>
+
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200 dark:border-slate-700">
+                    <button
+                        type="button"
+                        onClick={onCancel}
+                        className="px-3 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
+                    >
+                        キャンセル
+                    </button>
+                    <button
+                        type="button"
+                        onClick={onConfirm}
+                        autoFocus
+                        className="px-4 py-2 text-sm font-bold bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors"
+                    >
+                        デフォルトに戻す
+                    </button>
+                </div>
+            </div>
+        </div>,
+        document.body,
     );
 };

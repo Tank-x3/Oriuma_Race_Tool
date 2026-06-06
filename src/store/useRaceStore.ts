@@ -120,6 +120,9 @@ interface RaceStoreState extends RaceState {
     moveToResult: () => void;
     moveToSetup: () => void;
     resetRace: () => void;
+    // CR-SA-16-Followup-reset-houserules / 2026-06-06: ハウスルール設定のみをデフォルトへ初期化する action
+    // （modal-houserule.md §5 SSoT）。resetRace（新規レース）とは独立。出走者・中盤回数等は保持する。
+    resetHouseRules: () => void;
 }
 
 // CR-5a: localStorage に永続化される state の形。
@@ -760,6 +763,36 @@ export const useRaceStore = create<RaceStoreState>()(
                                 state.paceResult.face,
                                 activePhaseIds,
                                 config.houseRules,
+                            ),
+                        })),
+                    };
+                }),
+
+            // CR-SA-16-Followup-reset-houserules / 2026-06-06: ハウスルール設定のみをデフォルトへ初期化する。
+            // resetRace（新規レース）は拡張せず独立 action とする（既存利用箇所〔リセットボタン / 戻る操作 /
+            // 中盤回数変更〕への影響回避、modal-houserule.md §5 SSoT）。importHouseRulesConfig と同じ
+            // score 再計算経路を使い、houseRules + strategies をデフォルト化 + appliedPresetName=null /
+            // isPresetDirty=false で状態 ① 基本ルールへ到達する（scene1-setup.md §0-2）。
+            // 初期化対象外（保持）: participants リスト・名前・脚質・固有・history / config.midPhaseCount /
+            // config.fullGateSize / currentPhaseId / paceResult / gateAssignments / uiState。
+            // strategies=STRATEGIES の直接代入は create() 初期 state と同一の慣例（更新系 action は新配列生成）。
+            resetHouseRules: () =>
+                set((state) => {
+                    const newConfig = { ...state.config, houseRules: DEFAULT_HOUSE_RULES };
+                    const activePhaseIds = getActivePhaseIds(state.config.midPhaseCount);
+                    return {
+                        config: newConfig,
+                        strategies: STRATEGIES,
+                        appliedPresetName: null,
+                        isPresetDirty: false,
+                        participants: state.participants.map((p) => ({
+                            ...p,
+                            score: calculateScoreWithBondSkill(
+                                p,
+                                STRATEGIES,
+                                state.paceResult.face,
+                                activePhaseIds,
+                                DEFAULT_HOUSE_RULES,
                             ),
                         })),
                     };
