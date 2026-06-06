@@ -25,15 +25,23 @@ export const uniqueDiceEntrySchema = z.object({
     diceStr: z.string().regex(/^\d+d\d+$/),
 });
 
-// CR-SA-15-E1 / 2026-05-14: 固有スキル 5 タイプすべてのキーを明示した object スキーマ
-// （houserule-features.md §4「固有スキル 5 タイプすべてのキーを持つ」= 5 キー必須）。
+// CR-SA-15-E1 / 2026-05-14: 固有スキルの全タイプのキーを明示した object スキーマ
+// （houserule-features.md §4「固有スキル全タイプのキーを持つ」= 全キー必須）。
 // z.record ではキー欠落を検出できないため、明示 object 方式を採用する。
+// CR-SA-19 / 2026-06-06: ギャンブル型Ⅱ（GambleII）/ 安定型Ⅱ（StabilityII）を追加（5 → 7 キー）。
+// 新 2 キーのみ uniqueDiceEntrySchema.default(...) を付与し、旧 5 キー（CR-SA-15/16 期）のみの
+// 保存データ・JSON プリセットを「不足 2 キーをデフォルト補完して受理」する後方互換とする
+// （houserule-features.md §5.4 SSoT。CR-SA-15-E4「欠落キーのデフォルト補完」方針を 7 キーに拡張）。
+// 旧 5 キーのうちいずれかが欠落した不揃いデータ（例: Stability 欠落の 4 キー）は、旧 5 キーが
+// 必須のままのため従来どおり検証失敗で拒否される（CR-SA-15-E4 の「不完全構造の拒否」方針を維持）。
 export const uniqueDiceConfigSchema = z.object({
     Stability: uniqueDiceEntrySchema,
     Gamble: uniqueDiceEntrySchema,
     Persistent: uniqueDiceEntrySchema,
     SuperGamble: uniqueDiceEntrySchema,
     SuperStability: uniqueDiceEntrySchema,
+    GambleII: uniqueDiceEntrySchema.default(DEFAULT_UNIQUE_DICE_CONFIG.GambleII),
+    StabilityII: uniqueDiceEntrySchema.default(DEFAULT_UNIQUE_DICE_CONFIG.StabilityII),
 });
 
 // Bundle-7 / 2026-05-10: houserule-features.md §4 zod 検証範囲表

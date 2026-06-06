@@ -265,16 +265,35 @@ describe('CR-SA-15-E1 / 2026-05-14 uniqueDiceConfig schema', () => {
     });
 
     describe('uniqueDiceConfigSchema', () => {
-        it('(v) 固有スキル 5 タイプすべてのキー揃いで success', () => {
+        // CR-SA-19 / 2026-06-06: 5 → 7 タイプ
+        it('(v) 固有スキル 7 タイプすべてのキー揃いで success', () => {
             const result = uniqueDiceConfigSchema.safeParse(DEFAULT_UNIQUE_DICE_CONFIG);
             expect(result.success).toBe(true);
         });
 
-        it('(vi) 1 キー欠落（SuperStability なし）で failure', () => {
+        it('(vi) 旧必須キー欠落（SuperStability なし）で failure', () => {
             const { SuperStability: _omit, ...incomplete } = DEFAULT_UNIQUE_DICE_CONFIG;
             void _omit;
             const result = uniqueDiceConfigSchema.safeParse(incomplete);
             expect(result.success).toBe(false);
+        });
+
+        // CR-SA-19 / 2026-06-06: 旧 5 キー（GambleII / StabilityII 欠落）→ 新 2 キー .default() 補完で success
+        // （houserule-features.md §5.4 後方互換 SSoT。旧必須 5 キーのカスタム値は保持される）。
+        it('(vi-2) 旧 5 キー（GambleII / StabilityII 欠落）は新 2 キーがデフォルト補完されて success', () => {
+            const { GambleII: _g, StabilityII: _s, ...fiveKeys } = DEFAULT_UNIQUE_DICE_CONFIG;
+            void _g;
+            void _s;
+            const customFiveKeys = { ...fiveKeys, Stability: { fixValue: 7, diceStr: '1d11' } };
+            const result = uniqueDiceConfigSchema.safeParse(customFiveKeys);
+            expect(result.success).toBe(true);
+            if (result.success) {
+                // 旧キーのカスタム値保持
+                expect(result.data.Stability).toEqual({ fixValue: 7, diceStr: '1d11' });
+                // 新 2 キーはデフォルト補完
+                expect(result.data.GambleII).toEqual(DEFAULT_UNIQUE_DICE_CONFIG.GambleII);
+                expect(result.data.StabilityII).toEqual(DEFAULT_UNIQUE_DICE_CONFIG.StabilityII);
+            }
         });
     });
 

@@ -466,7 +466,8 @@ describe('CR-5a: zustand persist 設定', () => {
         // Bundle-8-T1 / CR-SA-4 / 2026-05-10: 2 → 3 にバンプ
         // CR-SA-15-E1 / 2026-05-14: 3 → 4 にバンプ
         // CR-SA-16-E1 / 2026-05-15: 4 → 5 にバンプ（§4 案 X1 = 期待値追加は DoD 内対応）
-        expect(PERSIST_VERSION).toBe(5);
+        // CR-SA-19 / 2026-06-06: 5 → 6 にバンプ（uniqueDiceConfig 旧 5 キー → 新 7 キー補完）
+        expect(PERSIST_VERSION).toBe(6);
         expect(PERSIST_NAME).toBe('race-store');
     });
 
@@ -1796,6 +1797,54 @@ describe('useRaceStore.persistMigrate - Bundle-8-T1 / v2→v3 マイグレーシ
 
         expect(() => persistMigrate(v2Invalid, 2)).toThrow();
     });
+
+    // (v) CR-SA-19 / 2026-06-06 ★最重要: v5 旧データ（uniqueDiceConfig が旧 5 キー = GambleII / StabilityII 欠落）
+    // → persistMigrate の uniqueDiceConfig ネスト補完で 7 キーに復元される（既存ユーザーデータ保護）。
+    // 浅いマージのままだと旧 5 キーが新 7 キーのデフォルトを完全上書きし、新 2 キー欠落 → 7 キー必須スキーマで
+    // 検証失敗 → 全保存データリセットとなる。ネスト補完により旧 5 キーのカスタム値を保持しつつ新 2 キーをデフォルト補完する。
+    it('(v) v5 旧データ → uniqueDiceConfig 旧 5 キーのカスタム値保持 + 新 2 キーデフォルト補完で検証成功通過', () => {
+        const v5Persisted = {
+            config: {
+                midPhaseCount: 2,
+                fullGateSize: 18,
+                houseRules: {
+                    enableModifier: false,
+                    enableSpecialStrategy: true,
+                    enableCompositeUnique: false,
+                    enableExtendedUnique: true,
+                    enableBondSkill: false,
+                    effectValue: 20,
+                    // 旧 5 キー（CR-SA-15/16 期）= GambleII / StabilityII 欠落、Stability はカスタム値
+                    uniqueDiceConfig: {
+                        Stability: { fixValue: 7, diceStr: '1d11' }, // カスタム値（保持されること）
+                        Gamble: { fixValue: 0, diceStr: '1d20' },
+                        Persistent: { fixValue: 0, diceStr: '1d10' },
+                        SuperGamble: { fixValue: -10, diceStr: '1d35' },
+                        SuperStability: { fixValue: 8, diceStr: '1d3' },
+                    },
+                },
+            },
+            participants: [],
+            currentPhaseId: 'Start',
+            paceResult: { face: 5, label: 'Slow' },
+            strategies: [],
+            gateAssignments: null,
+            uiState: { scene: 'race' },
+        } as unknown as PersistedRaceState;
+
+        const result = persistMigrate(v5Persisted, 5);
+        const cfg = result.config.houseRules.uniqueDiceConfig;
+        // 旧 5 キーのカスタム値は保持される
+        expect(cfg.Stability).toEqual({ fixValue: 7, diceStr: '1d11' });
+        expect(cfg.SuperGamble).toEqual({ fixValue: -10, diceStr: '1d35' });
+        // 新 2 キーはデフォルト値で補完される
+        expect(cfg.GambleII).toEqual(DEFAULT_UNIQUE_DICE_CONFIG.GambleII);
+        expect(cfg.StabilityII).toEqual(DEFAULT_UNIQUE_DICE_CONFIG.StabilityII);
+        // 結果として 7 キー揃う（検証成功 = リセットされない）
+        expect(Object.keys(cfg).sort()).toEqual(
+            ['Gamble', 'Persistent', 'Stability', 'SuperGamble', 'SuperStability', 'GambleII', 'StabilityII'].sort(),
+        );
+    });
 });
 
 // Bundle-8-T6 / CR-SA-4 / 2026-05-10: 絆スキル スコア最終加算のストア統合テスト。
@@ -2665,12 +2714,15 @@ describe('CR-SA-15-E4 / 2026-05-15 uniqueDiceConfig JSON I/O', () => {
     });
 
     // ユーザーリクエスト由来の代表的なカスタム値（DEFAULT と明確に差分が出る組合せ）
+    // CR-SA-19 / 2026-06-06: ギャンブル型Ⅱ / 安定型Ⅱ 追加で 5 → 7 キー（現行実態に追従）。
     const customUniqueDiceConfig = {
         Stability: { fixValue: 7, diceStr: '1d11' },
         Gamble: { fixValue: 3, diceStr: '1d24' },
         Persistent: { fixValue: 2, diceStr: '1d12' },
         SuperGamble: { fixValue: -5, diceStr: '1d20' },
         SuperStability: { fixValue: 10, diceStr: '1d4' },
+        GambleII: { fixValue: -15, diceStr: '1d40' },
+        StabilityII: { fixValue: 1, diceStr: '2d6' },
     };
 
     // (P1) savePreset → loadPreset 経路でカスタム uniqueDiceConfig が往復復元される
@@ -2702,9 +2754,9 @@ describe('CR-SA-15-E4 / 2026-05-15 uniqueDiceConfig JSON I/O', () => {
         expect(raw).not.toBeNull();
         const parsed = JSON.parse(raw as string);
         expect(parsed.houseRules.uniqueDiceConfig).toEqual(customUniqueDiceConfig);
-        // 5 キー揃っていること
+        // CR-SA-19 / 2026-06-06: 7 キー揃っていること
         expect(Object.keys(parsed.houseRules.uniqueDiceConfig).sort()).toEqual(
-            ['Gamble', 'Persistent', 'Stability', 'SuperGamble', 'SuperStability'].sort(),
+            ['Gamble', 'Persistent', 'Stability', 'SuperGamble', 'SuperStability', 'GambleII', 'StabilityII'].sort(),
         );
     });
 
@@ -3147,9 +3199,10 @@ describe('CR-SA-16-E1 / 2026-05-15 appliedPresetName + isPresetDirty', () => {
         expect(migrated.isPresetDirty).toBe(false);
     });
 
-    // (S18) PERSIST_VERSION === 5（バンプの構造的証跡）
-    it('(S18) PERSIST_VERSION === 5', () => {
-        expect(PERSIST_VERSION).toBe(5);
+    // (S18) PERSIST_VERSION === 6（バンプの構造的証跡）
+    // CR-SA-19 / 2026-06-06: 5 → 6（uniqueDiceConfig 旧 5 キー → 新 7 キー補完）
+    it('(S18) PERSIST_VERSION === 6', () => {
+        expect(PERSIST_VERSION).toBe(6);
     });
 });
 

@@ -251,6 +251,45 @@ describe('Calculator', () => {
             // Fix 10 + Start 9 = 19 (Start は phases に含まれないので unique 無視)
             expect(score).toBe(19);
         });
+
+        // CR-SA-19 / 2026-06-06: ギャンブル型Ⅱ（fixValue -20 + 1d45）の固定値加算（uniqueDiceConfig 参照経路）
+        it('adds GambleII (-20 + diceSum) when phase matches', () => {
+            // 先行 (Fix 10), Start dice 9, GambleII 1d45 → 25
+            const startDice = { diceStr: '3d5', values: [3, 3, 3], sum: 9 };
+            const uniqueDice = { diceStr: '1d45', values: [25], sum: 25 };
+
+            const uma: Umamusume = {
+                ...mockUma,
+                uniqueSkill: { type: 'GambleII', phases: ['Start'] },
+                history: {
+                    'Start': { baseDice: startDice, uniqueDice: uniqueDice, computedScore: 0 }
+                }
+            };
+
+            const score = Calculator.calculateTotalScore(uma, DEFAULT_STRATEGIES, null);
+            // Fix 10 + Start 9 + Unique (-20 + 25) = 24
+            expect(score).toBe(24);
+        });
+
+        // CR-SA-19 / 2026-06-06 ★複数ダイス合算の核心: 安定型Ⅱ（fixValue 0 + 2d7）。
+        // 固有スキル初の複数ダイス（count >= 2）。uniqueDice.sum が 2 個出目の合算（3+5=8）であることを検証。
+        it('adds StabilityII (0 + 複数ダイス sum) and sums 2 dice values correctly', () => {
+            // 先行 (Fix 10), Start dice 9, StabilityII 2d7 → [3, 5] sum 8
+            const startDice = { diceStr: '3d5', values: [3, 3, 3], sum: 9 };
+            const uniqueDice = { diceStr: '2d7', values: [3, 5], sum: 8 };
+
+            const uma: Umamusume = {
+                ...mockUma,
+                uniqueSkill: { type: 'StabilityII', phases: ['Start'] },
+                history: {
+                    'Start': { baseDice: startDice, uniqueDice: uniqueDice, computedScore: 0 }
+                }
+            };
+
+            const score = Calculator.calculateTotalScore(uma, DEFAULT_STRATEGIES, null);
+            // Fix 10 + Start 9 + Unique (0 + 8) = 27（2 個出目 3+5 が合算されて加算される）
+            expect(score).toBe(27);
+        });
     });
 
     it('adds Unique Skill bonus if activated', () => {

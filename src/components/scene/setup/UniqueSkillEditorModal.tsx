@@ -161,7 +161,7 @@ export const UniqueSkillEditorModal: React.FC<UniqueSkillEditorModalProps> = ({
                             <>※ 持続型の行は「複合固有スキル(発動位置複数選択)を許可」ON 時のみ表示されます。<br /></>
                         )}
                         {!enableExtendedUnique && (
-                            <>※ 超ギャンブル / 超安定 の行は「拡張固有タイプを使用」ON 時のみ表示されます。</>
+                            <>※ 超ギャンブル / 超安定 / ギャンブル型Ⅱ / 安定型Ⅱ の行は「拡張固有タイプを使用」ON 時のみ表示されます。</>
                         )}
                     </p>
                 )}

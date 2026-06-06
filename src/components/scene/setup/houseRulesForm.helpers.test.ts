@@ -28,7 +28,8 @@ describe('Bundle-9 / 2026-05-10 getHouseRuleCheckboxes', () => {
         expect(labels.enableModifier).toBe('汎用補正(Modifier)ボタンを表示');
         expect(labels.enableSpecialStrategy).toBe('特殊戦法(ステータス変化: 捲り/溜め)を使用');
         expect(labels.enableCompositeUnique).toBe('複合固有スキル(発動位置複数選択)を許可');
-        expect(labels.enableExtendedUnique).toBe('拡張固有タイプ(超ギャンブル/超安定)を使用');
+        // CR-SA-19 / 2026-06-06: ラベル括弧内に 4 タイプ明示
+        expect(labels.enableExtendedUnique).toBe('拡張固有タイプ(超ギャンブル/超安定/ギャンブル型Ⅱ/安定型Ⅱ)を使用');
         expect(labels.enableBondSkill).toBe('絆スキル(連続企画用 絆ギャンブル/絆安定)を使用');
     });
 });

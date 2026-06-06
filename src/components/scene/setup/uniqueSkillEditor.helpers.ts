@@ -7,27 +7,39 @@ import type { UniqueSkillType, UniqueDiceConfig, UniqueDiceEntry } from '../../.
 import { DEFAULT_UNIQUE_DICE_CONFIG } from '../../../core/strategies';
 import { getUniqueDiceFormula } from '../race/phaseOutput.helpers';
 
-// 固有スキル 5 タイプの表示名（modal-houserule.md §4 ワイヤーフレーム準拠、編集対象外）。
+// 固有スキル 7 タイプの表示名（modal-houserule.md §4 ワイヤーフレーム準拠、編集対象外）。
 // houserule-features.md §5.2「表示名は編集不可」= 固有タイプ識別子に紐づく固定値。
+// CR-SA-19 / 2026-06-06: ギャンブル型Ⅱ / 安定型Ⅱ を追加（Record<UniqueSkillType,...> の網羅強制で機械的）。
 export const UNIQUE_SKILL_TYPE_LABELS: Record<UniqueSkillType, string> = {
     Stability: '安定型',
     Gamble: 'ギャンブル型',
     Persistent: '持続型',
     SuperGamble: '超ギャンブル',
     SuperStability: '超安定',
+    GambleII: 'ギャンブル型Ⅱ',
+    StabilityII: '安定型Ⅱ',
 };
 
-// 固有スキル 5 タイプの表示順（modal-houserule.md §4 ワイヤーフレーム L93-97 の並び）。
+// 固有スキル 7 タイプの表示順（modal-houserule.md §4 テーブル L100-104 の並び）。
+// CR-SA-19 / 2026-06-06: 超安定の後に ギャンブル型Ⅱ → 安定型Ⅱ を末尾追加。
 const ALL_UNIQUE_SKILL_TYPES_ORDER: UniqueSkillType[] = [
     'Stability',
     'Gamble',
     'Persistent',
     'SuperGamble',
     'SuperStability',
+    'GambleII',
+    'StabilityII',
 ];
 
-// 拡張固有タイプ（enableExtendedUnique ON 時のみ表示する 2 タイプ）。
-const EXTENDED_UNIQUE_SKILL_TYPES: UniqueSkillType[] = ['SuperGamble', 'SuperStability'];
+// 拡張固有タイプ（enableExtendedUnique ON 時のみ表示する 4 タイプ）。
+// CR-SA-19 / 2026-06-06: ギャンブル型Ⅱ / 安定型Ⅱ も enableExtendedUnique 共用（専用トグルなし）。
+const EXTENDED_UNIQUE_SKILL_TYPES: UniqueSkillType[] = [
+    'SuperGamble',
+    'SuperStability',
+    'GambleII',
+    'StabilityII',
+];
 
 // 複合固有スキル連動の固有タイプ（enableCompositeUnique ON 時のみ表示する 1 タイプ）。
 // entryForm.helpers.ts getUniqueSkillTypeOptions の挙動と整合させる
@@ -42,13 +54,14 @@ const COMPOSITE_UNIQUE_SKILL_TYPES: UniqueSkillType[] = ['Persistent'];
  *
  * - `enableExtendedUnique` OFF + `enableCompositeUnique` OFF → 安定型 / ギャンブル型（2 種）
  * - `enableExtendedUnique` OFF + `enableCompositeUnique` ON  → 安定型 / ギャンブル型 / 持続型（3 種）
- * - `enableExtendedUnique` ON  + `enableCompositeUnique` OFF → 安定型 / ギャンブル型 / 超ギャンブル / 超安定（4 種）
- * - `enableExtendedUnique` ON  + `enableCompositeUnique` ON  → 5 種すべて
+ * - `enableExtendedUnique` ON  + `enableCompositeUnique` OFF → 安定型 / ギャンブル型 / 超ギャンブル / 超安定 / ギャンブル型Ⅱ / 安定型Ⅱ（6 種）
+ * - `enableExtendedUnique` ON  + `enableCompositeUnique` ON  → 7 種すべて
  *
- * 表示順: 安定型 → ギャンブル型 → (持続型) → (超ギャンブル) → (超安定)
+ * 表示順: 安定型 → ギャンブル型 → (持続型) → (超ギャンブル) → (超安定) → (ギャンブル型Ⅱ) → (安定型Ⅱ)
  *
- * 表示の絞り込みのみ。`uniqueDiceConfig` のデータは OFF 時も 5 タイプ分を保持する
+ * 表示の絞り込みのみ。`uniqueDiceConfig` のデータは OFF 時も 7 タイプ分を保持する
  * （houserule-features.md §5.6 Progressive Disclosure 原則）。
+ * CR-SA-19 / 2026-06-06: 拡張固有タイプに ギャンブル型Ⅱ / 安定型Ⅱ を追加（5 → 7 タイプ）。
  */
 export function getVisibleUniqueSkillTypes(
     enableExtendedUnique: boolean,

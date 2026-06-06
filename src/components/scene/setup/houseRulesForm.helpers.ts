@@ -23,7 +23,8 @@ export const getHouseRuleCheckboxes = (): HouseRuleCheckboxMeta[] => [
     { key: 'enableModifier', label: '汎用補正(Modifier)ボタンを表示', order: 1 },
     { key: 'enableSpecialStrategy', label: '特殊戦法(ステータス変化: 捲り/溜め)を使用', order: 2 },
     { key: 'enableCompositeUnique', label: '複合固有スキル(発動位置複数選択)を許可', order: 3 },
-    { key: 'enableExtendedUnique', label: '拡張固有タイプ(超ギャンブル/超安定)を使用', order: 4 },
+    // CR-SA-19 / 2026-06-06: ギャンブル型Ⅱ / 安定型Ⅱ 追加に伴い、ラベル括弧内に 4 タイプを明示（観察事項 A 解消、ユーザー承認済）。
+    { key: 'enableExtendedUnique', label: '拡張固有タイプ(超ギャンブル/超安定/ギャンブル型Ⅱ/安定型Ⅱ)を使用', order: 4 },
     { key: 'enableBondSkill', label: '絆スキル(連続企画用 絆ギャンブル/絆安定)を使用', order: 5 },
 ];
 

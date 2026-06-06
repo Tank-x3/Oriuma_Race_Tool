@@ -73,7 +73,10 @@ export const GateScene: React.FC = () => {
             'Persistent': '持続',
             // Bundle-2 / D-1, D-14 / 2026-05-09: 拡張固有タイプの日本語ラベル追加
             'SuperGamble': '超ギャンブル',
-            'SuperStability': '超安定'
+            'SuperStability': '超安定',
+            // CR-SA-19 / 2026-06-06: ギャンブル型Ⅱ / 安定型Ⅱ の日本語ラベル追加（網羅漏れ補完）
+            'GambleII': 'ギャンブルⅡ',
+            'StabilityII': '安定Ⅱ'
         };
         const phaseMap: Record<string, string> = {
             'Start': '序盤',

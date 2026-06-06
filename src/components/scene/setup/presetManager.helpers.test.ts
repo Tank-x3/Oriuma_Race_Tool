@@ -123,12 +123,15 @@ describe('buildExportFilename - Bundle-11-T2', () => {
 // `serializeHouseRulesConfig` / `deserializeAndValidate` を通じて期待どおりに動作することの構造的証跡。
 describe('uniqueDiceConfig - CR-SA-15-E4', () => {
     // ユーザーリクエスト由来の代表的なカスタム値（ハウスルール郡の安定型 5+1d11 運用相当）
+    // CR-SA-19 / 2026-06-06: ギャンブル型Ⅱ / 安定型Ⅱ 追加で 5 → 7 キー（現行実態に追従）。
     const customUniqueDiceConfig = {
         Stability: { fixValue: 7, diceStr: '1d11' },
         Gamble: { fixValue: 3, diceStr: '1d24' },
         Persistent: { fixValue: 2, diceStr: '1d12' },
         SuperGamble: { fixValue: -5, diceStr: '1d20' },
         SuperStability: { fixValue: 10, diceStr: '1d4' },
+        GambleII: { fixValue: -15, diceStr: '1d40' },
+        StabilityII: { fixValue: 1, diceStr: '2d6' },
     };
 
     const customHouseRules: HouseRulesData = {
@@ -143,9 +146,12 @@ describe('uniqueDiceConfig - CR-SA-15-E4', () => {
         expect(parsed.houseRules.uniqueDiceConfig.Stability).toEqual({ fixValue: 7, diceStr: '1d11' });
         expect(parsed.houseRules.uniqueDiceConfig.SuperGamble).toEqual({ fixValue: -5, diceStr: '1d20' });
         expect(parsed.houseRules.uniqueDiceConfig.SuperStability).toEqual({ fixValue: 10, diceStr: '1d4' });
-        // 5 キー揃っていること
+        // CR-SA-19 / 2026-06-06: ギャンブル型Ⅱ / 安定型Ⅱ もカスタム値が反映される
+        expect(parsed.houseRules.uniqueDiceConfig.GambleII).toEqual({ fixValue: -15, diceStr: '1d40' });
+        expect(parsed.houseRules.uniqueDiceConfig.StabilityII).toEqual({ fixValue: 1, diceStr: '2d6' });
+        // 7 キー揃っていること
         expect(Object.keys(parsed.houseRules.uniqueDiceConfig).sort()).toEqual(
-            ['Gamble', 'Persistent', 'Stability', 'SuperGamble', 'SuperStability'].sort(),
+            ['Gamble', 'Persistent', 'Stability', 'SuperGamble', 'SuperStability', 'GambleII', 'StabilityII'].sort(),
         );
     });
 
@@ -298,6 +304,42 @@ describe('uniqueDiceConfig - CR-SA-15-E4', () => {
         expect(result.success).toBe(false);
         if (!result.success) {
             expect(result.error).toBe(VALIDATION_ERROR_MESSAGE);
+        }
+    });
+
+    // (U5) CR-SA-19 / 2026-06-06: 旧 5 キープリセット（GambleII / StabilityII 欠落、旧必須 5 キーは揃う）の後方互換。
+    // CR-SA-15/16 期に Export された配布済みプリセット .json をそのまま読み込めることを保証する
+    // （houserule-features.md §5.4 SSoT。新 2 キーは uniqueDiceConfigSchema の .default() でデフォルト補完される）。
+    // 旧 5 キーのカスタム値は保持され、新 2 キーのみデフォルトで埋まる（U4-a の「必須キー欠落は拒否」とは別経路）。
+    it('(U5) 旧 5 キープリセット（GambleII / StabilityII 欠落）は新 2 キーがデフォルト補完されて受理される', () => {
+        const legacyFiveKeyJson = JSON.stringify({
+            houseRules: {
+                ...sampleHouseRules,
+                uniqueDiceConfig: {
+                    Stability: { fixValue: 7, diceStr: '1d11' }, // カスタム値（保持されること）
+                    Gamble: { fixValue: 0, diceStr: '1d20' },
+                    Persistent: { fixValue: 0, diceStr: '1d10' },
+                    SuperGamble: { fixValue: -10, diceStr: '1d35' },
+                    SuperStability: { fixValue: 8, diceStr: '1d3' },
+                    // GambleII / StabilityII 欠落（CR-SA-15/16 期の旧プリセット相当）
+                },
+            },
+            strategies: [],
+        });
+        const result = deserializeAndValidate(legacyFiveKeyJson);
+        expect(result.success).toBe(true);
+        if (result.success) {
+            const cfg = result.data.houseRules.uniqueDiceConfig;
+            // 旧 5 キーのカスタム値は保持される
+            expect(cfg.Stability).toEqual({ fixValue: 7, diceStr: '1d11' });
+            expect(cfg.SuperGamble).toEqual({ fixValue: -10, diceStr: '1d35' });
+            // 新 2 キーはデフォルト値で補完される
+            expect(cfg.GambleII).toEqual(DEFAULT_UNIQUE_DICE_CONFIG.GambleII);
+            expect(cfg.StabilityII).toEqual(DEFAULT_UNIQUE_DICE_CONFIG.StabilityII);
+            // 結果として 7 キー揃う
+            expect(Object.keys(cfg).sort()).toEqual(
+                ['Gamble', 'Persistent', 'Stability', 'SuperGamble', 'SuperStability', 'GambleII', 'StabilityII'].sort(),
+            );
         }
     });
 });

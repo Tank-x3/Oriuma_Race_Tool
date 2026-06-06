@@ -67,6 +67,16 @@ describe('phaseOutput.helpers - Bundle-2 / D-1, D-14 / 2026-05-09', () => {
         it('returns "8+dice1d3=" for SuperStability (Bundle-2)', () => {
             expect(getUniqueDiceFormula('SuperStability')).toBe('8+dice1d3=');
         });
+
+        // CR-SA-19 / 2026-06-06: ギャンブル型Ⅱ（fixValue -20 → 負号込み）の出力フォーマット
+        it('returns "-20+dice1d45=" for GambleII (CR-SA-19)', () => {
+            expect(getUniqueDiceFormula('GambleII')).toBe('-20+dice1d45=');
+        });
+
+        // CR-SA-19 / 2026-06-06: 安定型Ⅱ（fixValue 0 → ダイス式のみ、複数ダイス 2d7）の出力フォーマット
+        it('returns "dice2d7=" for StabilityII (CR-SA-19, 複数ダイス)', () => {
+            expect(getUniqueDiceFormula('StabilityII')).toBe('dice2d7=');
+        });
     });
 
     // Bundle-4-Followup-special-strategy-timing-E1 / 2026-05-12 (SA21 案 A 採択):

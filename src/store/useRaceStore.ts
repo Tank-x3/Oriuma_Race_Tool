@@ -155,7 +155,10 @@ export const PRESET_KEY_PREFIX = 'race-store-presets:';
 // CR-SA-16-E1 / 2026-05-15: PERSIST_VERSION 4 → 5 にバンプ。
 // version=4 旧データ（appliedPresetName / isPresetDirty フィールド欠落）→ version=5 へのデフォルト補完を
 // persistMigrate で実施（`?? null` / `?? false` 加法的補完で透過対応）。
-export const PERSIST_VERSION = 5;
+// CR-SA-19 / 2026-06-06: PERSIST_VERSION 5 → 6 にバンプ。
+// version=5 旧データ（uniqueDiceConfig が旧 5 キー = GambleII / StabilityII 欠落）→ version=6 への
+// 補完を persistMigrate の uniqueDiceConfig ネスト補完で実施（★既存ユーザーデータ保護、下記参照）。
+export const PERSIST_VERSION = 6;
 export const RESTORE_ERROR_MESSAGE = '保存データの復元に失敗しました。新規セッションを開始します。';
 
 // Bundle-7 / 2026-05-10: マイグレーション時の houseRules デフォルト補完値。
@@ -208,10 +211,20 @@ export const persistMigrate = (persistedState: unknown, version: number): Persis
         };
     };
 
-    const persistedHouseRules = state.config?.houseRules ?? {};
+    const persistedHouseRules: Partial<HouseRulesData> = state.config?.houseRules ?? {};
     const mergedHouseRules: HouseRulesData = {
         ...DEFAULT_HOUSE_RULES,
         ...persistedHouseRules,
+        // CR-SA-19 / 2026-06-06: uniqueDiceConfig は浅いマージだと旧 5 キー（GambleII / StabilityII 欠落）が
+        // 新 7 キーのデフォルトを完全上書きし、新 2 キーが欠落 → 7 キー必須スキーマで検証失敗するため、
+        // ネスト補完で旧キー（ユーザーのカスタム値含む）を保持しつつ新 2 キーをデフォルト補完する
+        // （★既存ユーザーデータ保護、houserule-features.md §5.4 SSoT）。
+        // uniqueDiceConfig フィールド自体が欠落する超旧データ（version=3 以前）は、`...persistedHouseRules`
+        // で uniqueDiceConfig 不在 → ネスト補完の `?? {}` で全 7 キーがデフォルト = 既存挙動を維持。
+        uniqueDiceConfig: {
+            ...DEFAULT_UNIQUE_DICE_CONFIG,
+            ...(persistedHouseRules.uniqueDiceConfig ?? {}),
+        },
     };
 
     const validation = houseRulesSchema.safeParse(mergedHouseRules);

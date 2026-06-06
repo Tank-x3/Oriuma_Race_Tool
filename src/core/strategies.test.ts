@@ -122,9 +122,10 @@ describe('getPaceModifier - Bundle-10-Followup-runtime-sync', () => {
 // getExpectedUniqueDiceStr / getExpectedUniqueFixValue）が本定数 + state 参照へ切り替わるため、
 // デフォルト値がハードコード現行値と完全一致していることを保証する。
 describe('DEFAULT_UNIQUE_DICE_CONFIG - CR-SA-15-E1', () => {
-    it('(1) 固有スキル 5 タイプすべてのキーが存在する', () => {
+    // CR-SA-19 / 2026-06-06: ギャンブル型Ⅱ / 安定型Ⅱ 追加で 5 → 7 タイプ
+    it('(1) 固有スキル 7 タイプすべてのキーが存在する', () => {
         expect(Object.keys(DEFAULT_UNIQUE_DICE_CONFIG).sort()).toEqual(
-            ['Gamble', 'Persistent', 'Stability', 'SuperGamble', 'SuperStability'],
+            ['Gamble', 'GambleII', 'Persistent', 'Stability', 'StabilityII', 'SuperGamble', 'SuperStability'],
         );
     });
 
@@ -134,5 +135,8 @@ describe('DEFAULT_UNIQUE_DICE_CONFIG - CR-SA-15-E1', () => {
         expect(DEFAULT_UNIQUE_DICE_CONFIG.Persistent).toEqual({ fixValue: 0, diceStr: '1d10' });
         expect(DEFAULT_UNIQUE_DICE_CONFIG.SuperGamble).toEqual({ fixValue: -10, diceStr: '1d35' });
         expect(DEFAULT_UNIQUE_DICE_CONFIG.SuperStability).toEqual({ fixValue: 8, diceStr: '1d3' });
+        // CR-SA-19 / 2026-06-06: ギャンブル型Ⅱ（-20/1d45）/ 安定型Ⅱ（0/2d7）
+        expect(DEFAULT_UNIQUE_DICE_CONFIG.GambleII).toEqual({ fixValue: -20, diceStr: '1d45' });
+        expect(DEFAULT_UNIQUE_DICE_CONFIG.StabilityII).toEqual({ fixValue: 0, diceStr: '2d7' });
     });
 });

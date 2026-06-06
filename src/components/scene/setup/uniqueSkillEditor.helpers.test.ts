@@ -15,15 +15,18 @@ import {
 } from './uniqueSkillEditor.helpers';
 
 describe('uniqueSkillEditor.helpers - UNIQUE_SKILL_TYPE_LABELS', () => {
-    it('固有スキル 5 タイプすべてのキーを持ち、表示名が modal-houserule.md §4 ワイヤーフレーム準拠', () => {
+    // CR-SA-19 / 2026-06-06: ギャンブル型Ⅱ / 安定型Ⅱ 追加で 5 → 7 タイプ
+    it('固有スキル 7 タイプすべてのキーを持ち、表示名が modal-houserule.md §4 ワイヤーフレーム準拠', () => {
         expect(Object.keys(UNIQUE_SKILL_TYPE_LABELS).sort()).toEqual(
-            ['Gamble', 'Persistent', 'Stability', 'SuperGamble', 'SuperStability'].sort(),
+            ['Gamble', 'Persistent', 'Stability', 'SuperGamble', 'SuperStability', 'GambleII', 'StabilityII'].sort(),
         );
         expect(UNIQUE_SKILL_TYPE_LABELS.Stability).toBe('安定型');
         expect(UNIQUE_SKILL_TYPE_LABELS.Gamble).toBe('ギャンブル型');
         expect(UNIQUE_SKILL_TYPE_LABELS.Persistent).toBe('持続型');
         expect(UNIQUE_SKILL_TYPE_LABELS.SuperGamble).toBe('超ギャンブル');
         expect(UNIQUE_SKILL_TYPE_LABELS.SuperStability).toBe('超安定');
+        expect(UNIQUE_SKILL_TYPE_LABELS.GambleII).toBe('ギャンブル型Ⅱ');
+        expect(UNIQUE_SKILL_TYPE_LABELS.StabilityII).toBe('安定型Ⅱ');
     });
 });
 
@@ -41,19 +44,22 @@ describe('uniqueSkillEditor.helpers - getVisibleUniqueSkillTypes (Round 2: 2 引
         expect(visible).not.toContain('SuperGamble');
     });
 
-    it('enableExtendedUnique ON + enableCompositeUnique OFF → 安定型 / ギャンブル型 / 超ギャンブル / 超安定（4 種、持続型を含まない）', () => {
+    // CR-SA-19 / 2026-06-06: 拡張固有タイプ 4 種（超ギャンブル/超安定/ギャンブル型Ⅱ/安定型Ⅱ）
+    it('enableExtendedUnique ON + enableCompositeUnique OFF → 安定型 / ギャンブル型 / 拡張 4 種（6 種、持続型を含まない）', () => {
         const visible = getVisibleUniqueSkillTypes(true, false);
-        expect(visible).toEqual(['Stability', 'Gamble', 'SuperGamble', 'SuperStability']);
+        expect(visible).toEqual(['Stability', 'Gamble', 'SuperGamble', 'SuperStability', 'GambleII', 'StabilityII']);
         expect(visible).not.toContain('Persistent');
     });
 
-    it('両 ON → 5 種すべて（表示順: 安定型 → ギャンブル型 → 持続型 → 超ギャンブル → 超安定）', () => {
+    it('両 ON → 7 種すべて（表示順: 安定型 → ギャンブル型 → 持続型 → 超ギャンブル → 超安定 → ギャンブル型Ⅱ → 安定型Ⅱ）', () => {
         expect(getVisibleUniqueSkillTypes(true, true)).toEqual([
             'Stability',
             'Gamble',
             'Persistent',
             'SuperGamble',
             'SuperStability',
+            'GambleII',
+            'StabilityII',
         ]);
     });
 });
@@ -68,12 +74,15 @@ describe('uniqueSkillEditor.helpers - createEditFormState', () => {
 });
 
 describe('uniqueSkillEditor.helpers - createDefaultResetFormState', () => {
-    it('DEFAULT_UNIQUE_DICE_CONFIG の値でフォームを生成する（5 タイプ）', () => {
+    // CR-SA-19 / 2026-06-06: ギャンブル型Ⅱ / 安定型Ⅱ 追加で 5 → 7 タイプ
+    it('DEFAULT_UNIQUE_DICE_CONFIG の値でフォームを生成する（7 タイプ）', () => {
         expect(createDefaultResetFormState('Stability')).toEqual({ fixValue: '5', diceStr: '1d10' });
         expect(createDefaultResetFormState('Gamble')).toEqual({ fixValue: '0', diceStr: '1d20' });
         expect(createDefaultResetFormState('Persistent')).toEqual({ fixValue: '0', diceStr: '1d10' });
         expect(createDefaultResetFormState('SuperGamble')).toEqual({ fixValue: '-10', diceStr: '1d35' });
         expect(createDefaultResetFormState('SuperStability')).toEqual({ fixValue: '8', diceStr: '1d3' });
+        expect(createDefaultResetFormState('GambleII')).toEqual({ fixValue: '-20', diceStr: '1d45' });
+        expect(createDefaultResetFormState('StabilityII')).toEqual({ fixValue: '0', diceStr: '2d7' });
     });
 });
 

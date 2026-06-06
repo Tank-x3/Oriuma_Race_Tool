@@ -24,16 +24,22 @@ describe('entryForm.helpers - Bundle-2 / D-1, D-14 / 2026-05-09', () => {
         });
 
         // Bundle-2 必須テスト (vi) 改: enableExtendedUnique のみ true 時、4 件（Persistent 不在）
-        it('returns 4 options including SuperGamble and SuperStability when only enableExtendedUnique is true', () => {
+        // CR-SA-19 / 2026-06-06: enableExtendedUnique ON で拡張 4 タイプ（超ギャンブル/超安定/ギャンブル型Ⅱ/安定型Ⅱ）
+        it('returns 6 options including the 4 extended types when only enableExtendedUnique is true', () => {
             const options = getUniqueSkillTypeOptions(true, false);
-            expect(options).toHaveLength(4);
-            expect(options.map(o => o.type)).toEqual(['Stability', 'Gamble', 'SuperGamble', 'SuperStability']);
+            expect(options).toHaveLength(6);
+            expect(options.map(o => o.type)).toEqual(['Stability', 'Gamble', 'SuperGamble', 'SuperStability', 'GambleII', 'StabilityII']);
 
             // ラベル形式を houserule-features.md §2 [v] 出力フォーマット記述と整合確認
             const sg = options.find(o => o.type === 'SuperGamble');
             const ss = options.find(o => o.type === 'SuperStability');
             expect(sg?.label).toBe('超ギャンブル (-10+1d35)');
             expect(ss?.label).toBe('超安定 (8+1d3)');
+            // CR-SA-19: ギャンブル型Ⅱ（fixValue -20 → 負号込み）/ 安定型Ⅱ（fixValue 0 → ダイス式のみ）
+            const g2 = options.find(o => o.type === 'GambleII');
+            const s2 = options.find(o => o.type === 'StabilityII');
+            expect(g2?.label).toBe('ギャンブルⅡ (-20+1d45)');
+            expect(s2?.label).toBe('安定Ⅱ (2d7)');
             expect(options.find(o => o.type === 'Persistent')).toBeUndefined();
         });
 
@@ -67,16 +73,19 @@ describe('entryForm.helpers - Bundle-2 / D-1, D-14 / 2026-05-09', () => {
             expect(persistent?.label).toBe('持続型 (1d10)');
         });
 
-        // Bundle-3 / D-2 必須テスト (ii): 両 ON 時、5 件 + 順序確認
-        it('returns 5 options in correct order when both flags are true', () => {
+        // Bundle-3 / D-2 必須テスト (ii): 両 ON 時 + 順序確認
+        // CR-SA-19 / 2026-06-06: 拡張固有タイプ 2 種追加で 5 件 → 7 件
+        it('returns 7 options in correct order when both flags are true', () => {
             const options = getUniqueSkillTypeOptions(true, true);
-            expect(options).toHaveLength(5);
+            expect(options).toHaveLength(7);
             expect(options.map(o => o.type)).toEqual([
                 'Stability',
                 'Gamble',
                 'Persistent',
                 'SuperGamble',
                 'SuperStability',
+                'GambleII',
+                'StabilityII',
             ]);
         });
 

@@ -40,10 +40,12 @@ export const formatUniqueDiceLabel = (name: string, entry: UniqueDiceEntry): str
  *
  * - 既定（両 OFF）: `Stability` / `Gamble` の 2 件
  * - `enableCompositeUnique === true`: `Stability` / `Gamble` の直後に `Persistent` を追加
- * - `enableExtendedUnique === true`: 末尾に `SuperGamble` / `SuperStability` を追加
+ * - `enableExtendedUnique === true`: 末尾に `SuperGamble` / `SuperStability` / `GambleII` / `StabilityII` を追加
  *
- * 表示順: `Stability` → `Gamble` → `Persistent` → `SuperGamble` → `SuperStability`
- * （両 ON 時 5 件、片方 OFF 時 3〜4 件、両 OFF 時 2 件）
+ * 表示順: `Stability` → `Gamble` → `Persistent` → `SuperGamble` → `SuperStability` → `GambleII` → `StabilityII`
+ * （両 ON 時 7 件、片方 OFF 時 3〜6 件、両 OFF 時 2 件）
+ *
+ * CR-SA-19 / 2026-06-06: 拡張固有タイプに ギャンブル型Ⅱ / 安定型Ⅱ を追加（enableExtendedUnique 共用）。
  *
  * CR-SA-15-E3 Round 2 / 2026-05-15: ラベルは `uniqueDiceConfig` 参照の動的生成。
  * 引数省略時は `DEFAULT_UNIQUE_DICE_CONFIG` フォールバックで既存ハードコードラベルと完全一致
@@ -66,6 +68,9 @@ export const getUniqueSkillTypeOptions = (
     if (enableExtendedUnique) {
         options.push({ type: 'SuperGamble', label: formatUniqueDiceLabel('超ギャンブル', uniqueDiceConfig.SuperGamble) });
         options.push({ type: 'SuperStability', label: formatUniqueDiceLabel('超安定', uniqueDiceConfig.SuperStability) });
+        // CR-SA-19 / 2026-06-06: ギャンブル型Ⅱ / 安定型Ⅱ（短縮ラベルは既存パターン踏襲、modal-houserule.md §4 フル表示名と矛盾しない範囲）。
+        options.push({ type: 'GambleII', label: formatUniqueDiceLabel('ギャンブルⅡ', uniqueDiceConfig.GambleII) });
+        options.push({ type: 'StabilityII', label: formatUniqueDiceLabel('安定Ⅱ', uniqueDiceConfig.StabilityII) });
     }
 
     return options;
