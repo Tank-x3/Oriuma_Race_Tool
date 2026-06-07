@@ -267,6 +267,30 @@ describe('getActivePhaseIds - CR-3 / scene1-setup.md §4', () => {
     it('midPhaseCount = 4: 仕様上の最大値', () => {
         expect(getActivePhaseIds(4)).toEqual(['Start', 'Mid1', 'Mid2', 'Mid3', 'Mid4', 'End']);
     });
+
+    // CR-SA-17-E2 / 2026-06-07: 序盤・終盤回数の一般化（houserule-features.md §7.3）。
+    // 序盤・終盤引数を省略すると 1 固定 = 現行と完全同一（OFF 透過の核心）。
+    describe('CR-SA-17-E2 序盤・終盤回数の一般化（§7.3 命名規則）', () => {
+        it('序盤・終盤を省略すると 1 固定 = 従来呼び出しと同一', () => {
+            expect(getActivePhaseIds(1)).toEqual(getActivePhaseIds(1, 1, 1));
+        });
+
+        it('序盤 2・中盤 1・終盤 1: Start1 / Start2 で連番化', () => {
+            expect(getActivePhaseIds(1, 2, 1)).toEqual(['Start1', 'Start2', 'Mid', 'End']);
+        });
+
+        it('序盤 1・中盤 1・終盤 2: End1 / End2 で連番化', () => {
+            expect(getActivePhaseIds(1, 1, 2)).toEqual(['Start', 'Mid', 'End1', 'End2']);
+        });
+
+        it('序盤 4・中盤 4・終盤 4: 仕様上の最大構成', () => {
+            expect(getActivePhaseIds(4, 4, 4)).toEqual([
+                'Start1', 'Start2', 'Start3', 'Start4',
+                'Mid1', 'Mid2', 'Mid3', 'Mid4',
+                'End1', 'End2', 'End3', 'End4',
+            ]);
+        });
+    });
 });
 
 describe('useRaceStore.setMidPhaseCount - CR-3 / scene1-setup.md §4 Soft Delete', () => {

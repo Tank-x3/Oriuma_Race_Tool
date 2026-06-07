@@ -1,29 +1,27 @@
 import { Dice } from './dice';
+import { getNonPacePhaseIds } from './phaseSequence';
 
 // Bundle-3 / D-4 / 2026-05-09: 持続型「連続 2 フェーズ」検証 SA 確定仕様
 // （architecture/validation-responsibilities.md §4 SSoT 準拠）
 // 既存 Validator クラス 3 関数は CR-6 別管理のため本タスクスコープ外、削除しない。
 
 /**
- * `EntryForm.tsx` の `availablePhases` 計算ロジック（L132-147）と完全整合する
- * フェーズ ID 列挙生成。validation-responsibilities.md §4 availablePhases 列挙表参照。
+ * `EntryForm.tsx` の `availablePhases` と完全整合するフェーズ ID 列挙生成。
+ * validation-responsibilities.md §4 availablePhases 列挙表参照。
+ *
+ * CR-SA-17-E2 / 2026-06-07: 非ペース列生成を統一ヘルパー `getNonPacePhaseIds` に集約
+ * （houserule-features.md §7.3 / §7.7、Bundle-3 dedup 解消）。序盤・終盤回数を
+ * 受け取れるよう一般化。省略時 1（= OFF 時の固定値）で現行と完全同一の列を返す。
  *
  * - midPhaseCount === 0: [Start, End]
  * - midPhaseCount === 1: [Start, Mid, End]
  * - midPhaseCount >= 2: [Start, Mid1, ..., MidN, End]
  */
-const getAvailablePhaseIds = (midPhaseCount: number): string[] => {
-    const ids: string[] = ['Start'];
-    if (midPhaseCount === 1) {
-        ids.push('Mid');
-    } else if (midPhaseCount >= 2) {
-        for (let i = 1; i <= midPhaseCount; i++) {
-            ids.push(`Mid${i}`);
-        }
-    }
-    ids.push('End');
-    return ids;
-};
+const getAvailablePhaseIds = (
+    midPhaseCount: number,
+    startPhaseCount = 1,
+    endPhaseCount = 1,
+): string[] => getNonPacePhaseIds(startPhaseCount, midPhaseCount, endPhaseCount);
 
 /**
  * Bundle-3 / D-4: 持続型固有スキルの発動位置検証（Layer 2、validation-responsibilities.md §4）。

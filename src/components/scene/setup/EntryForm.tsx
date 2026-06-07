@@ -1,5 +1,6 @@
 import React, { Fragment, useMemo } from 'react';
 import { useRaceStore } from '../../../store/useRaceStore';
+import { getNonPacePhaseSequence } from '../../../core/phaseSequence';
 import { Trash2, AlertCircle, PlayCircle } from 'lucide-react';
 import type { StrategyName, UniqueSkillType } from '../../../types';
 import { NotificationArea } from '../../ui/NotificationArea';
@@ -254,22 +255,18 @@ export const EntryForm: React.FC = () => {
     };
 
 
-    const availablePhases = useMemo(() => {
-        const phases = [{ id: 'Start', label: '序盤' }];
-
-        if (config.midPhaseCount === 0) {
-            // No mid phase
-        } else if (config.midPhaseCount === 1) {
-            phases.push({ id: 'Mid', label: '中盤' });
-        } else {
-            for (let i = 1; i <= config.midPhaseCount; i++) {
-                phases.push({ id: `Mid${i}`, label: `中盤${i}` });
-            }
-        }
-
-        phases.push({ id: 'End', label: '終盤' });
-        return phases;
-    }, [config.midPhaseCount]);
+    // CR-SA-17-E2 / 2026-06-07: 非ペース列生成を統一ヘルパー `getNonPacePhaseSequence` に集約
+    // （houserule-features.md §7.3 / §7.7、Bundle-3 dedup 解消）。序盤・終盤回数も依存に追加。
+    // OFF 時は startPhaseCount = endPhaseCount = 1 のため現行と完全同一の選択肢を返す。
+    const availablePhases = useMemo(
+        () =>
+            getNonPacePhaseSequence(
+                config.startPhaseCount,
+                config.midPhaseCount,
+                config.endPhaseCount,
+            ),
+        [config.startPhaseCount, config.midPhaseCount, config.endPhaseCount],
+    );
 
     // Force reset phase if selected phase becomes invalid (e.g. reducing mid count)
     React.useEffect(() => {

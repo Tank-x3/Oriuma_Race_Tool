@@ -341,7 +341,7 @@ export const useRaceStore = create<RaceStoreState>()(
             // 回数を増やした場合は、保持されていた history[Mid2] 等が自動的に合算復帰する。
             setMidPhaseCount: (count) =>
                 set((state) => {
-                    const activePhaseIds = getActivePhaseIds(count);
+                    const activePhaseIds = getActivePhaseIds(count, state.config.startPhaseCount, state.config.endPhaseCount);
                     return {
                         config: {
                             ...state.config,
@@ -417,7 +417,7 @@ export const useRaceStore = create<RaceStoreState>()(
                         return { config: newConfig, isPresetDirty: true };
                     }
 
-                    const activePhaseIds = getActivePhaseIds(state.config.midPhaseCount);
+                    const activePhaseIds = getActivePhaseIds(state.config.midPhaseCount, state.config.startPhaseCount, state.config.endPhaseCount);
                     return {
                         config: newConfig,
                         // CR-SA-16-E1 / 2026-05-15: updateHouseRules は dirty フラグを ON（変更があったとみなす）。
@@ -445,7 +445,7 @@ export const useRaceStore = create<RaceStoreState>()(
             // 結果取り込み実行で specialStrategy 効果値が反映される挙動を実現する。
             setSpecialStrategy: (participantId, phaseId, value) =>
                 set((state) => {
-                    const activePhaseIds = getActivePhaseIds(state.config.midPhaseCount);
+                    const activePhaseIds = getActivePhaseIds(state.config.midPhaseCount, state.config.startPhaseCount, state.config.endPhaseCount);
                     return {
                         participants: state.participants.map((p) => {
                             if (p.id !== participantId) return p;
@@ -477,7 +477,7 @@ export const useRaceStore = create<RaceStoreState>()(
             // で `.value` のみ加算されるため、戦法 delta との合算挙動も統一される）。
             setManualModifier: (participantId, phaseId, value, reason) =>
                 set((state) => {
-                    const activePhaseIds = getActivePhaseIds(state.config.midPhaseCount);
+                    const activePhaseIds = getActivePhaseIds(state.config.midPhaseCount, state.config.startPhaseCount, state.config.endPhaseCount);
                     return {
                         participants: state.participants.map((p) => {
                             if (p.id !== participantId) return p;
@@ -511,7 +511,7 @@ export const useRaceStore = create<RaceStoreState>()(
             // uniqueDice クリア処理と同パターン: { ...entry } して delete）。
             clearManualModifier: (participantId, phaseId) =>
                 set((state) => {
-                    const activePhaseIds = getActivePhaseIds(state.config.midPhaseCount);
+                    const activePhaseIds = getActivePhaseIds(state.config.midPhaseCount, state.config.startPhaseCount, state.config.endPhaseCount);
                     return {
                         participants: state.participants.map((p) => {
                             if (p.id !== participantId) return p;
@@ -547,7 +547,7 @@ export const useRaceStore = create<RaceStoreState>()(
             // score へ即時反映される。bondDice 不在時（Scene 1 段階）は delta = 0 で score 変動なし。
             setBondSkill: (participantId, type) =>
                 set((state) => {
-                    const activePhaseIds = getActivePhaseIds(state.config.midPhaseCount);
+                    const activePhaseIds = getActivePhaseIds(state.config.midPhaseCount, state.config.startPhaseCount, state.config.endPhaseCount);
                     return {
                         participants: state.participants.map((p) => {
                             if (p.id !== participantId) return p;
@@ -618,7 +618,7 @@ export const useRaceStore = create<RaceStoreState>()(
                     }
                     const newStrategies = [...state.strategies];
                     newStrategies[idx] = { ...newStrategies[idx], ...updates };
-                    const activePhaseIds = getActivePhaseIds(state.config.midPhaseCount);
+                    const activePhaseIds = getActivePhaseIds(state.config.midPhaseCount, state.config.startPhaseCount, state.config.endPhaseCount);
                     return {
                         strategies: newStrategies,
                         // CR-SA-16-E1 / 2026-05-15: 脚質更新は dirty フラグを ON（no-op パスは dirty 不変）。
@@ -652,7 +652,7 @@ export const useRaceStore = create<RaceStoreState>()(
                         return state;
                     }
                     const newStrategies = state.strategies.filter((s) => s.name !== name);
-                    const activePhaseIds = getActivePhaseIds(state.config.midPhaseCount);
+                    const activePhaseIds = getActivePhaseIds(state.config.midPhaseCount, state.config.startPhaseCount, state.config.endPhaseCount);
                     return {
                         strategies: newStrategies,
                         // CR-SA-16-E1 / 2026-05-15: 脚質削除は dirty フラグを ON（no-op パスは dirty 不変）。
@@ -791,7 +791,7 @@ export const useRaceStore = create<RaceStoreState>()(
             importHouseRulesConfig: (config) =>
                 set((state) => {
                     const newConfig = { ...state.config, houseRules: config.houseRules };
-                    const activePhaseIds = getActivePhaseIds(state.config.midPhaseCount);
+                    const activePhaseIds = getActivePhaseIds(state.config.midPhaseCount, state.config.startPhaseCount, state.config.endPhaseCount);
                     const newStrategies = config.strategies as unknown as Strategy[];
                     return {
                         config: newConfig,
@@ -826,7 +826,7 @@ export const useRaceStore = create<RaceStoreState>()(
             resetHouseRules: () =>
                 set((state) => {
                     const newConfig = { ...state.config, houseRules: DEFAULT_HOUSE_RULES };
-                    const activePhaseIds = getActivePhaseIds(state.config.midPhaseCount);
+                    const activePhaseIds = getActivePhaseIds(state.config.midPhaseCount, state.config.startPhaseCount, state.config.endPhaseCount);
                     return {
                         config: newConfig,
                         strategies: STRATEGIES,
@@ -925,7 +925,7 @@ export const useRaceStore = create<RaceStoreState>()(
                                 next,
                                 state.strategies,
                                 state.paceResult.face,
-                                getActivePhaseIds(state.config.midPhaseCount),
+                                getActivePhaseIds(state.config.midPhaseCount, state.config.startPhaseCount, state.config.endPhaseCount),
                                 state.config.houseRules,
                             );
                         } else if (updates.history) {
@@ -937,7 +937,7 @@ export const useRaceStore = create<RaceStoreState>()(
                                 next,
                                 state.strategies,
                                 state.paceResult.face,
-                                getActivePhaseIds(state.config.midPhaseCount),
+                                getActivePhaseIds(state.config.midPhaseCount, state.config.startPhaseCount, state.config.endPhaseCount),
                                 state.config.houseRules,
                             );
                         }

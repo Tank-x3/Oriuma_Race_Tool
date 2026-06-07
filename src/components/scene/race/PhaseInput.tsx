@@ -162,7 +162,7 @@ export const PhaseInput: React.FC<PhaseInputProps> = ({ onErrors }) => {
                         updatedPForCalc,
                         strategies,
                         paceResult.face,
-                        getActivePhaseIds(config.midPhaseCount),
+                        getActivePhaseIds(config.midPhaseCount, config.startPhaseCount, config.endPhaseCount),
                         config.houseRules.uniqueDiceConfig
                     );
 

@@ -1,24 +1,23 @@
 import type { Umamusume, Strategy, UniqueDiceConfig } from '../types';
 import { getPaceModifier, getStrategy, DEFAULT_UNIQUE_DICE_CONFIG } from './strategies';
+import { getNonPacePhaseIds } from './phaseSequence';
 
 /**
- * 現在の中盤回数設定からアクティブなフェーズ ID 集合を導出する。
+ * 現在のフェーズ構成からアクティブなフェーズ ID 集合を導出する。
  * Scene 1 の #1-3a-9（Soft Delete）で、history 上には残っていても
  * 「現在設定されているフェーズ」のみを合算対象とするために使用する。
  * Start / End は常にアクティブ。Pace は history に入らないためここでは扱わない。
+ *
+ * CR-SA-17-E2 / 2026-06-07: 非ペース列生成を統一ヘルパー `getNonPacePhaseIds` に集約
+ * （houserule-features.md §7.3 / §7.7、Bundle-3 dedup 解消）。序盤・終盤回数を
+ * 受け取れるよう一般化。`startPhaseCount` / `endPhaseCount` は省略時 1（= OFF 時の固定値）
+ * のため、`getActivePhaseIds(midPhaseCount)` の従来呼び出しは現行と完全同一の列を返す。
  */
-export const getActivePhaseIds = (midPhaseCount: number): string[] => {
-    const ids: string[] = ['Start'];
-    if (midPhaseCount === 1) {
-        ids.push('Mid');
-    } else if (midPhaseCount > 1) {
-        for (let i = 1; i <= midPhaseCount; i++) {
-            ids.push(`Mid${i}`);
-        }
-    }
-    ids.push('End');
-    return ids;
-};
+export const getActivePhaseIds = (
+    midPhaseCount: number,
+    startPhaseCount = 1,
+    endPhaseCount = 1,
+): string[] => getNonPacePhaseIds(startPhaseCount, midPhaseCount, endPhaseCount);
 
 export class Calculator {
     /**

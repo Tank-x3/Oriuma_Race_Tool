@@ -128,7 +128,7 @@ export const RaceScene: React.FC = () => {
                     p,
                     strategies,
                     paceResult.face,
-                    getActivePhaseIds(config.midPhaseCount),
+                    getActivePhaseIds(config.midPhaseCount, config.startPhaseCount, config.endPhaseCount),
                     config.houseRules.uniqueDiceConfig
                 );
                 // Only update if changed (optimization)
