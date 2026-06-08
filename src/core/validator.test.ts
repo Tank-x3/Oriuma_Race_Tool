@@ -119,6 +119,24 @@ describe('validatePersistentSkillPhases - Bundle-3 / D-4 / 2026-05-09', () => {
     it('returns error for [Start, End] when midPhaseCount=1 (非連続、間に Mid)', () => {
         expect(validatePersistentSkillPhases(['Start', 'End'], 1)).toEqual([expectedError]);
     });
+
+    // CR-SA-17-E3 / 2026-06-07: 序盤・終盤回数連動の連続性判定（houserule-features.md §7.7）。
+    it('序盤2 連動で [Start1, Start2] は連続 = エラーなし', () => {
+        // 非ペース列 = [Start1, Start2, Mid, End]、Start1↔Start2 は隣接
+        expect(validatePersistentSkillPhases(['Start1', 'Start2'], 1, 2, 1)).toEqual([]);
+    });
+
+    it('序盤2 連動で [Start2, Mid] は連続 = エラーなし', () => {
+        expect(validatePersistentSkillPhases(['Start2', 'Mid'], 1, 2, 1)).toEqual([]);
+    });
+
+    it('序盤2 連動で [Start1, Mid] は非連続 = エラー（間に Start2）', () => {
+        expect(validatePersistentSkillPhases(['Start1', 'Mid'], 1, 2, 1)).toEqual([expectedError]);
+    });
+
+    it('終盤2 連動で [End1, End2] は連続 = エラーなし', () => {
+        expect(validatePersistentSkillPhases(['End1', 'End2'], 1, 1, 2)).toEqual([]);
+    });
 });
 
 // Bundle-8-T2 / CR-SA-4 / 2026-05-10: 絆スキル種別バリデーション
@@ -189,6 +207,21 @@ describe('validateSpecialStrategyPhase - Bundle-8-T2', () => {
 
     it('returns error for "Mid5" when midPhaseCount = 4 (上限超)', () => {
         expect(validateSpecialStrategyPhase('Mid5', 4)).toEqual([phaseError]);
+    });
+
+    // CR-SA-17-E3 / 2026-06-07: 序盤・終盤回数連動の一般化（houserule-features.md §7.7）。
+    it('序盤2 連動で "Start1" / "Start2" は有効', () => {
+        expect(validateSpecialStrategyPhase('Start1', 1, 2, 1)).toEqual([]);
+        expect(validateSpecialStrategyPhase('Start2', 1, 2, 1)).toEqual([]);
+    });
+
+    it('序盤2 のとき単一 "Start" は無効（命名規則 §7.3）', () => {
+        expect(validateSpecialStrategyPhase('Start', 1, 2, 1)).toEqual([phaseError]);
+    });
+
+    it('終盤回数を増やしても終盤（End1〜）は無効（終盤発動禁止維持）', () => {
+        expect(validateSpecialStrategyPhase('End1', 1, 1, 2)).toEqual([phaseError]);
+        expect(validateSpecialStrategyPhase('End2', 1, 1, 2)).toEqual([phaseError]);
     });
 });
 

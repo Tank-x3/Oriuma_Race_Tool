@@ -417,6 +417,117 @@ describe('useRaceStore.setMidPhaseCount - CR-3 / scene1-setup.md §4 Soft Delete
     });
 });
 
+// CR-SA-17-E3 / 2026-06-07: フェーズ構成変更アクション（houserule-features.md §7）。
+// setStartPhaseCount / setEndPhaseCount = setMidPhaseCount 同パターン（score 再計算 + Soft Delete）。
+// setPacePosition = 値更新のみ（score 不変）。回数変更時のペース位置追従（§7.5）。
+describe('useRaceStore.setStartPhaseCount / setEndPhaseCount / setPacePosition - CR-SA-17-E3', () => {
+    beforeEach(() => {
+        useRaceStore.getState().resetRace();
+    });
+
+    const installWithConfig = (
+        history: Umamusume['history'],
+        cfg: { start?: number; mid?: number; end?: number; pace?: string | null },
+    ) => {
+        useRaceStore.setState({
+            config: {
+                midPhaseCount: cfg.mid ?? 1,
+                startPhaseCount: cfg.start ?? 1,
+                endPhaseCount: cfg.end ?? 1,
+                pacePosition: cfg.pace ?? 'Start',
+                fullGateSize: null,
+                houseRules: { ...DEFAULT_HOUSE_RULES, enablePhaseConfig: true },
+            },
+            participants: [{
+                id: 'p1',
+                entryIndex: 1,
+                name: 'Test',
+                strategy: '先行',
+                uniqueSkill: { type: 'Stability', phases: [] },
+                gate: 1,
+                score: 0,
+                history,
+            }],
+        });
+    };
+
+    it('setStartPhaseCount: 序盤縮小で Start2 history は Soft Delete 保持・score は除外再計算、拡大で復活', () => {
+        installWithConfig(
+            {
+                Start1: { baseDice: makeDice('3d8', [2, 2, 1]), computedScore: 5 }, // 5
+                Start2: { baseDice: makeDice('3d8', [3, 2, 2]), computedScore: 12 }, // 7
+                End: { baseDice: makeDice('1d7', [3]), computedScore: 15 }, // 3
+            },
+            { start: 2, mid: 0, end: 1, pace: 'Start1' },
+        );
+
+        // 2 -> 1: activePhaseIds=[Start, End]、Start1/Start2 は合算除外（fixValue は 'Start' キー不在で不加算）
+        useRaceStore.getState().setStartPhaseCount(1);
+        const shrunk = useRaceStore.getState().participants[0];
+        expect(useRaceStore.getState().config.startPhaseCount).toBe(1);
+        expect(shrunk.history['Start2']).toBeDefined(); // Soft Delete 保持
+        expect(shrunk.score).toBe(3); // End のみ
+
+        // 1 -> 2: Start1 + Start2 + End が合算復帰
+        useRaceStore.getState().setStartPhaseCount(2);
+        const restored = useRaceStore.getState().participants[0];
+        expect(restored.score).toBe(5 + 7 + 3);
+    });
+
+    it('setEndPhaseCount: 終盤縮小で End2 history は Soft Delete 保持・score は除外再計算', () => {
+        installWithConfig(
+            {
+                Start: { baseDice: makeDice('3d8', [2, 2, 2]), computedScore: 16 }, // fix10 + 6
+                End1: { baseDice: makeDice('1d7', [3]), computedScore: 19 }, // 3
+                End2: { baseDice: makeDice('1d7', [4]), computedScore: 23 }, // 4
+            },
+            { start: 1, mid: 0, end: 2, pace: 'Start' },
+        );
+
+        // 2 -> 1: activePhaseIds=[Start, End]、End1/End2 は合算除外（'End' キー不在）。fix10 + Start6 = 16
+        useRaceStore.getState().setEndPhaseCount(1);
+        const shrunk = useRaceStore.getState().participants[0];
+        expect(useRaceStore.getState().config.endPhaseCount).toBe(1);
+        expect(shrunk.history['End2']).toBeDefined(); // Soft Delete 保持
+        expect(shrunk.score).toBe(16);
+    });
+
+    it('setPacePosition: 値を更新する（null=なしも設定可、score は不変）', () => {
+        installWithConfig(
+            { Start: { baseDice: makeDice('3d8', [2, 2, 2]), computedScore: 16 } },
+            { start: 1, mid: 1, end: 1, pace: 'Start' },
+        );
+        const before = useRaceStore.getState().participants[0].score;
+
+        useRaceStore.getState().setPacePosition('Mid');
+        expect(useRaceStore.getState().config.pacePosition).toBe('Mid');
+        expect(useRaceStore.getState().participants[0].score).toBe(before);
+
+        useRaceStore.getState().setPacePosition(null);
+        expect(useRaceStore.getState().config.pacePosition).toBe(null);
+    });
+
+    it('回数縮小でペース位置が無効化 → デフォルト（序盤ブロック直後）へ追従リセット（§7.5）', () => {
+        // 中盤2/ペース=中盤2の後 → 中盤1 に縮小 → Mid2 無効 → pace='Start'
+        installWithConfig({}, { start: 1, mid: 2, end: 1, pace: 'Mid2' });
+        useRaceStore.getState().setMidPhaseCount(1);
+        expect(useRaceStore.getState().config.pacePosition).toBe('Start');
+
+        // 序盤3/ペース=Start3 → 序盤1 に縮小 → Start3 無効 → pace='Start'
+        installWithConfig({}, { start: 3, mid: 1, end: 1, pace: 'Start3' });
+        useRaceStore.getState().setStartPhaseCount(1);
+        expect(useRaceStore.getState().config.pacePosition).toBe('Start');
+    });
+
+    it('OFF 透過: 中盤回数変更でペース位置（既定 Start）は有効なまま不変', () => {
+        installWithConfig({}, { start: 1, mid: 1, end: 1, pace: 'Start' });
+        useRaceStore.getState().setMidPhaseCount(2);
+        expect(useRaceStore.getState().config.pacePosition).toBe('Start');
+        useRaceStore.getState().setMidPhaseCount(0);
+        expect(useRaceStore.getState().config.pacePosition).toBe('Start');
+    });
+});
+
 describe('useRaceStore.moveToGate - CR-3 / #1-3a-3 名前空欄行スキップ', () => {
     beforeEach(() => {
         useRaceStore.getState().resetRace();

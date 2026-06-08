@@ -1,10 +1,11 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { Umamusume, RaceState, GateAssignment, Strategy } from '../types';
+import type { Umamusume, RaceState, GateAssignment, Strategy, PacePosition } from '../types';
 // CR-SA-15-E1 / 2026-05-14: DEFAULT_UNIQUE_DICE_CONFIG = 固有スキル設定の初期値 +
 // 永続化マイグレーションのデフォルト補完値（houserule-features.md §5.2 / §5.4）。
 import { DEFAULT_STRATEGIES as STRATEGIES, DEFAULT_UNIQUE_DICE_CONFIG } from '../core/strategies';
 import { getActivePhaseIds } from '../core/calculator';
+import { resolvePacePosition } from '../core/paceAnchor';
 import { isDefaultStrategy } from '../core/strategy.helpers';
 import { useNotificationStore } from './useNotificationStore';
 // Bundle-4 / P4-1, P4-5 / 2026-05-10: 特殊戦法（捲り/溜め）の score 補正計算を純粋関数に委譲。
@@ -34,6 +35,15 @@ interface RaceStoreState extends RaceState {
 
     // Actions
     setMidPhaseCount: (count: number) => void;
+    // CR-SA-17-E3 / 2026-06-07: フェーズ構成変更（houserule-features.md §7）。
+    // 序盤回数 / 終盤回数 / ペース位置の設定 action（setMidPhaseCount 同パターン）。
+    // 回数変更時は getActivePhaseIds(...) で全 participants の score を再計算（Soft Delete = history 保持）し、
+    // ペース位置が新フェーズ列で無効になる場合はデフォルト（序盤ブロック直後）へ追従リセットする（§7.5）。
+    setStartPhaseCount: (count: number) => void;
+    setEndPhaseCount: (count: number) => void;
+    // ペース位置の設定。null = なし。フェーズ列（非ペース）には影響しないため score 再計算は不要
+    // （ペースの実挿入・スコア反映は E4 スコープ）。
+    setPacePosition: (pos: PacePosition) => void;
     setFullGateSize: (size: number) => void;
     // Bundle-9 / 2026-05-10: ハウスルール 5 フィールドの部分更新 action。
     // Bundle-4 / 2026-05-10: effectValue 変更時は specialStrategy 設定済参加者の score を自動再計算する。
@@ -342,10 +352,19 @@ export const useRaceStore = create<RaceStoreState>()(
             setMidPhaseCount: (count) =>
                 set((state) => {
                     const activePhaseIds = getActivePhaseIds(count, state.config.startPhaseCount, state.config.endPhaseCount);
+                    // CR-SA-17-E3 / 2026-06-07: 中盤回数縮小でペース位置（中盤アンカー）が無効化する場合の追従（§7.5）。
+                    // OFF 時（pacePosition='Start'）は常に有効なため変化しない = OFF 透過。
+                    const pacePosition = resolvePacePosition(
+                        state.config.pacePosition,
+                        state.config.startPhaseCount,
+                        count,
+                        state.config.endPhaseCount,
+                    );
                     return {
                         config: {
                             ...state.config,
                             midPhaseCount: count,
+                            pacePosition,
                         },
                         participants: state.participants.map(p => ({
                             ...p,
@@ -361,6 +380,80 @@ export const useRaceStore = create<RaceStoreState>()(
                         })),
                     };
                 }),
+
+            // CR-SA-17-E3 / 2026-06-07: 序盤回数の設定（houserule-features.md §7、setMidPhaseCount 同パターン）。
+            // 序盤回数は activePhaseIds（Start / Start1〜）に影響するため score を再計算する（Soft Delete = history 保持）。
+            // ペース位置は新フェーズ列で無効になる場合デフォルト（序盤ブロック直後）へ追従リセット（§7.5）。
+            setStartPhaseCount: (count) =>
+                set((state) => {
+                    const activePhaseIds = getActivePhaseIds(state.config.midPhaseCount, count, state.config.endPhaseCount);
+                    const pacePosition = resolvePacePosition(
+                        state.config.pacePosition,
+                        count,
+                        state.config.midPhaseCount,
+                        state.config.endPhaseCount,
+                    );
+                    return {
+                        config: {
+                            ...state.config,
+                            startPhaseCount: count,
+                            pacePosition,
+                        },
+                        participants: state.participants.map(p => ({
+                            ...p,
+                            score: calculateScoreWithBondSkill(
+                                p,
+                                state.strategies,
+                                state.paceResult.face,
+                                activePhaseIds,
+                                state.config.houseRules,
+                            ),
+                        })),
+                    };
+                }),
+
+            // CR-SA-17-E3 / 2026-06-07: 終盤回数の設定（houserule-features.md §7、setMidPhaseCount 同パターン）。
+            // 終盤回数は activePhaseIds（End / End1〜）に影響するため score を再計算する（Soft Delete = history 保持）。
+            // ペース位置は新フェーズ列で無効になる場合デフォルト（序盤ブロック直後）へ追従リセット（§7.5）。
+            setEndPhaseCount: (count) =>
+                set((state) => {
+                    const activePhaseIds = getActivePhaseIds(state.config.midPhaseCount, state.config.startPhaseCount, count);
+                    const pacePosition = resolvePacePosition(
+                        state.config.pacePosition,
+                        state.config.startPhaseCount,
+                        state.config.midPhaseCount,
+                        count,
+                    );
+                    return {
+                        config: {
+                            ...state.config,
+                            endPhaseCount: count,
+                            pacePosition,
+                        },
+                        participants: state.participants.map(p => ({
+                            ...p,
+                            score: calculateScoreWithBondSkill(
+                                p,
+                                state.strategies,
+                                state.paceResult.face,
+                                activePhaseIds,
+                                state.config.houseRules,
+                            ),
+                        })),
+                    };
+                }),
+
+            // CR-SA-17-E3 / 2026-06-07: ペース位置の設定（houserule-features.md §7.5）。
+            // null = なし。ペースは非ペース列（score 合算対象）に含まれないため score 再計算は不要
+            // （ペースの実挿入・スコア反映は E4 スコープ）。値域チェックは UI（有効アンカーのみ提示）+
+            // バリデーション（isPhaseConfigValid）層に委ね、本 action は呼ばれた値をそのまま反映する。
+            setPacePosition: (pos) =>
+                set((state) => ({
+                    config: {
+                        ...state.config,
+                        pacePosition: pos,
+                    },
+                })),
 
             setFullGateSize: (size: number) =>
                 set((state) => ({

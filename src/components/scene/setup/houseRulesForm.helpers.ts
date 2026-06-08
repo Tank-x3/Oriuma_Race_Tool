@@ -26,6 +26,11 @@ export const getHouseRuleCheckboxes = (): HouseRuleCheckboxMeta[] => [
     // CR-SA-19 / 2026-06-06: ギャンブル型Ⅱ / 安定型Ⅱ 追加に伴い、ラベル括弧内に 4 タイプを明示（観察事項 A 解消、ユーザー承認済）。
     { key: 'enableExtendedUnique', label: '拡張固有タイプ(超ギャンブル/超安定/ギャンブル型Ⅱ/安定型Ⅱ)を使用', order: 4 },
     { key: 'enableBondSkill', label: '絆スキル(連続企画用 絆ギャンブル/絆安定)を使用', order: 5 },
+    // CR-SA-17-E3 / 2026-06-07: フェーズ構成変更トグル（6 つ目）。ON 時のみレース設定に
+    // 序盤・終盤回数 / ペース位置の設定 UI を開放する（scene1-setup.md §2 / modal-houserule.md §1 / houserule-features.md §7）。
+    // ラベル文言は scene1-setup.md ワイヤーフレーム L213 / modal-houserule.md §1 と完全一致。
+    // 隊列〔バ群〕ダイス（7 つ目）は別 Issue CR-SA-20 領域のためここでは追加しない。
+    { key: 'enablePhaseConfig', label: 'フェーズ構成(序盤・終盤の回数/ペース位置)を変更する', order: 6 },
 ];
 
 export const EFFECT_VALUE_MIN = 1;

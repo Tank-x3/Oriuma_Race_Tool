@@ -201,6 +201,23 @@ describe('entryForm.helpers - Bundle-8-T2 / 2 行レイアウト判定', () => {
                 expect(ids).not.toContain('End');
             }
         });
+
+        // CR-SA-17-E3 / 2026-06-07: 序盤・終盤回数連動の一般化（houserule-features.md §7.7）。
+        it('序盤2 連動で [序盤1, 序盤2, 中盤...] を返す（startPhaseCount=2）', () => {
+            expect(getSpecialStrategyPhaseOptions(1, 2, 1).map(o => o.id)).toEqual(['Start1', 'Start2', 'Mid']);
+            expect(getSpecialStrategyPhaseOptions(2, 2, 1).map(o => o.id)).toEqual(['Start1', 'Start2', 'Mid1', 'Mid2']);
+        });
+
+        it('ラベルも序盤1〜/中盤1〜 で連動する', () => {
+            expect(getSpecialStrategyPhaseOptions(2, 2, 1).map(o => o.label)).toEqual(['序盤1', '序盤2', '中盤1', '中盤2']);
+        });
+
+        it('終盤回数を増やしても終盤（End / End1〜）は一切含めない', () => {
+            for (const endCount of [1, 2, 3, 4]) {
+                const ids = getSpecialStrategyPhaseOptions(2, 2, endCount).map(o => o.id);
+                expect(ids.some(id => id.startsWith('End'))).toBe(false);
+            }
+        });
     });
 
     describe('getBondSkillTypeOptions', () => {

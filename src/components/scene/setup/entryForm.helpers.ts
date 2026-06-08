@@ -4,6 +4,7 @@ import type { RaceState, UniqueSkillType, UniqueDiceConfig, UniqueDiceEntry } fr
 // 引数省略時は DEFAULT_UNIQUE_DICE_CONFIG フォールバック = 既存ハードコードラベルと完全一致
 // （E2 フォールバックパターン踏襲）。
 import { DEFAULT_UNIQUE_DICE_CONFIG } from '../../../core/strategies';
+import { getNonPacePhaseSequence } from '../../../core/phaseSequence';
 
 type HouseRules = RaceState['config']['houseRules'];
 
@@ -115,23 +116,27 @@ export interface PhaseOption {
 }
 
 /**
- * 特殊戦法発動位置プルダウン選択肢を返す。`'End'` は除外（houserule-features.md §3 SSoT、終盤発動禁止）。
+ * 特殊戦法発動位置プルダウン選択肢を返す。終盤（`End` / `End1`〜）は除外
+ * （houserule-features.md §3 SSoT「Phase Restriction」、終盤が複数でも全終盤で発動禁止）。
  *
- * - midPhaseCount === 0: [Start]
- * - midPhaseCount === 1: [Start, Mid]
- * - midPhaseCount >= 2: [Start, Mid1, ..., MidN]
+ * CR-SA-17-E3 / 2026-06-07: 序盤・終盤回数に連動して一般化（houserule-features.md §7.7）。
+ * 序盤 ≥2 では `序盤1`〜 が候補に並ぶ。`startPhaseCount` / `endPhaseCount` 省略時は 1
+ *（= OFF 時の固定値）で従来挙動と完全一致:
+ * - midPhaseCount === 0: [序盤]
+ * - midPhaseCount === 1: [序盤, 中盤]
+ * - midPhaseCount >= 2: [序盤, 中盤1, ..., 中盤N]
+ *
+ * 統一ヘルパー `getNonPacePhaseSequence` で非ペース列を生成し、終盤フェーズ（id が `End` で始まる）を
+ * 除外することで「序盤ブロック + 中盤ブロック」のみを返す。
  */
-export const getSpecialStrategyPhaseOptions = (midPhaseCount: number): PhaseOption[] => {
-    const options: PhaseOption[] = [{ id: 'Start', label: '序盤' }];
-    if (midPhaseCount === 1) {
-        options.push({ id: 'Mid', label: '中盤' });
-    } else if (midPhaseCount >= 2) {
-        for (let i = 1; i <= midPhaseCount; i++) {
-            options.push({ id: `Mid${i}`, label: `中盤${i}` });
-        }
-    }
-    return options;
-};
+export const getSpecialStrategyPhaseOptions = (
+    midPhaseCount: number,
+    startPhaseCount = 1,
+    endPhaseCount = 1,
+): PhaseOption[] =>
+    getNonPacePhaseSequence(startPhaseCount, midPhaseCount, endPhaseCount)
+        .filter(p => !p.id.startsWith('End'))
+        .map(p => ({ id: p.id, label: p.label }));
 
 export interface BondSkillOption {
     type: 'BondGamble' | 'BondStable';

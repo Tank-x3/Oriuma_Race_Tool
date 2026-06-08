@@ -37,6 +37,8 @@ const getAvailablePhaseIds = (
 export const validatePersistentSkillPhases = (
     phases: string[],
     midPhaseCount: number,
+    startPhaseCount = 1,
+    endPhaseCount = 1,
 ): string[] => {
     // Layer 1 委譲: 空配列は「発動位置が未選択です」で補足されるため本検証スキップ
     if (phases.length === 0) return [];
@@ -47,7 +49,9 @@ export const validatePersistentSkillPhases = (
     if (phases.length !== 2) return [errorMsg];
 
     // 連続性チェック
-    const availableIds = getAvailablePhaseIds(midPhaseCount);
+    // CR-SA-17-E3 / 2026-06-07: 序盤・終盤回数連動に一般化（houserule-features.md §7.7）。
+    // 省略時 1（= OFF 時の固定値）で従来挙動と完全一致。序盤 ≥2 / 終盤 ≥2 の連続性も正しく判定する。
+    const availableIds = getAvailablePhaseIds(midPhaseCount, startPhaseCount, endPhaseCount);
     const idxA = availableIds.indexOf(phases[0]);
     const idxB = availableIds.indexOf(phases[1]);
 
@@ -77,26 +81,29 @@ export const validateBondSkillType = (
 };
 
 /**
- * 特殊戦法発動位置の値域検証（houserule-features.md §3 §捲り 前 cross-reference SSoT、`'End'` 除外）。
- * 値域: `'Start' | 'Mid' | 'Mid1' | ... | 'Mid{midPhaseCount}' | null`。
+ * 特殊戦法発動位置の値域検証（houserule-features.md §3 §捲り 前 cross-reference SSoT、終盤除外）。
+ * 値域 = 序盤ブロック + 中盤ブロック（終盤 `End` / `End1`〜 は除外）。
  * `enableSpecialStrategy === true` 時のみ呼び出される想定。
+ *
+ * CR-SA-17-E3 / 2026-06-07: 序盤・終盤回数連動に一般化（houserule-features.md §7.7）。
+ * `startPhaseCount` / `endPhaseCount` 省略時は 1（= OFF 時の固定値）で従来挙動と完全一致。
+ * 有効集合は `getNonPacePhaseIds` の非ペース列から終盤フェーズを除外して生成する。
  *
  * @returns 妥当なら `[]`、エラーなら 1 件のエラーメッセージ配列。
  */
 export const validateSpecialStrategyPhase = (
     phaseId: string | null | undefined,
     midPhaseCount: number,
+    startPhaseCount = 1,
+    endPhaseCount = 1,
 ): string[] => {
     if (phaseId === null || phaseId === undefined) return [];
 
-    const validPhaseIds = new Set<string>(['Start']);
-    if (midPhaseCount === 1) {
-        validPhaseIds.add('Mid');
-    } else if (midPhaseCount >= 2) {
-        for (let i = 1; i <= midPhaseCount; i++) {
-            validPhaseIds.add(`Mid${i}`);
-        }
-    }
+    const validPhaseIds = new Set<string>(
+        getNonPacePhaseIds(startPhaseCount, midPhaseCount, endPhaseCount).filter(
+            id => !id.startsWith('End'),
+        ),
+    );
 
     if (validPhaseIds.has(phaseId)) return [];
     return ['特殊戦法の発動位置が不正です（終盤・現在の中盤回数外は選択不可）'];

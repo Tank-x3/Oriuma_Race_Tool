@@ -1,6 +1,7 @@
 import React, { Fragment, useMemo } from 'react';
 import { useRaceStore } from '../../../store/useRaceStore';
 import { getNonPacePhaseSequence } from '../../../core/phaseSequence';
+import { isPhaseConfigValid } from '../../../core/paceAnchor';
 import { Trash2, AlertCircle, PlayCircle } from 'lucide-react';
 import type { StrategyName, UniqueSkillType } from '../../../types';
 import { NotificationArea } from '../../ui/NotificationArea';
@@ -65,9 +66,15 @@ export const EntryForm: React.FC = () => {
             }),
         [houseRules.enableBondSkill, houseRules.enableSpecialStrategy],
     );
+    // CR-SA-17-E3 / 2026-06-07: 序盤・終盤回数連動（houserule-features.md §7.7）。
+    // OFF 時は startPhaseCount = endPhaseCount = 1 のため現行と完全同一の選択肢を返す。
     const specialStrategyPhaseOptions = useMemo(
-        () => getSpecialStrategyPhaseOptions(config.midPhaseCount),
-        [config.midPhaseCount],
+        () => getSpecialStrategyPhaseOptions(
+            config.midPhaseCount,
+            config.startPhaseCount,
+            config.endPhaseCount,
+        ),
+        [config.midPhaseCount, config.startPhaseCount, config.endPhaseCount],
     );
     const bondSkillOptions = useMemo(() => getBondSkillTypeOptions(), []);
     const specialStrategyTypeOptions = useMemo(() => getSpecialStrategyTypeOptions(), []);
@@ -141,6 +148,8 @@ export const EntryForm: React.FC = () => {
                 const layer2Errors = validatePersistentSkillPhases(
                     p.uniqueSkill.phases,
                     config.midPhaseCount,
+                    config.startPhaseCount,
+                    config.endPhaseCount,
                 );
                 layer2Errors.forEach(msg => errors.push(`[#${rowNum}] ${msg}`));
             }
@@ -154,6 +163,8 @@ export const EntryForm: React.FC = () => {
                 const phaseErrors = validateSpecialStrategyPhase(
                     p.specialStrategyPhase,
                     config.midPhaseCount,
+                    config.startPhaseCount,
+                    config.endPhaseCount,
                 );
                 phaseErrors.forEach((msg) => errors.push(`[#${rowNum}] ${msg}`));
                 const setErrors = validateSpecialStrategyTypeAndPhase(
@@ -169,6 +180,8 @@ export const EntryForm: React.FC = () => {
         participants,
         duplicatedNames,
         config.midPhaseCount,
+        config.startPhaseCount,
+        config.endPhaseCount,
         houseRules.enableBondSkill,
         houseRules.enableSpecialStrategy,
     ]);
@@ -183,6 +196,21 @@ export const EntryForm: React.FC = () => {
         const errs: string[] = [];
         if (config.fullGateSize === null) errs.push('フルゲート人数を設定してください');
         if (activeParticipants.length === 0) errs.push('参加者が登録されていません');
+
+        // CR-SA-17-E3 / 2026-06-07: 禁止フェーズ構成のデータブロック（scene1-setup.md Error Handling L299-301 / §7.5）。
+        // UI を経由しない経路（JSON プリセット取り込み・state 復元等）で「start 前 / end 後にペース」
+        // 「序盤・終盤回数が値域外」等が混入した場合にエントリー確定をブロックする（二重防御のデータ側）。
+        // OFF 時は既定値（序盤1/終盤1/ペース序盤直後）= 常に valid のためエラーは出ない（OFF 透過）。
+        if (
+            !isPhaseConfigValid(
+                config.startPhaseCount,
+                config.midPhaseCount,
+                config.endPhaseCount,
+                config.pacePosition,
+            )
+        ) {
+            errs.push('・フェーズ構成が不正です（ペースの位置または序盤・終盤の回数が許可範囲外です）。設定を見直してください');
+        }
 
         // 重複名エラーは名前ごとに1件だけ表示する（重複ペア両方から errors に入ると同一メッセージが複数出てしまうため、
         // ここで一括管理する）。
@@ -200,7 +228,16 @@ export const EntryForm: React.FC = () => {
             });
         });
         return errs;
-    }, [invalidEntries, config.fullGateSize, activeParticipants.length, duplicatedNames]);
+    }, [
+        invalidEntries,
+        config.fullGateSize,
+        config.startPhaseCount,
+        config.midPhaseCount,
+        config.endPhaseCount,
+        config.pacePosition,
+        activeParticipants.length,
+        duplicatedNames,
+    ]);
 
     const isValid = activeParticipants.length > 0 && invalidEntries.length === 0;
 
