@@ -3,6 +3,9 @@ import { useRaceStore } from '../../../store/useRaceStore';
 import { Settings } from 'lucide-react';
 // CR-SA-17-E3 / 2026-06-07: フェーズ構成変更 UI（houserule-features.md §7 / scene1-setup.md §2）。
 import { getPaceAnchorOptions, getPhaseConfigDisplayLabels } from '../../../core/paceAnchor';
+// CR-SA-20-Followup-config-preview-offmode / 2026-06-12: フェーズ構成変更 OFF 時の
+// 「現在の構成」表示（隊列〔バ群〕ダイス対応、最小差分案）。
+import { getOffModeConfigPreviewText } from './raceConfigForm.helpers';
 import type { PacePosition } from '../../../types';
 
 // CR-SA-17-E3 / 2026-06-07: ペース位置プルダウンの「なし」を表す select 用センチネル値
@@ -311,10 +314,13 @@ export const RaceConfigForm: React.FC = () => {
                     <div className="bg-slate-100 dark:bg-slate-700/30 rounded-lg p-3 border border-slate-200 dark:border-slate-700/50 flex items-center justify-between text-sm transition-colors">
                         <span className="text-slate-500 dark:text-slate-400">現在の構成:</span>
                         <span className="text-primary-600 dark:text-primary-400 font-bold font-mono">
-                            序盤 → ペース →
-                            {config.midPhaseCount === 0 ? ' (中盤なし) ' :
-                                config.midPhaseCount === 1 ? ' 中盤 ' : ` 中盤 x${config.midPhaseCount} `}
-                            → 終盤
+                            {/* CR-SA-20-Followup-config-preview-offmode / 2026-06-12: 隊列 ON 時は
+                                実走行（buildPhaseSequence の OFF 透過列）と同一位置に「隊列」を表示する。
+                                隊列 OFF 時は従来の固定表記と完全同一（最小差分案）。 */}
+                            {getOffModeConfigPreviewText(
+                                config.midPhaseCount,
+                                config.houseRules.enableFormationDice,
+                            )}
                         </span>
                     </div>
                 </>
