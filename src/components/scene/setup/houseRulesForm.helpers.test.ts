@@ -9,19 +9,22 @@ import {
 
 describe('Bundle-9 / 2026-05-10 getHouseRuleCheckboxes', () => {
     // Bundle-8-T2 / CR-SA-4 / 2026-05-10: 5 つ目「絆スキル」を追加（scene1-setup.md §2 ワイヤーフレーム L28 SSoT）。
-    // CR-SA-17-E3 / 2026-06-07: 6 つ目「フェーズ構成変更」を追加（隊列〔7 つ目〕は CR-SA-20 領域のため未追加）。
-    it('6 件の項目を仕様書 §1 + scene1-setup.md §2 記載順で返す', () => {
+    // CR-SA-17-E3 / 2026-06-07: 「フェーズ構成変更」を追加。
+    // CR-SA-20-E3 / 2026-06-11: 6 つ目「隊列〔バ群〕ダイス」を追加（フェーズ構成変更の前 =
+    // scene1-setup.md ワイヤーフレーム L36 記載順。フェーズ構成変更は 7 つ目へ繰り下げ）。
+    it('7 件の項目を仕様書 §1 + scene1-setup.md §2 記載順で返す', () => {
         const items = getHouseRuleCheckboxes();
-        expect(items).toHaveLength(6);
+        expect(items).toHaveLength(7);
         expect(items.map((i) => i.key)).toEqual([
             'enableModifier',
             'enableSpecialStrategy',
             'enableCompositeUnique',
             'enableExtendedUnique',
             'enableBondSkill',
+            'enableFormationDice',
             'enablePhaseConfig',
         ]);
-        expect(items.map((i) => i.order)).toEqual([1, 2, 3, 4, 5, 6]);
+        expect(items.map((i) => i.order)).toEqual([1, 2, 3, 4, 5, 6, 7]);
     });
 
     it('ラベル文言が modal-houserule.md §1 + scene1-setup.md §2 と完全一致（変更不可）', () => {
@@ -33,7 +36,9 @@ describe('Bundle-9 / 2026-05-10 getHouseRuleCheckboxes', () => {
         // CR-SA-19 / 2026-06-06: ラベル括弧内に 4 タイプ明示
         expect(labels.enableExtendedUnique).toBe('拡張固有タイプ(超ギャンブル/超安定/ギャンブル型Ⅱ/安定型Ⅱ)を使用');
         expect(labels.enableBondSkill).toBe('絆スキル(連続企画用 絆ギャンブル/絆安定)を使用');
-        // CR-SA-17-E3 / 2026-06-07: フェーズ構成変更トグル文言（scene1-setup.md §2 L213 / modal-houserule.md §1 SSoT）
+        // CR-SA-20-E3 / 2026-06-11: 隊列〔バ群〕ダイストグル文言（scene1-setup.md ワイヤーフレーム L36 SSoT）
+        expect(labels.enableFormationDice).toBe('隊列(バ群)ダイスを使用');
+        // CR-SA-17-E3 / 2026-06-07: フェーズ構成変更トグル文言（scene1-setup.md §2 / modal-houserule.md §1 SSoT）
         expect(labels.enablePhaseConfig).toBe('フェーズ構成(序盤・終盤の回数/ペース位置)を変更する');
     });
 });

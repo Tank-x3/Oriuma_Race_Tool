@@ -367,11 +367,14 @@ export const useRaceStore = create<RaceStoreState>()(
                     const activePhaseIds = getActivePhaseIds(count, on ? state.config.startPhaseCount : 1, on ? state.config.endPhaseCount : 1);
                     // CR-SA-17-E3 / 2026-06-07: 中盤回数縮小でペース位置（中盤アンカー）が無効化する場合の追従（§7.5）。
                     // OFF 時（pacePosition='Start'）は常に有効なため変化しない = OFF 透過。
+                    // CR-SA-20-E3 / 2026-06-11: 隊列 ON（+ フェーズ構成変更 ON）時は隊列スロット制約込みで追従する
+                    // （例: 中盤 2→1 で隊列スロットが中盤1直後 → 序盤直後へ移り、「中盤1の後」が候補外になるケース。§7.6）。
                     const pacePosition = resolvePacePosition(
                         state.config.pacePosition,
                         state.config.startPhaseCount,
                         count,
                         state.config.endPhaseCount,
+                        on && state.config.houseRules.enableFormationDice,
                     );
                     return {
                         config: {
@@ -402,11 +405,13 @@ export const useRaceStore = create<RaceStoreState>()(
                     // CR-SA-17-E4 / 2026-06-08: OFF 透過ゲート（序盤回数 UI は ON 時のみ表示だが防御的に gate）。
                     const on = state.config.houseRules.enablePhaseConfig;
                     const activePhaseIds = getActivePhaseIds(state.config.midPhaseCount, on ? count : 1, on ? state.config.endPhaseCount : 1);
+                    // CR-SA-20-E3 / 2026-06-11: 隊列 ON（+ フェーズ構成変更 ON）時は隊列スロット制約込みで追従（§7.6）。
                     const pacePosition = resolvePacePosition(
                         state.config.pacePosition,
                         count,
                         state.config.midPhaseCount,
                         state.config.endPhaseCount,
+                        on && state.config.houseRules.enableFormationDice,
                     );
                     return {
                         config: {
@@ -435,11 +440,13 @@ export const useRaceStore = create<RaceStoreState>()(
                     // CR-SA-17-E4 / 2026-06-08: OFF 透過ゲート（終盤回数 UI は ON 時のみ表示だが防御的に gate）。
                     const on = state.config.houseRules.enablePhaseConfig;
                     const activePhaseIds = getActivePhaseIds(state.config.midPhaseCount, on ? state.config.startPhaseCount : 1, on ? count : 1);
+                    // CR-SA-20-E3 / 2026-06-11: 隊列 ON（+ フェーズ構成変更 ON）時は隊列スロット制約込みで追従（§7.6）。
                     const pacePosition = resolvePacePosition(
                         state.config.pacePosition,
                         state.config.startPhaseCount,
                         state.config.midPhaseCount,
                         count,
+                        on && state.config.houseRules.enableFormationDice,
                     );
                     return {
                         config: {
@@ -490,7 +497,23 @@ export const useRaceStore = create<RaceStoreState>()(
                         ...state.config.houseRules,
                         ...updates,
                     };
-                    const newConfig = { ...state.config, houseRules: newHouseRules };
+                    // CR-SA-20-E3 / 2026-06-11: 隊列〔バ群〕ダイス ON（かつフェーズ構成変更 ON）への切替で
+                    // 現在のペース位置が隊列スロット以降 = 候補外になった場合、デフォルト位置（序盤ブロック直後）へ
+                    // 強制リセットする（houserule-features.md §7.6 + scene1-setup.md L222、回数変更時リセットと同方針）。
+                    // 両方 ON のときのみ隊列制約で解決する（OFF 時は内部値保持 = OFF 透過。pacePosition = null
+                    // 〔なし〕は位置を持たないため保持され、エントリー確定ブロック L301 で捕捉される）。
+                    const formationGate =
+                        newHouseRules.enablePhaseConfig && newHouseRules.enableFormationDice;
+                    const pacePosition = formationGate
+                        ? resolvePacePosition(
+                              state.config.pacePosition,
+                              state.config.startPhaseCount,
+                              state.config.midPhaseCount,
+                              state.config.endPhaseCount,
+                              true,
+                          )
+                        : state.config.pacePosition;
+                    const newConfig = { ...state.config, houseRules: newHouseRules, pacePosition };
 
                     const effectValueChanged =
                         updates.effectValue !== undefined &&

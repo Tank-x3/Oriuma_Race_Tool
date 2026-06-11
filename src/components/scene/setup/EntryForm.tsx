@@ -18,6 +18,7 @@ import {
     validateBondSkillType,
     validateSpecialStrategyPhase,
     validateSpecialStrategyTypeAndPhase,
+    validateFormationPacePosition,
 } from '../../../core/validator';
 
 // Bundle-2 / D-1, D-14 / 2026-05-09: 静的配列を廃止し、`enableExtendedUnique` 連動で
@@ -192,25 +193,58 @@ export const EntryForm: React.FC = () => {
         [participants]
     );
 
-    const allErrors = useMemo(() => {
+    // CR-SA-20-E3 / 2026-06-11: フェーズ構成系のクリティカルエラー（行単位エラーとは独立）を分離集約する。
+    // scene1-setup.md Error Handling は「この状態が解消されるまでエントリー確定は許可されない」と規定して
+    // おり、本配列は表示（allErrors 合成）と確定ブロック（isValid）の両方に配線する
+    // （CR-SA-17-E3 実装では「フェーズ構成が不正」が表示のみで isValid 未配線 = 確定が素通りしていたため、
+    //  本タスクで仕様準拠方向へ修正）。
+    const configErrors = useMemo(() => {
         const errs: string[] = [];
-        if (config.fullGateSize === null) errs.push('フルゲート人数を設定してください');
-        if (activeParticipants.length === 0) errs.push('参加者が登録されていません');
 
-        // CR-SA-17-E3 / 2026-06-07: 禁止フェーズ構成のデータブロック（scene1-setup.md Error Handling L299-301 / §7.5）。
+        // CR-SA-17-E3 / 2026-06-07: 禁止フェーズ構成のデータブロック（scene1-setup.md Error Handling L302-304 / §7.5）。
         // UI を経由しない経路（JSON プリセット取り込み・state 復元等）で「start 前 / end 後にペース」
         // 「序盤・終盤回数が値域外」等が混入した場合にエントリー確定をブロックする（二重防御のデータ側）。
         // OFF 時は既定値（序盤1/終盤1/ペース序盤直後）= 常に valid のためエラーは出ない（OFF 透過）。
+        // CR-SA-20-E3 / 2026-06-11: 隊列 ON（+ フェーズ構成変更 ON）時は隊列スロット以降のペース位置も
+        // 不正と判定する（§7.6「ペースは隊列より前」のデータブロック側、L302-304 文言に包含）。
         if (
             !isPhaseConfigValid(
                 config.startPhaseCount,
                 config.midPhaseCount,
                 config.endPhaseCount,
                 config.pacePosition,
+                houseRules.enableFormationDice && houseRules.enablePhaseConfig,
             )
         ) {
             errs.push('・フェーズ構成が不正です（ペースの位置または序盤・終盤の回数が許可範囲外です）。設定を見直してください');
         }
+
+        // CR-SA-20-E3 / 2026-06-11: 隊列 ON × ペースなし のエントリー確定ブロック
+        // （houserule-features.md §7.6 + scene1-setup.md L297-301、文言は L301 SSoT 固定）。
+        errs.push(
+            ...validateFormationPacePosition(
+                houseRules.enableFormationDice,
+                houseRules.enablePhaseConfig,
+                config.pacePosition,
+            ),
+        );
+
+        return errs;
+    }, [
+        config.startPhaseCount,
+        config.midPhaseCount,
+        config.endPhaseCount,
+        config.pacePosition,
+        houseRules.enableFormationDice,
+        houseRules.enablePhaseConfig,
+    ]);
+
+    const allErrors = useMemo(() => {
+        const errs: string[] = [];
+        if (config.fullGateSize === null) errs.push('フルゲート人数を設定してください');
+        if (activeParticipants.length === 0) errs.push('参加者が登録されていません');
+
+        errs.push(...configErrors);
 
         // 重複名エラーは名前ごとに1件だけ表示する（重複ペア両方から errors に入ると同一メッセージが複数出てしまうため、
         // ここで一括管理する）。
@@ -231,15 +265,14 @@ export const EntryForm: React.FC = () => {
     }, [
         invalidEntries,
         config.fullGateSize,
-        config.startPhaseCount,
-        config.midPhaseCount,
-        config.endPhaseCount,
-        config.pacePosition,
+        configErrors,
         activeParticipants.length,
         duplicatedNames,
     ]);
 
-    const isValid = activeParticipants.length > 0 && invalidEntries.length === 0;
+    // CR-SA-20-E3 / 2026-06-11: configErrors（フェーズ構成不正 / 隊列 ON × ペースなし）も確定ブロック条件に
+    // 含める（scene1-setup.md Error Handling ⛔ Critical Errors = 進行不可）。
+    const isValid = activeParticipants.length > 0 && invalidEntries.length === 0 && configErrors.length === 0;
 
     const handleConfirm = () => {
         setIsSubmitted(true);

@@ -5,6 +5,7 @@ import {
     getValidPaceAnchors,
     getPaceAnchorOptions,
     getDefaultPacePosition,
+    getFormationSlotAnchorId,
     isPacePositionValid,
     resolvePacePosition,
     isPhaseConfigValid,
@@ -116,6 +117,131 @@ describe('isPhaseConfigValid - 禁止構成データブロック（§7.5）', ()
     });
     it('end 後にペース（禁止構成）は無効', () => {
         expect(isPhaseConfigValid(1, 1, 1, 'End')).toBe(false);
+    });
+});
+
+// CR-SA-20-E3 / 2026-06-11: 隊列〔バ群〕ダイス連動（houserule-features.md §6.4 + §7.6）
+describe('getFormationSlotAnchorId - 隊列スロット位置の自動決定（§6.4）', () => {
+    it('中盤0回 → 序盤ブロック直後（序盤1 = Start）', () => {
+        expect(getFormationSlotAnchorId(1, 0)).toBe('Start');
+    });
+    it('中盤1回 → 序盤ブロック直後（序盤1 = Start）', () => {
+        expect(getFormationSlotAnchorId(1, 1)).toBe('Start');
+    });
+    it('中盤2回以上 → 中盤1の直後（Mid1）', () => {
+        expect(getFormationSlotAnchorId(1, 2)).toBe('Mid1');
+        expect(getFormationSlotAnchorId(1, 3)).toBe('Mid1');
+        expect(getFormationSlotAnchorId(1, 4)).toBe('Mid1');
+    });
+    it('序盤2回以上 × 中盤0/1回 → 最後の序盤の直後（序盤ブロック = 最後の序盤までの拡張解釈）', () => {
+        expect(getFormationSlotAnchorId(2, 0)).toBe('Start2');
+        expect(getFormationSlotAnchorId(3, 1)).toBe('Start3');
+    });
+    it('序盤2回以上 × 中盤2回以上 → 中盤1の直後（序盤回数に依存しない）', () => {
+        expect(getFormationSlotAnchorId(2, 2)).toBe('Mid1');
+        expect(getFormationSlotAnchorId(4, 4)).toBe('Mid1');
+    });
+});
+
+describe('getValidPaceAnchors - 隊列 ON で隊列スロット以降を除外（§7.6）', () => {
+    it('中盤2回: 「中盤1の後」までが候補（中盤2以降のアンカーを除外）', () => {
+        expect(getValidPaceAnchors(1, 2, 1, true).map(a => a.id)).toEqual(['Start', 'Mid1']);
+    });
+    it('中盤1回: 「序盤の後」のみが候補（中盤の後を除外）', () => {
+        expect(getValidPaceAnchors(1, 1, 1, true).map(a => a.id)).toEqual(['Start']);
+    });
+    it('中盤0回: 「序盤の後」のみが候補（従来と同一 = 除外対象なし）', () => {
+        expect(getValidPaceAnchors(1, 0, 1, true).map(a => a.id)).toEqual(['Start']);
+    });
+    it('中盤4回 × 終盤2回: 「中盤1の後」まで（中盤2〜4・終盤1の後を除外）', () => {
+        expect(getValidPaceAnchors(1, 4, 2, true).map(a => a.id)).toEqual(['Start', 'Mid1']);
+    });
+    it('序盤2回 × 中盤1回: 序盤アンカーすべてが候補（隊列スロット = 序盤2の後まで）', () => {
+        expect(getValidPaceAnchors(2, 1, 1, true).map(a => a.id)).toEqual(['Start1', 'Start2']);
+    });
+    it('序盤3回 × 中盤2回: 序盤1〜3 + 中盤1 が候補', () => {
+        expect(getValidPaceAnchors(3, 2, 1, true).map(a => a.id)).toEqual(['Start1', 'Start2', 'Start3', 'Mid1']);
+    });
+    it('隊列 OFF（引数省略 / false）は従来と完全同一', () => {
+        expect(getValidPaceAnchors(1, 2, 1).map(a => a.id)).toEqual(['Start', 'Mid1', 'Mid2']);
+        expect(getValidPaceAnchors(1, 2, 1, false).map(a => a.id)).toEqual(['Start', 'Mid1', 'Mid2']);
+    });
+    it('隊列 ON でも最低 1 アンカー（デフォルト位置 = 序盤ブロック直後）は必ず残る', () => {
+        for (let start = 1; start <= 4; start++) {
+            for (let mid = 0; mid <= 4; mid++) {
+                for (let end = 1; end <= 4; end++) {
+                    const anchors = getValidPaceAnchors(start, mid, end, true);
+                    expect(anchors.length).toBeGreaterThanOrEqual(1);
+                    expect(anchors.map(a => a.id)).toContain(getDefaultPacePosition(start));
+                }
+            }
+        }
+    });
+});
+
+describe('getPaceAnchorOptions - 隊列 ON でも「なし」は候補に残る', () => {
+    it('中盤2回 × 隊列 ON: 序盤の後・中盤1の後 + なし', () => {
+        const opts = getPaceAnchorOptions(1, 2, 1, true);
+        expect(opts.map(o => o.value)).toEqual(['Start', 'Mid1', null]);
+        expect(opts[opts.length - 1].label).toBe(PACE_NONE_LABEL);
+    });
+    it('中盤1回 × 隊列 ON: 序盤の後 + なし', () => {
+        const opts = getPaceAnchorOptions(1, 1, 1, true);
+        expect(opts.map(o => o.label)).toEqual(['序盤の後', 'なし']);
+    });
+});
+
+describe('isPacePositionValid - 隊列 ON の制約込み判定（§7.6）', () => {
+    it('null（なし）は隊列 ON でも本関数では有効（L301 ブロックは validator 側の責務）', () => {
+        expect(isPacePositionValid(null, 1, 2, 1, true)).toBe(true);
+    });
+    it('隊列スロット以前のアンカーは有効', () => {
+        expect(isPacePositionValid('Start', 1, 2, 1, true)).toBe(true);
+        expect(isPacePositionValid('Mid1', 1, 2, 1, true)).toBe(true);
+    });
+    it('隊列スロットより後ろのアンカーは無効', () => {
+        expect(isPacePositionValid('Mid2', 1, 2, 1, true)).toBe(false);
+        expect(isPacePositionValid('Mid', 1, 1, 1, true)).toBe(false);
+    });
+    it('隊列 OFF なら従来どおり有効（後方互換）', () => {
+        expect(isPacePositionValid('Mid2', 1, 2, 1)).toBe(true);
+        expect(isPacePositionValid('Mid', 1, 1, 1, false)).toBe(true);
+    });
+});
+
+describe('resolvePacePosition - 隊列 ON 切替時の強制リセット（§7.6）', () => {
+    it('隊列スロットより後ろの位置 → デフォルト（序盤ブロック直後）へリセット', () => {
+        expect(resolvePacePosition('Mid2', 1, 2, 1, true)).toBe('Start');
+        expect(resolvePacePosition('Mid', 1, 1, 1, true)).toBe('Start');
+    });
+    it('隊列スロット以前の位置は保持', () => {
+        expect(resolvePacePosition('Mid1', 1, 2, 1, true)).toBe('Mid1');
+        expect(resolvePacePosition('Start2', 2, 1, 1, true)).toBe('Start2');
+    });
+    it('null（なし）は隊列 ON でも保持（確定ブロック L301 で捕捉する設計）', () => {
+        expect(resolvePacePosition(null, 1, 2, 1, true)).toBe(null);
+    });
+    it('リセット先デフォルトは隊列 ON でも常に有効な位置', () => {
+        const resolved = resolvePacePosition('End1', 2, 3, 2, true);
+        expect(resolved).toBe('Start2');
+        expect(isPacePositionValid(resolved, 2, 3, 2, true)).toBe(true);
+    });
+});
+
+describe('isPhaseConfigValid - 隊列 ON のデータブロック（§7.6）', () => {
+    it('隊列 ON × ペースが隊列スロットより後ろ → 不正（Import / state 復元由来の捕捉）', () => {
+        expect(isPhaseConfigValid(1, 2, 1, 'Mid2', true)).toBe(false);
+        expect(isPhaseConfigValid(1, 1, 1, 'Mid', true)).toBe(false);
+    });
+    it('隊列 ON × ペースが隊列スロット以前 → 有効', () => {
+        expect(isPhaseConfigValid(1, 2, 1, 'Mid1', true)).toBe(true);
+        expect(isPhaseConfigValid(1, 1, 1, 'Start', true)).toBe(true);
+    });
+    it('隊列 ON × ペースなし（null）は本関数では有効（L301 は validator 側の責務）', () => {
+        expect(isPhaseConfigValid(1, 1, 1, null, true)).toBe(true);
+    });
+    it('隊列 OFF（引数省略）は従来と完全同一', () => {
+        expect(isPhaseConfigValid(1, 2, 1, 'Mid2')).toBe(true);
     });
 });
 

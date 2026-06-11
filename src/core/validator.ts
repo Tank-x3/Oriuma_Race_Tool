@@ -134,6 +134,33 @@ export const validateSpecialStrategyTypeAndPhase = (
     return [];
 };
 
+// CR-SA-20-E3 / 2026-06-11: 隊列〔バ群〕ダイス × ペースなし のエントリー確定ブロック
+// （houserule-features.md §7.6 + scene1-setup.md Error Handling L297-301 SSoT）。
+// 既存 Layer 2 純粋関数群と同パターン（エラー文言配列を返し、呼び出し側でブロック判定に使う）。
+
+/**
+ * 隊列 ON × ペースなし（ペース 0 回）の禁止構成検証。
+ *
+ * 隊列効果は超縦長 / 超団子でペース結果を参照する（§6.3）ため、`enableFormationDice = true`
+ * かつ `pacePosition = null` の構成はクリティカルエラーとしてエントリー確定をブロックする。
+ *
+ * `enablePhaseConfig = false` のときはペースが序盤直後固定（pacePosition の内部値は実効しない）で
+ * 矛盾が構造上発生しないため、両ハウスルールが ON のときのみ検証する（L297 条件 / OFF 透過）。
+ * UI 操作だけでなく JSON プリセット取り込み・state 復元由来の混入も本関数で捕捉される
+ * （エントリー確定時に毎回評価されるため）。エラー文言は L301 固定（変更不可）。
+ *
+ * @returns 妥当なら `[]`、エラーなら 1 件のエラーメッセージ配列。
+ */
+export const validateFormationPacePosition = (
+    enableFormationDice: boolean,
+    enablePhaseConfig: boolean,
+    pacePosition: string | null,
+): string[] => {
+    if (!enableFormationDice || !enablePhaseConfig) return [];
+    if (pacePosition !== null) return [];
+    return ['・隊列(バ群)ダイスを使用する場合はペースが必要です。ペース位置を「なし」以外にするか、隊列ダイスをオフにしてください'];
+};
+
 // Bundle-10-T3 / CR-SA-12 / 2026-05-11: 脚質エディタ Validation 統合
 // (modal-houserule.md §Critical Errors + houserule-features.md §1 Validation SSoT)
 // 既存 Layer 2 純粋関数群 (validatePersistentSkillPhases / validateBondSkillType /

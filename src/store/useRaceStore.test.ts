@@ -537,6 +537,92 @@ describe('useRaceStore.setStartPhaseCount / setEndPhaseCount / setPacePosition -
     });
 });
 
+// CR-SA-20-E3 / 2026-06-11: 隊列〔バ群〕ダイス ON 切替・回数変更時のペース位置追従
+// （houserule-features.md §7.6「ペースは隊列より前」+ scene1-setup.md L222 強制リセット）。
+describe('useRaceStore - CR-SA-20-E3 / 隊列 ON 時のペース位置強制リセット', () => {
+    beforeEach(() => {
+        useRaceStore.getState().resetRace();
+    });
+
+    const installPhaseConfig = (
+        cfg: { start?: number; mid?: number; end?: number; pace?: string | null },
+        houseRulesOverrides: Partial<typeof DEFAULT_HOUSE_RULES> = {},
+    ) => {
+        useRaceStore.setState({
+            config: {
+                midPhaseCount: cfg.mid ?? 1,
+                startPhaseCount: cfg.start ?? 1,
+                endPhaseCount: cfg.end ?? 1,
+                // null（なし）を明示指定できるよう undefined のみデフォルト 'Start' へフォールバック
+                pacePosition: cfg.pace === undefined ? 'Start' : cfg.pace,
+                fullGateSize: null,
+                houseRules: {
+                    ...DEFAULT_HOUSE_RULES,
+                    enablePhaseConfig: true,
+                    ...houseRulesOverrides,
+                },
+            },
+            participants: [],
+        });
+    };
+
+    it('隊列 ON 切替: ペース位置が隊列スロットより後ろ（中盤2の後）→ デフォルト（序盤直後）へ強制リセット', () => {
+        installPhaseConfig({ mid: 2, pace: 'Mid2' });
+        useRaceStore.getState().updateHouseRules({ enableFormationDice: true });
+        expect(useRaceStore.getState().config.pacePosition).toBe('Start');
+    });
+
+    it('隊列 ON 切替: 隊列スロット以前の位置（中盤1の後）は保持', () => {
+        installPhaseConfig({ mid: 2, pace: 'Mid1' });
+        useRaceStore.getState().updateHouseRules({ enableFormationDice: true });
+        expect(useRaceStore.getState().config.pacePosition).toBe('Mid1');
+    });
+
+    it('隊列 ON 切替: ペースなし（null）は保持される（確定ブロック L301 側で捕捉する設計）', () => {
+        installPhaseConfig({ mid: 2, pace: null });
+        useRaceStore.getState().updateHouseRules({ enableFormationDice: true });
+        expect(useRaceStore.getState().config.pacePosition).toBe(null);
+    });
+
+    it('隊列 ON のままフェーズ構成変更を後から ON: 残存していた候補外位置もリセットされる', () => {
+        // enablePhaseConfig OFF + 隊列 ON の状態で内部値 'Mid2' が残存しているケース
+        installPhaseConfig({ mid: 2, pace: 'Mid2' }, { enablePhaseConfig: false, enableFormationDice: true });
+        useRaceStore.getState().updateHouseRules({ enablePhaseConfig: true });
+        expect(useRaceStore.getState().config.pacePosition).toBe('Start');
+    });
+
+    it('フェーズ構成変更 OFF のまま隊列 ON: 内部値は保持（OFF 透過 = ペース序盤直後固定で矛盾なし）', () => {
+        installPhaseConfig({ mid: 2, pace: 'Mid2' }, { enablePhaseConfig: false });
+        useRaceStore.getState().updateHouseRules({ enableFormationDice: true });
+        expect(useRaceStore.getState().config.pacePosition).toBe('Mid2');
+    });
+
+    it('隊列 OFF への切替: 位置保持（制約解除のみ、リセットは発生しない）', () => {
+        installPhaseConfig({ mid: 2, pace: 'Mid1' }, { enableFormationDice: true });
+        useRaceStore.getState().updateHouseRules({ enableFormationDice: false });
+        expect(useRaceStore.getState().config.pacePosition).toBe('Mid1');
+    });
+
+    it('隊列 ON 中の中盤回数縮小: 隊列スロット移動（中盤1直後 → 序盤直後）で候補外になった位置をリセット', () => {
+        // 中盤2/ペース=中盤1の後（隊列 ON で有効）→ 中盤1 に縮小 → スロットが序盤直後へ → Mid1 候補外
+        installPhaseConfig({ mid: 2, pace: 'Mid1' }, { enableFormationDice: true });
+        useRaceStore.getState().setMidPhaseCount(1);
+        expect(useRaceStore.getState().config.pacePosition).toBe('Start');
+    });
+
+    it('隊列 ON 中の中盤回数拡大: 有効な位置（序盤直後）は保持', () => {
+        installPhaseConfig({ mid: 1, pace: 'Start' }, { enableFormationDice: true });
+        useRaceStore.getState().setMidPhaseCount(4);
+        expect(useRaceStore.getState().config.pacePosition).toBe('Start');
+    });
+
+    it('隊列 ON 中の序盤回数縮小: デフォルトが縮小後の最後の序盤へ追従', () => {
+        installPhaseConfig({ start: 2, mid: 2, pace: 'Mid2' }, { enableFormationDice: true });
+        useRaceStore.getState().setStartPhaseCount(1);
+        expect(useRaceStore.getState().config.pacePosition).toBe('Start');
+    });
+});
+
 // CR-SA-17-E4 / 2026-06-08: レース開始時の初期フェーズが「先頭の序盤フェーズ」になること
 // （houserule-features.md §7、OFF=Start / 序盤≥2=Start1）。'Start' 固定だと可変序盤で
 // currentPhaseId が phaseSequence に存在せず進行・スコアが壊れるための回帰防止テスト。

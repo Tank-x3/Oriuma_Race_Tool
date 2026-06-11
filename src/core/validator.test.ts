@@ -7,6 +7,7 @@ import {
     validateSpecialStrategyTypeAndPhase,
     validateStrategyName,
     validateDiceFormat,
+    validateFormationPacePosition,
 } from './validator';
 
 describe('Validator', () => {
@@ -258,6 +259,35 @@ describe('validateSpecialStrategyTypeAndPhase - Bundle-8-T2', () => {
 
 // Bundle-10-T3 / CR-SA-12 / 2026-05-11: 脚質エディタ Validation 統合
 // modal-houserule.md §Critical Errors + houserule-features.md §1 Validation SSoT 準拠
+// CR-SA-20-E3 / 2026-06-11: 隊列 ON × ペースなし のエントリー確定ブロック
+// （houserule-features.md §7.6 + scene1-setup.md Error Handling L297-301）
+describe('validateFormationPacePosition - CR-SA-20-E3', () => {
+    const L301_MESSAGE =
+        '・隊列(バ群)ダイスを使用する場合はペースが必要です。ペース位置を「なし」以外にするか、隊列ダイスをオフにしてください';
+
+    it('隊列 ON × フェーズ構成変更 ON × ペースなし（null）→ L301 文言のエラー 1 件', () => {
+        expect(validateFormationPacePosition(true, true, null)).toEqual([L301_MESSAGE]);
+    });
+
+    it('隊列 ON × フェーズ構成変更 ON × ペースあり → 通過', () => {
+        expect(validateFormationPacePosition(true, true, 'Start')).toEqual([]);
+        expect(validateFormationPacePosition(true, true, 'Mid1')).toEqual([]);
+    });
+
+    it('隊列 OFF × ペースなし → 通過（既存挙動 = ペースなし構成自体は有効）', () => {
+        expect(validateFormationPacePosition(false, true, null)).toEqual([]);
+    });
+
+    it('フェーズ構成変更 OFF はペース序盤直後固定で矛盾が発生しないため通過（L297 条件 / OFF 透過）', () => {
+        expect(validateFormationPacePosition(true, false, null)).toEqual([]);
+    });
+
+    it('両ハウスルール OFF → 通過', () => {
+        expect(validateFormationPacePosition(false, false, null)).toEqual([]);
+        expect(validateFormationPacePosition(false, false, 'Start')).toEqual([]);
+    });
+});
+
 describe('validateStrategyName - Bundle-10-T3', () => {
     const existing = ['大逃げ', '逃げ', '先行', '差し', '追込'];
 

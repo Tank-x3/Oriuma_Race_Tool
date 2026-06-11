@@ -60,10 +60,15 @@ export const RaceConfigForm: React.FC = () => {
 
     // CR-SA-17-E3 / 2026-06-07: ペース位置の有効アンカー候補（+「なし」）と現在の構成表示ラベルを
     // 現在の回数から都度算出する（§7.5 動的連動）。OFF 時は描画しないため算出のみ。
+    // CR-SA-20-E3 / 2026-06-11: 隊列〔バ群〕ダイス ON 時は隊列スロット以降のアンカーを候補から除外する
+    // （houserule-features.md §7.6「ペースは隊列より前」UI 禁止側。enableFormationDice 切替で
+    //  本コンポーネントが再レンダリングされるため候補は自動再生成される。「なし」は候補に残し、
+    //  隊列 ON × なし はエントリー確定ブロックで捕捉する）。
     const paceAnchorOptions = getPaceAnchorOptions(
         config.startPhaseCount,
         config.midPhaseCount,
         config.endPhaseCount,
+        config.houseRules.enableFormationDice,
     );
     const displayLabels = getPhaseConfigDisplayLabels(
         config.startPhaseCount,
