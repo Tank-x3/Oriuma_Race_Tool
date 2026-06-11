@@ -14,6 +14,9 @@ import {
 import { getSpecialStrategyAnnotation } from './specialStrategy.helpers';
 // Bundle-8-T4 / CR-SA-4 / 2026-05-10: 終盤【絆スキル】セクション自動生成（scene3-race.md §2）
 import { getBondSkillSection } from './bondSkill.helpers';
+// CR-SA-17-E4 / 2026-06-08: 可変序盤・終盤対応のフェーズ別ダイス式 + 最後の終盤フェーズ ID 導出
+import { getStrategyDice } from '../../../core/strategies';
+import { getLastEndPhaseId } from '../../../core/calculator';
 
 export const PhaseOutput: React.FC = () => {
     const {
@@ -27,6 +30,10 @@ export const PhaseOutput: React.FC = () => {
     const { getPhaseLabel } = useRaceEngine();
     const [copied, setCopied] = useState(false);
 
+    // CR-SA-17-E4 / 2026-06-08: 現在構成の「最後の終盤フェーズ ID」（OFF / 終盤 1 = 'End'、終盤 ≥2 = 'End{n}'）。
+    // 終盤反動の自動併記・絆スキルセクションの出力位置判定に使用する。
+    const lastEndPhaseId = getLastEndPhaseId(config);
+
     // Sort participants by Gate Number (Scene 2 verified)
     // If gate is null, fallback to index (should be set in Scene 2)
     const sortedParticipants = [...participants].sort((a, b) => {
@@ -39,6 +46,8 @@ export const PhaseOutput: React.FC = () => {
     // ダイス式 [基礎値] は specialStrategy 効果値反映前のスコアを使用する
     // （houserule-features.md §3 Application Timing 改訂分、scene3-race.md §2 特殊戦法併記）。
     // 算出ロジックは phaseOutput.helpers#getDiceFormulaBaseValue に切り出し。
+    // ※ CR-SA-17-E4 Round 2「序盤2 以降の N+Z 出力」は round-trip（投稿→貼り戻し）に parser 拡張が
+    //   必要なため ESCALATION 起票（BOARD 参照）。本コミットでは機能する Z 基準出力を維持する。
     const getBaseValue = (p: typeof participants[0]) =>
         getDiceFormulaBaseValue(p, currentPhaseId, config.houseRules, strategies);
 
@@ -47,16 +56,9 @@ export const PhaseOutput: React.FC = () => {
         const strategy = strategies.find(s => s.name === strategyName);
         if (!strategy) return 'dice0d0'; // Error case
 
-        if (currentPhaseId === 'Start') return strategy.dice.start;
-        if (currentPhaseId.startsWith('Mid')) return strategy.dice.mid; // Mid1, Mid2... use same
-        if (currentPhaseId === 'End') {
-            // Special case for 'Big Escape' (大逃げ) or negative dice
-            // Logic says: "Use negative value directly"
-            // If the string starts with '-', handle it in formatting?
-            // "O-Nige" End dice is "-1d27".
-            return strategy.dice.end;
-        }
-        return 'dice0d0';
+        // CR-SA-17-E4 / 2026-06-08: 可変序盤・終盤（Start1/End1…）対応。getStrategyDice へ委譲し
+        // 複数序盤=序盤ダイス共通 / 複数終盤=終盤ダイス共通（大逃げ '-1d27' を含む）を一元化する。
+        return getStrategyDice(strategy, currentPhaseId);
     };
 
     // Replacement for Gate Numbers
@@ -235,6 +237,7 @@ export const PhaseOutput: React.FC = () => {
                     p,
                     currentPhaseId,
                     config.houseRules.effectValue,
+                    lastEndPhaseId,
                 );
                 text += `${gateSym} ${p.name}　${formula}${annotation}\n`;
             }
@@ -271,6 +274,7 @@ export const PhaseOutput: React.FC = () => {
             sortedParticipants,
             currentPhaseId,
             config.houseRules,
+            lastEndPhaseId,
         );
         if (bondSection) {
             // 通常ダイス末尾には改行が残り、固有ダイスありの場合は join で末尾改行なし。

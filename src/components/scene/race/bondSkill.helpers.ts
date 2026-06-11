@@ -94,9 +94,12 @@ export const getBondSkillSection = (
     participants: Umamusume[],
     currentPhaseId: string,
     houseRules: Pick<HouseRules, 'enableBondSkill'>,
+    lastEndPhaseId: string = 'End',
 ): string => {
     if (!houseRules.enableBondSkill) return '';
-    if (currentPhaseId !== 'End') return '';
+    // CR-SA-17-E4 / 2026-06-08: 可変終盤対応。絆スキルセクションは「最後の終盤フェーズ」でのみ出力する
+    // （省略時 'End' = 終盤 1 回 / OFF で従来同一、終盤 ≥2 では End{n}）。
+    if (currentPhaseId !== lastEndPhaseId) return '';
 
     const targets = participants
         .filter((p) => !!p.bondSkill?.type && p.gate !== null)
@@ -136,11 +139,14 @@ export const getBondSkillSection = (
 export const calculateBondSkillDelta = (
     p: Umamusume,
     houseRules: Pick<HouseRules, 'enableBondSkill'>,
+    lastEndPhaseId: string = 'End',
 ): number => {
     if (!houseRules.enableBondSkill) return 0;
     const type = p.bondSkill?.type;
     if (!type) return 0;
-    const bondDice = p.history['End']?.bondDice;
+    // CR-SA-17-E4 / 2026-06-08: 可変終盤対応。絆ダイスは最後の終盤フェーズで取り込まれるため
+    // history[lastEndPhaseId]（省略時 'End'）を参照する。
+    const bondDice = p.history[lastEndPhaseId]?.bondDice;
     if (!bondDice) return 0;
     return bondDice.sum;
 };
@@ -175,5 +181,8 @@ export const calculateScoreWithBondSkill = (
         houseRules.enableSpecialStrategy,
         houseRules.uniqueDiceConfig,
     );
-    return baseScore + calculateBondSkillDelta(p, houseRules);
+    // CR-SA-17-E4 / 2026-06-08: 最後の終盤フェーズ ID を非ペース列（activePhaseIds）の末尾から導出し、
+    // 絆スキル最終加算へ伝播する（OFF / 終盤 1 = 'End'、終盤 ≥2 = 'End{n}'）。
+    const lastEndPhaseId = activePhaseIds.length > 0 ? activePhaseIds[activePhaseIds.length - 1] : 'End';
+    return baseScore + calculateBondSkillDelta(p, houseRules, lastEndPhaseId);
 };

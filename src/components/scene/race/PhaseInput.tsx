@@ -5,7 +5,7 @@ import {
     getUndetectedDiceDetails,
     formatUndetectedDiceDetail,
 } from '../../../core/parser/parserUtils';
-import { Calculator, getActivePhaseIds } from '../../../core/calculator';
+import { Calculator, getActivePhaseIdsForConfig } from '../../../core/calculator';
 import { getPaceLabel } from '../../../core/strategies';
 import { useNotificationStore } from '../../../store/useNotificationStore';
 import { useRaceEngine } from '../../../hooks/useRaceEngine';
@@ -58,6 +58,12 @@ export const PhaseInput: React.FC<PhaseInputProps> = ({ onErrors }) => {
         setIsParsing(true);
         // Clear previous errors
         onErrors?.([]);
+
+        // CR-SA-17-E4 / 2026-06-08: enablePhaseConfig でゲートした有効フェーズ列。OFF 透過のため
+        // config に可変値が残っていても OFF 時は固定列（Start / End 単一）になる。
+        // 末尾 = 最後の終盤フェーズ ID（絆ダイス取り込み判定に使用）。
+        const activePhaseIds = getActivePhaseIdsForConfig(config);
+        const lastEndPhaseId = activePhaseIds.length > 0 ? activePhaseIds[activePhaseIds.length - 1] : 'End';
 
         try {
             await new Promise(resolve => setTimeout(resolve, 50)); // UI flush
@@ -162,7 +168,7 @@ export const PhaseInput: React.FC<PhaseInputProps> = ({ onErrors }) => {
                         updatedPForCalc,
                         strategies,
                         paceResult.face,
-                        getActivePhaseIds(config.midPhaseCount, config.startPhaseCount, config.endPhaseCount),
+                        activePhaseIds,
                         config.houseRules.uniqueDiceConfig
                     );
 
@@ -177,9 +183,10 @@ export const PhaseInput: React.FC<PhaseInputProps> = ({ onErrors }) => {
                 // Bundle-8-T5 / CR-SA-4 / 2026-05-10 [ESCALATION 案 V Provisional 適用]:
                 // 終盤【絆スキル】セクション解析後の bondDice 格納分岐
                 // （scene3-race.md §2、houserule-features.md §2 [v] §データ仕様 L141）。
-                // 仕様 §2「他フェーズでの非表示」は本ガード（currentPhaseId === 'End'）で実現する。
-                // score 再計算は不要（calculator.ts は bondDice を見ない、最終加算は Bundle-8-T6 で実装）。
-                if (currentPhaseId === 'End' && bondResults && bondResults.length > 0) {
+                // 仕様 §2「他フェーズでの非表示」は本ガード（currentPhaseId === lastEndPhaseId）で実現する。
+                // CR-SA-17-E4 / 2026-06-08: 可変終盤対応。絆ダイスは最後の終盤フェーズ（OFF / 終盤 1 = 'End'、
+                // 終盤 ≥2 = 'End{n}'）で取り込む。score 再計算は不要（calculator.ts は bondDice を見ない、最終加算は Bundle-8-T6）。
+                if (currentPhaseId === lastEndPhaseId && bondResults && bondResults.length > 0) {
                     bondResults.forEach((br) => {
                         const originalP = participants.find((pp) => pp.id === br.participantId);
                         if (!originalP) return;

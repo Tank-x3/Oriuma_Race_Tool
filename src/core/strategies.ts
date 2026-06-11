@@ -99,8 +99,11 @@ export function getPaceLabel(face: number): string {
 }
 
 export function getStrategyDice(strategy: Strategy, phaseId: string): string {
-    if (phaseId === 'Start') return strategy.dice.start;
+    // CR-SA-17-E4 / 2026-06-08: 可変序盤・終盤対応（houserule-features.md §7.4）。
+    // 複数序盤（Start1/Start2…）はすべて序盤ダイス、複数終盤（End1/End2…）はすべて終盤ダイスを
+    // 共通使用する。OFF 時（Start / End 単一）は `startsWith` でも従来と同一の式を返す。
+    if (phaseId.startsWith('Start')) return strategy.dice.start;
     if (phaseId.startsWith('Mid')) return strategy.dice.mid;
-    if (phaseId === 'End') return strategy.dice.end;
+    if (phaseId.startsWith('End')) return strategy.dice.end;
     return 'dice0d0'; // Fallback
 }

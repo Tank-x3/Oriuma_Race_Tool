@@ -2,11 +2,13 @@ import { useState, useMemo, useEffect } from 'react';
 import { useRaceStore } from '../../store/useRaceStore';
 import { RankingCalculator } from '../../core/logic/RankingCalculator';
 import { StandardParser } from '../../core/parser/standardParser';
+// CR-SA-17-E4 / 2026-06-08: 可変終盤対応の「最後の終盤フェーズ ID」導出
+import { getLastEndPhaseId } from '../../core/calculator';
 import { Check, Copy, AlertCircle, ArrowRight } from 'lucide-react';
 import { clsx } from 'clsx';
 
 export const JudgmentScene = () => {
-  const { participants, updateParticipant, moveToResult, setCurrentPhase } = useRaceStore();
+  const { participants, updateParticipant, moveToResult, setCurrentPhase, config } = useRaceStore();
   const [inputValue, setInputValue] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [copiedDice, setCopiedDice] = useState(false);
@@ -213,7 +215,8 @@ export const JudgmentScene = () => {
   };
 
   const handleBack = () => {
-    setCurrentPhase('End');
+    // CR-SA-17-E4 / 2026-06-08: 可変終盤では最後の終盤フェーズ（End{n}）へ戻す（OFF / 終盤 1 = 'End'）。
+    setCurrentPhase(getLastEndPhaseId(config));
     useRaceStore.setState(s => ({ uiState: { ...s.uiState, scene: 'race' } }));
   };
 

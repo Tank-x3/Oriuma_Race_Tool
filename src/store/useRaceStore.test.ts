@@ -469,9 +469,12 @@ describe('useRaceStore.setStartPhaseCount / setEndPhaseCount / setPacePosition -
         expect(shrunk.score).toBe(3); // End のみ
 
         // 1 -> 2: Start1 + Start2 + End が合算復帰
+        // CR-SA-17-E4 / 2026-06-08（Review Gate 修正）: 脚質基礎値（先行 fixValue=10）は
+        // 序盤フェーズごとに加算される（Start1 で 10・Start2 で 10）。
+        // 期待値 = fixValue(10)+Start1(5) + fixValue(10)+Start2(7) + End(3) = 35。
         useRaceStore.getState().setStartPhaseCount(2);
         const restored = useRaceStore.getState().participants[0];
-        expect(restored.score).toBe(5 + 7 + 3);
+        expect(restored.score).toBe(10 + 5 + 10 + 7 + 3);
     });
 
     it('setEndPhaseCount: 終盤縮小で End2 history は Soft Delete 保持・score は除外再計算', () => {
@@ -525,6 +528,52 @@ describe('useRaceStore.setStartPhaseCount / setEndPhaseCount / setPacePosition -
         expect(useRaceStore.getState().config.pacePosition).toBe('Start');
         useRaceStore.getState().setMidPhaseCount(0);
         expect(useRaceStore.getState().config.pacePosition).toBe('Start');
+    });
+});
+
+// CR-SA-17-E4 / 2026-06-08: レース開始時の初期フェーズが「先頭の序盤フェーズ」になること
+// （houserule-features.md §7、OFF=Start / 序盤≥2=Start1）。'Start' 固定だと可変序盤で
+// currentPhaseId が phaseSequence に存在せず進行・スコアが壊れるための回帰防止テスト。
+describe('useRaceStore.startRace - CR-SA-17-E4 / 初期フェーズの可変序盤対応', () => {
+    beforeEach(() => {
+        useRaceStore.getState().resetRace();
+    });
+
+    it('OFF: 初期フェーズは Start（現行同一）', () => {
+        useRaceStore.setState({
+            config: {
+                midPhaseCount: 1, startPhaseCount: 1, endPhaseCount: 1, pacePosition: 'Start',
+                fullGateSize: null,
+                houseRules: { ...DEFAULT_HOUSE_RULES, enablePhaseConfig: false },
+            },
+        });
+        useRaceStore.getState().startRace();
+        expect(useRaceStore.getState().currentPhaseId).toBe('Start');
+        expect(useRaceStore.getState().uiState.scene).toBe('race');
+    });
+
+    it('ON 序盤2: 初期フェーズは Start1（先頭序盤）', () => {
+        useRaceStore.setState({
+            config: {
+                midPhaseCount: 1, startPhaseCount: 2, endPhaseCount: 2, pacePosition: 'Mid',
+                fullGateSize: null,
+                houseRules: { ...DEFAULT_HOUSE_RULES, enablePhaseConfig: true },
+            },
+        });
+        useRaceStore.getState().startRace();
+        expect(useRaceStore.getState().currentPhaseId).toBe('Start1');
+    });
+
+    it('OFF 透過: enablePhaseConfig=false なら startPhaseCount=2 が残っていても Start', () => {
+        useRaceStore.setState({
+            config: {
+                midPhaseCount: 1, startPhaseCount: 2, endPhaseCount: 2, pacePosition: 'Start',
+                fullGateSize: null,
+                houseRules: { ...DEFAULT_HOUSE_RULES, enablePhaseConfig: false },
+            },
+        });
+        useRaceStore.getState().startRace();
+        expect(useRaceStore.getState().currentPhaseId).toBe('Start');
     });
 });
 

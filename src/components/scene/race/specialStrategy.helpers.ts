@@ -11,15 +11,24 @@ import { DEFAULT_UNIQUE_DICE_CONFIG } from '../../../core/strategies';
 // `computeSpecialStrategyTotalDelta` を改修。判定用に `isPhaseResultLoaded` を新設。
 
 /**
+ * CR-SA-17-E4 / 2026-06-08: フェーズ ID が終盤ブロック（`End` / `End1` / `End2` …）か判定する。
+ * 可変終盤構成（houserule-features.md §7.3 / §7.4）で「終盤」を一意に識別するための述語。
+ * 終盤 1 回構成では `End` のみ、終盤 ≥2 構成では `End1`〜`End4` がマッチする。
+ */
+export const isEndPhaseId = (phaseId: string): boolean => /^End[0-9]*$/.test(phaseId);
+
+/**
  * 終盤フェーズへの到達済か判定する。
- * - currentPhaseId === 'End' または history に 'End' エントリが存在 → 到達済
+ * - currentPhaseId が終盤ブロック または history に終盤ブロックのエントリが存在 → 到達済
  * - 終盤反動の自動解決と Future Queue 解決の境界判定に使用する
+ *
+ * CR-SA-17-E4 / 2026-06-08: 可変終盤対応。終盤 1 回構成（`End` 単一）では従来と完全同一。
  */
 export const hasReachedEndPhase = (
     currentPhaseId: string,
     history: Umamusume['history']
 ): boolean => {
-    return currentPhaseId === 'End' || history['End'] !== undefined;
+    return isEndPhaseId(currentPhaseId) || Object.keys(history).some(isEndPhaseId);
 };
 
 /**
@@ -78,15 +87,20 @@ export const findActivatedSpecialStrategy = (
  *
  * 仕様根拠: scene3-race.md §2 「特殊戦法併記」/ houserule-features.md §3 Resolve
  */
+// CR-SA-17-E4 / 2026-06-08: 可変終盤対応。終盤反動の自動併記は「最後の終盤フェーズ」で 1 回のみ行う。
+// `lastEndPhaseId` 省略時は 'End'（= 終盤 1 回構成 / OFF）で従来挙動と完全同一。終盤 ≥2 では
+// 呼び出し側（PhaseOutput）が現在構成の最後の終盤 ID（End{n}）を渡す。途中の終盤（End1 等）は
+// 通常フェーズと同じ分岐へ流れ、特殊戦法は終盤発動禁止（§7.7）のため空文字となる。
 export const getSpecialStrategyAnnotation = (
     p: Umamusume,
     phaseId: string,
-    effectValue: number
+    effectValue: number,
+    lastEndPhaseId: string = 'End'
 ): string => {
-    if (phaseId === 'End') {
+    if (phaseId === lastEndPhaseId) {
         const activated = findActivatedSpecialStrategy(p);
         if (activated === null) return '';
-        if (activated.phaseId === 'End') return '';
+        if (isEndPhaseId(activated.phaseId)) return '';
         if (activated.value === 'Makuri') return ` 【捲り】-${effectValue}`;
         if (activated.value === 'Tame') return ` 【溜め】+${effectValue}`;
         return '';
@@ -170,7 +184,10 @@ export const calculateScoreWithSpecialStrategy = (
         activePhaseIds,
         uniqueDiceConfig
     );
-    const delta = computeSpecialStrategyTotalDelta(p, effectValue, enableSpecialStrategy);
+    // CR-SA-17-E4 / 2026-06-08: 終盤反動は「最後の終盤フェーズ」取り込み時に反映する。
+    // 非ペース列（activePhaseIds）の末尾 = 終盤ブロックの最後（OFF / 終盤 1 = 'End'）。
+    const lastEndPhaseId = activePhaseIds.length > 0 ? activePhaseIds[activePhaseIds.length - 1] : 'End';
+    const delta = computeSpecialStrategyTotalDelta(p, effectValue, enableSpecialStrategy, lastEndPhaseId);
     return baseScore + delta;
 };
 
@@ -190,17 +207,22 @@ export const stripStrategyAnnotations = (input: string): string => {
     return input.replace(/\s*【(?:捲り|溜め)】[+\-－＋]?\d+/g, '');
 };
 
+// CR-SA-17-E4 / 2026-06-08: 可変終盤対応。`lastEndPhaseId` 省略時は 'End'（終盤 1 回 / OFF）で
+// 従来挙動と完全同一。終盤 ≥2 では呼び出し側が最後の終盤 ID（End{n}）を渡し、反動/解放は
+// 「最後の終盤フェーズ取り込み済」で 1 回反映する（途中の終盤 End1 等では反動を先取りしない）。
 export const computeSpecialStrategyTotalDelta = (
     p: Umamusume,
     effectValue: number,
-    enableSpecialStrategy: boolean
+    enableSpecialStrategy: boolean,
+    lastEndPhaseId: string = 'End'
 ): number => {
     // ハウスルールフラグ OFF なら delta = 0（過去データが残っていても無効化）
     if (!enableSpecialStrategy) return 0;
 
     const activated = findActivatedSpecialStrategy(p);
     if (activated === null) return 0;
-    if (activated.phaseId === 'End') return 0;
+    // 終盤発動は禁止仕様（§7.7、終盤が複数でも全終盤で禁止）。防御的に終盤ブロック発動を無視する。
+    if (isEndPhaseId(activated.phaseId)) return 0;
 
     // Bundle-4-Followup-special-strategy-timing-E1 / 2026-05-12 (SA21 案 A 採択):
     // 発動 phase が結果取り込み済の場合のみ effectValue を score へ反映する。
@@ -210,8 +232,8 @@ export const computeSpecialStrategyTotalDelta = (
 
     let delta = activated.value === 'Makuri' ? effectValue : -effectValue;
 
-    // 終盤の baseDice 解析実行済（history.End あり）なら反動/解放も加算（既存仕様維持）
-    if (p.history['End'] !== undefined) {
+    // 最後の終盤の baseDice 解析実行済（history[lastEndPhaseId] あり）なら反動/解放も加算（既存仕様維持）
+    if (p.history[lastEndPhaseId] !== undefined) {
         delta += activated.value === 'Makuri' ? -effectValue : effectValue;
     }
     return delta;

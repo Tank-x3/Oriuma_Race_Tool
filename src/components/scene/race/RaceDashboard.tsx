@@ -45,8 +45,9 @@ export const RaceDashboard: React.FC = () => {
     // - houseRules.enableSpecialStrategy === true
     // - 現在フェーズが終盤以外（houserule-features.md §3 Phase Restriction）
     // - 進行中レースフェーズ（Start / Mid / Mid1..N）に限定（Pace / setup / gate_lottery 等は除外）
+    // CR-SA-17-E4 / 2026-06-08: 可変序盤（Start1/Start2…）対応。特殊戦法は序盤・中盤で発動可、終盤は発動禁止（§7.7）。
     const isRaceMainPhase =
-        currentPhaseId === 'Start' ||
+        currentPhaseId.startsWith('Start') ||
         currentPhaseId === 'Mid' ||
         currentPhaseId.startsWith('Mid');
     const showSpecialStrategy =
@@ -55,11 +56,12 @@ export const RaceDashboard: React.FC = () => {
     // Bundle-5 / P4-2, P4-3, CR-22 / 2026-05-10: 補正ボタン表示条件
     // - houseRules.enableModifier === true
     // - 進行中レースフェーズ（Start / Mid / Mid1..N / End）= 戦法と異なり End 含む
+    // CR-SA-17-E4 / 2026-06-08: 可変序盤・終盤（Start1/End1…）対応。補正は全レースフェーズで可。
     const isModifierEligiblePhase =
-        currentPhaseId === 'Start' ||
+        currentPhaseId.startsWith('Start') ||
         currentPhaseId === 'Mid' ||
         currentPhaseId.startsWith('Mid') ||
-        currentPhaseId === 'End';
+        currentPhaseId.startsWith('End');
     const showModifier =
         config.houseRules.enableModifier && isModifierEligiblePhase;
 

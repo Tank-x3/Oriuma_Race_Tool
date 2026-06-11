@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Flag, PlayCircle, RotateCcw, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useRaceEngine } from '../../hooks/useRaceEngine';
 import { useRaceStore } from '../../store/useRaceStore';
-import { Calculator, getActivePhaseIds } from '../../core/calculator';
+import { Calculator, getActivePhaseIdsForConfig } from '../../core/calculator';
 import { RankingCalculator } from '../../core/logic/RankingCalculator';
 import { PhaseOutput } from './race/PhaseOutput';
 import { PhaseInput } from './race/PhaseInput';
@@ -71,10 +71,11 @@ export const RaceScene: React.FC = () => {
                 if (strategy) {
                     // Normalize: expected "-1d27" -> "1d27"
                     // History diceStr usually stores the "XdY" part (without sign)
+                    // CR-SA-17-E4 / 2026-06-08: 可変序盤・終盤（Start1/End1…）対応。
                     let rawExp = '';
-                    if (currentPhaseId === 'Start') rawExp = strategy.dice.start;
+                    if (currentPhaseId.startsWith('Start')) rawExp = strategy.dice.start;
                     else if (currentPhaseId.startsWith('Mid')) rawExp = strategy.dice.mid;
-                    else if (currentPhaseId === 'End') rawExp = strategy.dice.end;
+                    else if (currentPhaseId.startsWith('End')) rawExp = strategy.dice.end;
 
                     if (rawExp) {
                         const expClean = rawExp.replace('-', '');
@@ -128,7 +129,7 @@ export const RaceScene: React.FC = () => {
                     p,
                     strategies,
                     paceResult.face,
-                    getActivePhaseIds(config.midPhaseCount, config.startPhaseCount, config.endPhaseCount),
+                    getActivePhaseIdsForConfig(config),
                     config.houseRules.uniqueDiceConfig
                 );
                 // Only update if changed (optimization)

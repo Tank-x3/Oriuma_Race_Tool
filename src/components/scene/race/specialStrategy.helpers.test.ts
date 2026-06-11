@@ -7,6 +7,7 @@ import {
     stripStrategyAnnotations,
     isPhaseResultLoaded,
     calculateScoreWithSpecialStrategy,
+    isEndPhaseId,
 } from './specialStrategy.helpers';
 import type { Umamusume, UniqueDiceConfig } from '../../../types';
 import { DEFAULT_STRATEGIES, DEFAULT_UNIQUE_DICE_CONFIG } from '../../../core/strategies';
@@ -376,6 +377,79 @@ describe('specialStrategy.helpers - Bundle-4 / P4-1, P4-5 / 2026-05-10', () => {
             const scoreOmitted = calculateScoreWithSpecialStrategy(p, DEFAULT_STRATEGIES, null, activePhaseIds, 15, false);
             const scoreExplicit = calculateScoreWithSpecialStrategy(p, DEFAULT_STRATEGIES, null, activePhaseIds, 15, false, DEFAULT_UNIQUE_DICE_CONFIG);
             expect(scoreOmitted).toBe(scoreExplicit);
+        });
+    });
+
+    // CR-SA-17-E4 / 2026-06-08: 可変終盤（End1/End2…）対応（houserule-features.md §7.4 / §7.7）。
+    describe('CR-SA-17-E4: 終盤ブロック判定 + 可変終盤での反動', () => {
+        describe('isEndPhaseId', () => {
+            it('End / End1 / End4 → true', () => {
+                expect(isEndPhaseId('End')).toBe(true);
+                expect(isEndPhaseId('End1')).toBe(true);
+                expect(isEndPhaseId('End4')).toBe(true);
+            });
+            it('Start / Mid / Mid1 / Pace → false', () => {
+                expect(isEndPhaseId('Start')).toBe(false);
+                expect(isEndPhaseId('Mid')).toBe(false);
+                expect(isEndPhaseId('Mid1')).toBe(false);
+                expect(isEndPhaseId('Pace')).toBe(false);
+            });
+            it('Endurance（接頭辞のみ一致）は false（$ アンカー）', () => {
+                expect(isEndPhaseId('Endurance')).toBe(false);
+            });
+        });
+
+        it('hasReachedEndPhase: 可変終盤 End2 の到達/エントリ存在を検出', () => {
+            expect(hasReachedEndPhase('End2', {})).toBe(true);
+            expect(hasReachedEndPhase('Mid1', { End2: { computedScore: 50 } })).toBe(true);
+            expect(hasReachedEndPhase('Mid1', { Start1: { computedScore: 20 } })).toBe(false);
+        });
+
+        it('getSpecialStrategyAnnotation: 反動併記は最後の終盤（End2）でのみ出力、途中の終盤（End1）では空', () => {
+            const p = makeParticipant({
+                history: {
+                    Mid1: { computedScore: 35, specialStrategy: 'Makuri' },
+                    End1: { computedScore: 50 },
+                    End2: { computedScore: 60 },
+                },
+            });
+            // 最後の終盤 End2 → 反動併記
+            expect(getSpecialStrategyAnnotation(p, 'End2', 15, 'End2')).toBe(' 【捲り】-15');
+            // 途中の終盤 End1 → 併記なし（特殊戦法は終盤発動禁止のため通常分岐で空）
+            expect(getSpecialStrategyAnnotation(p, 'End1', 15, 'End2')).toBe('');
+        });
+
+        it('computeSpecialStrategyTotalDelta: 反動は最後の終盤（End2）取り込み済で 1 回反映', () => {
+            // Mid1 で Makuri 発動・取り込み済（baseDice あり）。End1 のみ取り込み済 / End2 未取り込み。
+            const pEnd1Only = makeParticipant({
+                history: {
+                    Mid1: { baseDice: makeBaseDice('3d8', [3, 3, 3]), specialStrategy: 'Makuri', computedScore: 35 },
+                    End1: { baseDice: makeBaseDice('1d7', [3]), computedScore: 50 },
+                },
+            });
+            // 最後の終盤 End2 未取り込み → 反動なし、発動分 +15 のみ
+            expect(computeSpecialStrategyTotalDelta(pEnd1Only, 15, true, 'End2')).toBe(15);
+
+            // End2 取り込み済 → 反動 -15 が加算され差し引き 0
+            const pEnd2Loaded = makeParticipant({
+                history: {
+                    Mid1: { baseDice: makeBaseDice('3d8', [3, 3, 3]), specialStrategy: 'Makuri', computedScore: 35 },
+                    End1: { baseDice: makeBaseDice('1d7', [3]), computedScore: 50 },
+                    End2: { baseDice: makeBaseDice('1d7', [2]), computedScore: 60 },
+                },
+            });
+            expect(computeSpecialStrategyTotalDelta(pEnd2Loaded, 15, true, 'End2')).toBe(0);
+        });
+
+        it('computeSpecialStrategyTotalDelta: lastEndPhaseId 省略時は End（終盤 1 回 / OFF 同一挙動）', () => {
+            const p = makeParticipant({
+                history: {
+                    Mid1: { baseDice: makeBaseDice('3d8', [3, 3, 3]), specialStrategy: 'Makuri', computedScore: 35 },
+                    End: { baseDice: makeBaseDice('1d7', [3]), computedScore: 50 },
+                },
+            });
+            // 省略時 'End' で反動加算 → 0
+            expect(computeSpecialStrategyTotalDelta(p, 15, true)).toBe(0);
         });
     });
 });

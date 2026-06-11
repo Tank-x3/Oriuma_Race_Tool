@@ -2,6 +2,8 @@ import { useRef, useMemo, useState } from 'react';
 import html2canvas from 'html2canvas';
 import { useRaceStore } from '../../store/useRaceStore';
 import { RankingCalculator } from '../../core/logic/RankingCalculator';
+// CR-SA-17-E4 / 2026-06-08: 可変終盤対応の「最後の終盤フェーズ ID」導出
+import { getLastEndPhaseId } from '../../core/calculator';
 import { clsx } from 'clsx';
 import { Check, Copy } from 'lucide-react';
 
@@ -36,7 +38,9 @@ export const ResultScene = () => {
       moveToJudgment();
     } else {
       // Go to Race Scene (End Phase)
-      useRaceStore.getState().setCurrentPhase('End'); // Ensure phase is correct
+      // CR-SA-17-E4 / 2026-06-08: 可変終盤では最後の終盤フェーズ（End{n}）へ（OFF / 終盤 1 = 'End'）。
+      const s0 = useRaceStore.getState();
+      s0.setCurrentPhase(getLastEndPhaseId(s0.config)); // Ensure phase is correct
       useRaceStore.setState(s => ({ uiState: { ...s.uiState, scene: 'race' } }));
     }
   };

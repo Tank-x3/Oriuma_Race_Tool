@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { Calculator } from './calculator';
+import { Calculator, getActivePhaseIdsForConfig, getLastEndPhaseId } from './calculator';
 import { DEFAULT_STRATEGIES, DEFAULT_UNIQUE_DICE_CONFIG } from './strategies';
-import type { Umamusume, UniqueDiceConfig } from '../types';
+import type { Umamusume, UniqueDiceConfig, RaceState } from '../types';
 
 describe('Calculator', () => {
     const mockUma: Umamusume = {
@@ -406,6 +406,100 @@ describe('Calculator', () => {
             const scoreOmitted = Calculator.calculateTotalScore(uma, DEFAULT_STRATEGIES, null);
             const scoreExplicit = Calculator.calculateTotalScore(uma, DEFAULT_STRATEGIES, null, undefined, DEFAULT_UNIQUE_DICE_CONFIG);
             expect(scoreOmitted).toBe(scoreExplicit);
+        });
+    });
+
+    // CR-SA-17-E4 / 2026-06-08（Review Gate 修正）: 脚質基礎値（fixValue）は「序盤フェーズごと」に加算する。
+    // ユーザー確認: 序盤が複数回ある場合、脚質固定値は回数分加算される（OFF / 序盤 1 回では従来どおり 1 回）。
+    describe('CR-SA-17-E4: fixValue 序盤フェーズごと加算（可変序盤対応）', () => {
+        it('OFF / 従来呼び出し（activePhaseIds 未指定）は Start で fixValue 加算 = 現行同一', () => {
+            const uma: Umamusume = {
+                ...mockUma,
+                history: { 'Start': { baseDice: { diceStr: '3d5', values: [3, 3, 3], sum: 9 }, computedScore: 0 } },
+            };
+            // 先行 fix 10 + Start dice 9 = 19
+            expect(Calculator.calculateTotalScore(uma, DEFAULT_STRATEGIES, null)).toBe(19);
+        });
+
+        it('可変序盤（Start1/Start2）: fixValue は序盤フェーズごとに加算（序盤 2 回 = fixValue ×2）', () => {
+            const uma: Umamusume = {
+                ...mockUma,
+                uniqueSkill: { type: 'Stability', phases: [] },
+                history: {
+                    'Start1': { baseDice: { diceStr: '3d5', values: [3, 3, 3], sum: 9 }, computedScore: 0 },
+                    'Start2': { baseDice: { diceStr: '3d5', values: [2, 2, 2], sum: 6 }, computedScore: 0 },
+                    'End': { baseDice: { diceStr: '1d7', values: [3], sum: 3 }, computedScore: 0 },
+                },
+            };
+            const activePhaseIds = ['Start1', 'Start2', 'End'];
+            // 先行 fix 10（Start1）+ Start1 9 + fix 10（Start2）+ Start2 6 + End 3 = 38
+            expect(Calculator.calculateTotalScore(uma, DEFAULT_STRATEGIES, null, activePhaseIds)).toBe(38);
+        });
+
+        it('可変序盤で各序盤の固有ダイスも phases 一致時に加算される', () => {
+            const uma: Umamusume = {
+                ...mockUma,
+                uniqueSkill: { type: 'Stability', phases: ['Start1'] },
+                history: {
+                    'Start1': {
+                        baseDice: { diceStr: '3d5', values: [3, 3, 3], sum: 9 },
+                        uniqueDice: { diceStr: '1d10', values: [8], sum: 8 },
+                        computedScore: 0,
+                    },
+                    'Start2': { baseDice: { diceStr: '3d5', values: [2, 2, 2], sum: 6 }, computedScore: 0 },
+                },
+            };
+            const activePhaseIds = ['Start1', 'Start2'];
+            // fix 10（Start1）+ Start1 9 + 固有(5+8) + fix 10（Start2）+ Start2 6 = 48
+            expect(Calculator.calculateTotalScore(uma, DEFAULT_STRATEGIES, null, activePhaseIds)).toBe(48);
+        });
+
+        it('可変終盤（End1/End2）: 終盤ダイスは各終盤で加算、終盤には fixValue を加算しない', () => {
+            // 大逃げ fix 30（序盤のみ）/ 終盤ダイス -1d27（各終盤で減算累積、§7.4）
+            const uma: Umamusume = {
+                ...mockUma,
+                strategy: '大逃げ',
+                uniqueSkill: { type: 'Stability', phases: [] },
+                history: {
+                    'Start': { baseDice: { diceStr: '3d8', values: [1, 1, 1], sum: 3 }, computedScore: 0 },
+                    'End1': { baseDice: { diceStr: '-1d27', values: [10], sum: -10, isNegative: true }, computedScore: 0 },
+                    'End2': { baseDice: { diceStr: '-1d27', values: [5], sum: -5, isNegative: true }, computedScore: 0 },
+                },
+            };
+            const activePhaseIds = ['Start', 'End1', 'End2'];
+            // 大逃げ fix 30（Start で 1 回、終盤には加算なし）+ Start 3 + End1 -10 + End2 -5 = 18
+            expect(Calculator.calculateTotalScore(uma, DEFAULT_STRATEGIES, null, activePhaseIds)).toBe(18);
+        });
+    });
+
+    // CR-SA-17-E4 / 2026-06-08: enablePhaseConfig ゲート付きヘルパー（OFF 透過の核心）。
+    describe('CR-SA-17-E4: getActivePhaseIdsForConfig / getLastEndPhaseId ゲート', () => {
+        const makeConfig = (
+            enablePhaseConfig: boolean,
+            startPhaseCount: number,
+            midPhaseCount: number,
+            endPhaseCount: number,
+        ): Pick<RaceState['config'], 'midPhaseCount' | 'startPhaseCount' | 'endPhaseCount' | 'houseRules'> => ({
+            midPhaseCount,
+            startPhaseCount,
+            endPhaseCount,
+            houseRules: { enablePhaseConfig } as RaceState['config']['houseRules'],
+        });
+
+        it('OFF: 可変値（序盤2/終盤2）が残っていても固定列 [Start, Mid, End]', () => {
+            expect(getActivePhaseIdsForConfig(makeConfig(false, 2, 1, 2))).toEqual(['Start', 'Mid', 'End']);
+        });
+
+        it('ON: 序盤2/中盤1/終盤2 → [Start1, Start2, Mid, End1, End2]', () => {
+            expect(getActivePhaseIdsForConfig(makeConfig(true, 2, 1, 2))).toEqual(
+                ['Start1', 'Start2', 'Mid', 'End1', 'End2'],
+            );
+        });
+
+        it('getLastEndPhaseId: OFF（終盤2残存）→ End / ON 終盤2 → End2 / ON 終盤1 → End', () => {
+            expect(getLastEndPhaseId(makeConfig(false, 2, 1, 2))).toBe('End');
+            expect(getLastEndPhaseId(makeConfig(true, 1, 1, 2))).toBe('End2');
+            expect(getLastEndPhaseId(makeConfig(true, 1, 1, 1))).toBe('End');
         });
     });
 });

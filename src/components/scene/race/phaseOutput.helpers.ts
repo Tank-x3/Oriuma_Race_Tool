@@ -41,7 +41,11 @@ export const getDiceFormulaBaseValue = (
     houseRules: HouseRulesForBaseValue,
     strategies: Strategy[]
 ): number => {
-    if (currentPhaseId === 'Start') {
+    // CR-SA-17-E4 / 2026-06-08（Review Gate 修正）: 序盤フェーズ（Start / Start1 / Start2 …）の
+    // ダイス式 [基礎値] は脚質基礎値（fixValue）。calculator が序盤フェーズごとに fixValue を加算する
+    //（序盤回数分）ため、各序盤の投稿用ダイスも fixValue 基準で出力し挙動と一貫させる。
+    // 中盤・終盤は従来どおり累積スコア基準。
+    if (currentPhaseId.startsWith('Start')) {
         const strategy = strategies.find((s) => s.name === p.strategy);
         return strategy?.fixValue ?? 0;
     }
@@ -60,6 +64,10 @@ export const getDiceFormulaBaseValue = (
         ? p.score - houseRules.effectValue
         : p.score + houseRules.effectValue;
 };
+
+// CR-SA-17-E4 / 2026-06-08（Round 2）: 序盤2 以降の「N+Z（中間値+脚質固定値）」ダイス出力は
+// round-trip（投稿→貼り戻し）に parser（不変厳守エリア）の拡張が必要なため、本 E4 では未実装。
+// N+Z 出力 + parser 拡張を結合した後追いタスクとして ESCALATION 起票（BOARD 参照）。
 
 /**
  * 固有スキルタイプから「投稿用ダイス出力」用のダイス文字列を返す。

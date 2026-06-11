@@ -8,7 +8,8 @@ import {
 } from './bondSkill.helpers';
 import type { DiceResult, Strategy, Umamusume, UniqueDiceConfig } from '../../../types';
 import { DEFAULT_STRATEGIES, DEFAULT_UNIQUE_DICE_CONFIG } from '../../../core/strategies';
-import { getActivePhaseIds } from '../../../core/calculator';
+import { getActivePhaseIds, getActivePhaseIdsForConfig } from '../../../core/calculator';
+import type { RaceState } from '../../../types';
 
 const makeParticipant = (override: Partial<Umamusume> = {}): Umamusume => ({
     id: 'p1',
@@ -472,5 +473,69 @@ describe('CR-SA-15-E2: calculateScoreWithBondSkill uniqueDiceConfig 参照化', 
         const scoreWithUnique = calculateScoreWithBondSkill(p, strategies, null, activePhaseIds, houseRules);
         const scoreNoUnique = calculateScoreWithBondSkill(pNoUnique, strategies, null, activePhaseIds, houseRules);
         expect(scoreWithUnique - scoreNoUnique).toBe(13);
+    });
+});
+
+// CR-SA-17-E4 / 2026-06-08: 可変終盤（End1/End2…）対応（houserule-features.md §7.4）。
+// 絆スキルセクション出力・最終加算は「最後の終盤フェーズ」で行う。
+describe('CR-SA-17-E4: 絆スキルの可変終盤対応', () => {
+    const houseRulesOn = { enableBondSkill: true };
+
+    it('getBondSkillSection: 最後の終盤 End2 で出力、途中の終盤 End1 では空', () => {
+        const participants = [
+            makeParticipant({ id: 'p1', gate: 1, name: 'ウィトゲンクリア', bondSkill: { type: 'BondGamble' } }),
+        ];
+        const expected = ['【絆スキル】', '① ウィトゲンクリア　絆ギャンブル　dice1d15='].join('\n');
+        // lastEndPhaseId='End2' を渡す
+        expect(getBondSkillSection(participants, 'End2', houseRulesOn, 'End2')).toBe(expected);
+        // 途中の終盤 End1 → 非出力
+        expect(getBondSkillSection(participants, 'End1', houseRulesOn, 'End2')).toBe('');
+    });
+
+    it('getBondSkillSection: lastEndPhaseId 省略時は End（終盤 1 回 / OFF 同一）', () => {
+        const participants = [
+            makeParticipant({ id: 'p1', gate: 1, name: 'A', bondSkill: { type: 'BondGamble' } }),
+        ];
+        expect(getBondSkillSection(participants, 'End', houseRulesOn)).not.toBe('');
+        expect(getBondSkillSection(participants, 'End2', houseRulesOn)).toBe('');
+    });
+
+    it('calculateBondSkillDelta: 最後の終盤 End2 の bondDice を参照（lastEndPhaseId 指定）', () => {
+        const p = makeParticipant({
+            bondSkill: { type: 'BondGamble' },
+            history: { End2: { bondDice: makeDice('1d15', [12]), computedScore: 0 } },
+        });
+        // lastEndPhaseId='End2' で End2 の bondDice 参照 → 12
+        expect(calculateBondSkillDelta(p, houseRulesOn, 'End2')).toBe(12);
+        // 省略時 'End' では End2 を見ないため 0
+        expect(calculateBondSkillDelta(p, houseRulesOn)).toBe(0);
+    });
+
+    it('calculateScoreWithBondSkill: 可変終盤の activePhaseIds 末尾（End2）から bondDice を加算', () => {
+        // ON 終盤 2 構成: activePhaseIds = [Start, Mid, End1, End2]
+        const config = {
+            midPhaseCount: 1,
+            startPhaseCount: 1,
+            endPhaseCount: 2,
+            houseRules: { enablePhaseConfig: true } as RaceState['config']['houseRules'],
+        };
+        const activePhaseIds = getActivePhaseIdsForConfig(config);
+        expect(activePhaseIds).toEqual(['Start', 'Mid', 'End1', 'End2']);
+
+        const p = makeParticipant({
+            strategy: '先行',
+            bondSkill: { type: 'BondGamble' },
+            history: {
+                Start: { baseDice: makeDice('3d8', [3, 3, 4]), computedScore: 0 },
+                Mid: { baseDice: makeDice('3d5', [5, 5, 5]), computedScore: 0 },
+                End1: { baseDice: makeDice('3d6', [7, 7, 6]), computedScore: 0 },
+                End2: { baseDice: makeDice('3d6', [6, 6, 6]), bondDice: makeDice('1d15', [12]), computedScore: 0 },
+            },
+        });
+        const houseRules = { enableBondSkill: true, enableSpecialStrategy: false, effectValue: 15, uniqueDiceConfig: DEFAULT_UNIQUE_DICE_CONFIG };
+        const score = calculateScoreWithBondSkill(p, DEFAULT_STRATEGIES, null, activePhaseIds, houseRules);
+        const baseOnly = calculateScoreWithBondSkill(p, DEFAULT_STRATEGIES, null, activePhaseIds, { ...houseRules, enableBondSkill: false });
+        // End2（最後の終盤）の bondDice sum=12 が加算される
+        expect(score - baseOnly).toBe(12);
     });
 });

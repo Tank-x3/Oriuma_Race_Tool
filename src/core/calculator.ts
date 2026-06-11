@@ -1,4 +1,4 @@
-import type { Umamusume, Strategy, UniqueDiceConfig } from '../types';
+import type { Umamusume, Strategy, UniqueDiceConfig, RaceState } from '../types';
 import { getPaceModifier, getStrategy, DEFAULT_UNIQUE_DICE_CONFIG } from './strategies';
 import { getNonPacePhaseIds } from './phaseSequence';
 
@@ -18,6 +18,39 @@ export const getActivePhaseIds = (
     startPhaseCount = 1,
     endPhaseCount = 1,
 ): string[] => getNonPacePhaseIds(startPhaseCount, midPhaseCount, endPhaseCount);
+
+/**
+ * CR-SA-17-E4 / 2026-06-08: `enablePhaseConfig` でゲートしたアクティブフェーズ ID 列を返す。
+ *
+ * 進行エンジン（`useRaceEngine.phaseSequence`）の OFF ゲートと完全に対をなす。
+ * OFF（`enablePhaseConfig === false`）のとき config に可変値（startPhaseCount=2 等）が
+ * 残っていても序盤 1 / 終盤 1 の固定列（`['Start', ...mids, 'End']`）を返す。これにより
+ * 「進行は OFF 固定列・スコア合算は config の可変値」という不整合（ON→設定→OFF で発生）を防ぐ。
+ * ON のときは config の序盤・終盤回数をそのまま反映する。
+ */
+export const getActivePhaseIdsForConfig = (
+    config: Pick<RaceState['config'], 'midPhaseCount' | 'startPhaseCount' | 'endPhaseCount' | 'houseRules'>,
+): string[] => {
+    const on = config.houseRules.enablePhaseConfig;
+    return getActivePhaseIds(
+        config.midPhaseCount,
+        on ? config.startPhaseCount : 1,
+        on ? config.endPhaseCount : 1,
+    );
+};
+
+/**
+ * CR-SA-17-E4 / 2026-06-08: 現在のフェーズ構成における「最後の終盤フェーズ ID」を返す（ゲート済み）。
+ * 非ペース列の末尾は常に終盤ブロックの最後（OFF / 終盤 1 = `End`、終盤 ≥2 = `End{n}`）。
+ * 終盤反動（特殊戦法）・絆スキル最終加算・絆ダイス取り込み・戻る操作の戻り先などで
+ * 「終盤の締め」を一意に識別するために使用する。
+ */
+export const getLastEndPhaseId = (
+    config: Pick<RaceState['config'], 'midPhaseCount' | 'startPhaseCount' | 'endPhaseCount' | 'houseRules'>,
+): string => {
+    const ids = getActivePhaseIdsForConfig(config);
+    return ids.length > 0 ? ids[ids.length - 1] : 'End';
+};
 
 export class Calculator {
     /**
@@ -50,48 +83,23 @@ export class Calculator {
         // However, the participant history is a Record.
         // We should strictly follow the standard phase order: Start -> Pace -> Mid... -> End.
         // But Pace is not in history as a scoring phase for participant. It's global.
-        // Start Phase
-        const startData = participant.history['Start'];
-        if (startData) {
-            // Base (Fix) + Dice + Modifier
-            // For Start phase, "Base Value" in Requirement is "Strategy Fix Value".
-            // But in the "dice output" formula it says "30+dice3d8=".
-            // So score += FixValue + DiceSum + ManualModifier.
-            total += strategy.fixValue;
-
-            if (startData.baseDice) {
-                total += startData.baseDice.sum;
-            }
-            // Bundle-5 / P4-2, P4-3, CR-22 / 2026-05-10: manualModifier 構造体化（{ value, reason }）。
-            // 加算判定 (undefined チェック) は維持し、`.value` のみ加算する。
-            if (startData.manualModifier) {
-                total += startData.manualModifier.value;
-            }
-            // Unique skill in Start? Allowed if configured.
-            if (startData.uniqueDice && participant.uniqueSkill.phases.includes('Start')) {
-                const skillType = participant.uniqueSkill.type;
-                // CR-SA-15-E2 / 2026-05-15: 固有固定値を uniqueDiceConfig 参照化（houserule-features.md §5.4）。
-                // 従来は Stability / SuperGamble / SuperStability の 3 タイプのみ分岐加算していたが、
-                // 全 5 タイプ一律 fixValue 加算に統一（Gamble / Persistent はデフォルト fixValue: 0 = 既存挙動と完全一致）。
-                total += uniqueDiceConfig[skillType].fixValue;
-                total += startData.uniqueDice.sum;
-            }
-        }
-
-        // Mid Phases
-        // We need to know which phases are "Valid" (Active).
-        // Assuming the caller only passes valid history or we filter.
-        // Mid/End phases benefit from Pace Modifier if Pace has happened.
-        // Pace happens after Start. So Mid and End get it.
-
-        // Iterate other keys
+        // CR-SA-17-E4 / 2026-06-08（Review Gate 修正）: 脚質基礎値（fixValue）は「序盤フェーズごとに」加算する。
+        // ★ユーザー確認（2026-06-08）: 序盤フェーズが複数回ある場合、脚質固定値は回数分加算される
+        //   （序盤 2 回 = fixValue ×2）。OFF / 序盤 1 回構成では従来どおり 1 回（= 現行と完全同一）。
+        // ※ houserule-features.md §7.4 は現状「先頭で 1 回」と記載。本実装はユーザー指示の「回数分加算」を先行実装し、
+        //   仕様書更新は後追い（PM/SA タスク）。
+        // 全フェーズを統一ループで走査し、序盤フェーズ（Start / Start1 / Start2 …）でのみ fixValue を加算する。
+        // Mid/End フェーズは fixValue を加算しない。Pace は history に入らないためここでは扱わない（末尾で 1 回加算）。
         Object.keys(participant.history).forEach(phaseId => {
-            if (phaseId === 'Start') return; // Already handled
-
             // Soft Delete（#1-3a-9）: 現在のフェーズ設定外となっているフェーズは合算除外。
             if (activeSet && !activeSet.has(phaseId)) return;
 
             const data = participant.history[phaseId];
+
+            // 序盤フェーズ（Start / Start1 / Start2 …）は毎回 fixValue（脚質基礎値）を加算（序盤回数分）。
+            if (/^Start[0-9]*$/.test(phaseId)) {
+                total += strategy.fixValue;
+            }
 
             // Add Dice
             if (data.baseDice) {
