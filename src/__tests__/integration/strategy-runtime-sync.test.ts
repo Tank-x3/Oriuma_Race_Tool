@@ -51,6 +51,8 @@ const installParticipant = (uma: Umamusume) => {
                 uniqueDiceConfig: DEFAULT_UNIQUE_DICE_CONFIG,
                 // CR-SA-17-E1 / 2026-06-06: 型定義拡張に追従
                 enablePhaseConfig: false,
+                // CR-SA-20-E1 / 2026-06-11: 型定義拡張に追従（9 フィールド）
+                enableFormationDice: false,
             },
         },
         participants: [uma],

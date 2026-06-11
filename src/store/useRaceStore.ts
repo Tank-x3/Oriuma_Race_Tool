@@ -175,7 +175,11 @@ export const PRESET_KEY_PREFIX = 'race-store-presets:';
 // pacePosition 欠落）→ version=7 への補完を persistMigrate で実施。enablePhaseConfig は
 // `...DEFAULT_HOUSE_RULES` の浅いマージで透過補完、config 直下 3 フィールドは明示補完
 // （★既存ユーザーデータ保護、下記 persistMigrate 参照）。
-export const PERSIST_VERSION = 7;
+// CR-SA-20-E1 / 2026-06-11: PERSIST_VERSION 7 → 8 にバンプ。
+// version=7 旧データ（houseRules.enableFormationDice 欠落）→ version=8 への補完を
+// persistMigrate で実施（DEFAULT_HOUSE_RULES.enableFormationDice 追加 = `...DEFAULT_HOUSE_RULES`
+// 浅いマージで透過対応、enablePhaseConfig と同方式）。
+export const PERSIST_VERSION = 8;
 export const RESTORE_ERROR_MESSAGE = '保存データの復元に失敗しました。新規セッションを開始します。';
 
 // CR-SA-17-E1 / 2026-06-06: ペース挿入位置のデフォルト値（houserule-features.md §7.2 / §7.5）。
@@ -188,6 +192,7 @@ export const DEFAULT_PACE_POSITION = 'Start';
 // Bundle-8-T1 / CR-SA-4 / 2026-05-10: enableBondSkill 追加（5 → 6 フィールド）。
 // CR-SA-15-E1 / 2026-05-14: uniqueDiceConfig 追加（6 → 7 フィールド）。
 // CR-SA-17-E1 / 2026-06-06: enablePhaseConfig 追加（7 → 8 フィールド）。
+// CR-SA-20-E1 / 2026-06-11: enableFormationDice 追加（8 → 9 フィールド）。
 export const DEFAULT_HOUSE_RULES: HouseRulesData = {
     enableModifier: false,
     enableSpecialStrategy: false,
@@ -197,6 +202,7 @@ export const DEFAULT_HOUSE_RULES: HouseRulesData = {
     effectValue: 15,
     uniqueDiceConfig: DEFAULT_UNIQUE_DICE_CONFIG,
     enablePhaseConfig: false,
+    enableFormationDice: false,
 };
 
 export const persistPartialize = (state: RaceStoreState): PersistedRaceState => ({
@@ -322,6 +328,8 @@ export const useRaceStore = create<RaceStoreState>()(
                     uniqueDiceConfig: DEFAULT_UNIQUE_DICE_CONFIG,
                     // CR-SA-17-E1 / 2026-06-06: フェーズ構成変更ハウスルール ON/OFF（デフォルト false = OFF 透過）。
                     enablePhaseConfig: false,
+                    // CR-SA-20-E1 / 2026-06-11: 隊列〔バ群〕ダイス ON/OFF（デフォルト false = OFF 透過）。
+                    enableFormationDice: false,
                 },
             },
             participants: [],

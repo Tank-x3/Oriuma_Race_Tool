@@ -145,6 +145,10 @@ export interface RaceState {
             // ハウスルールトグル = JSON プリセット対象（§7.8）。デフォルト false。
             // ON 時のみ序盤・終盤回数 / ペース位置の設定 UI を開放（E3 スコープ）。
             enablePhaseConfig: boolean;
+            // CR-SA-20-E1 / 2026-06-11: 隊列〔バ群〕ダイスの ON/OFF（houserule-features.md §6 / §2 [v]）。
+            // ハウスルールトグル = JSON プリセット対象（§6.7）。デフォルト false。
+            // ON 時のみ隊列フェーズ・関連 UI を開放（効果表・補正は E2、UI は E3、進行統合は E4 スコープ）。
+            enableFormationDice: boolean;
         };
     };
     participants: Umamusume[];

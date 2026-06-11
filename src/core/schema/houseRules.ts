@@ -66,6 +66,10 @@ export const houseRulesSchema = z.object({
     // （旧 persist データ / 旧 JSON プリセット）が検証通過し、false で補完される（後方互換）。
     // 序盤・終盤回数 / ペース位置（config 直下のレース個別設定）は §7.8 によりプリセット非対象のため本スキーマに含めない。
     enablePhaseConfig: z.boolean().default(false),
+    // CR-SA-20-E1 / 2026-06-11: 隊列〔バ群〕ダイスの ON/OFF（houserule-features.md §6 / §4 zod 検証範囲表）。
+    // .default(false) により、enableFormationDice フィールドが欠落した旧データ
+    // （旧 persist データ / 旧 JSON プリセット）が検証通過し、false で補完される（後方互換、enablePhaseConfig と同方式）。
+    enableFormationDice: z.boolean().default(false),
 });
 
 export type HouseRulesData = z.infer<typeof houseRulesSchema>;

@@ -48,6 +48,8 @@ const baseHouseRules: HouseRules = {
     uniqueDiceConfig: DEFAULT_UNIQUE_DICE_CONFIG,
     // CR-SA-17-E1 / 2026-06-06: 型定義拡張に追従
     enablePhaseConfig: false,
+    // CR-SA-20-E1 / 2026-06-11: 型定義拡張に追従（9 フィールド）
+    enableFormationDice: false,
 };
 
 describe('gateScene.helpers - Bundle-8-T3 / CR-SA-4 / 2026-05-10', () => {

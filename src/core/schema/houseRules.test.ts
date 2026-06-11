@@ -509,3 +509,78 @@ describe('CR-SA-17-E1 / 2026-06-06 houseRulesSchema enablePhaseConfig (default f
         }
     });
 });
+
+// CR-SA-20-E1 / 2026-06-11:
+// houserule-features.md §6 隊列〔バ群〕ダイス + §4 zod 検証範囲表に基づく enableFormationDice フィールドの検証。
+// - 型: boolean、.default(false)（後方互換、enableFormationDice 欠落の旧 persist / 旧 JSON プリセットを補完）
+// - enablePhaseConfig（CR-SA-17-E1）と同方式。
+describe('CR-SA-20-E1 / 2026-06-11 houseRulesSchema enableFormationDice (default false)', () => {
+    // enableFormationDice フィールドを含まない旧 houseRules（CR-SA-17 期の 8 フィールド構造）
+    const validHouseRulesNoFormationDice = {
+        enableModifier: false,
+        enableSpecialStrategy: false,
+        enableCompositeUnique: false,
+        enableExtendedUnique: false,
+        enableBondSkill: false,
+        effectValue: 15,
+        uniqueDiceConfig: DEFAULT_UNIQUE_DICE_CONFIG,
+        enablePhaseConfig: false,
+    };
+
+    // (F1) enableFormationDice 欠落の旧 houseRules が .default(false) で success + false 補完（後方互換の要）
+    it('(F1) enableFormationDice 欠落の旧 houseRules が .default(false) で success + false 補完', () => {
+        const result = houseRulesSchema.safeParse(validHouseRulesNoFormationDice);
+        expect(result.success).toBe(true);
+        if (result.success) {
+            expect(result.data.enableFormationDice).toBe(false);
+        }
+    });
+
+    // (F2) enableFormationDice = true / false を含む完全データで success + 値保持
+    it('(F2) enableFormationDice = true / false を含む完全データで success + 値保持', () => {
+        const trueResult = houseRulesSchema.safeParse({
+            ...validHouseRulesNoFormationDice,
+            enableFormationDice: true,
+        });
+        const falseResult = houseRulesSchema.safeParse({
+            ...validHouseRulesNoFormationDice,
+            enableFormationDice: false,
+        });
+        expect(trueResult.success).toBe(true);
+        expect(falseResult.success).toBe(true);
+        if (trueResult.success) {
+            expect(trueResult.data.enableFormationDice).toBe(true);
+        }
+    });
+
+    // (F3) enableFormationDice が boolean 以外（string / number / null）で failure
+    it('(F3) enableFormationDice が boolean 以外（string / number / null）で failure', () => {
+        const stringResult = houseRulesSchema.safeParse({
+            ...validHouseRulesNoFormationDice,
+            enableFormationDice: 'true' as unknown as boolean,
+        });
+        const numberResult = houseRulesSchema.safeParse({
+            ...validHouseRulesNoFormationDice,
+            enableFormationDice: 1 as unknown as boolean,
+        });
+        const nullResult = houseRulesSchema.safeParse({
+            ...validHouseRulesNoFormationDice,
+            enableFormationDice: null as unknown as boolean,
+        });
+        expect(stringResult.success).toBe(false);
+        expect(numberResult.success).toBe(false);
+        expect(nullResult.success).toBe(false);
+    });
+
+    // (F4) houseRulesConfigSchema（JSON プリセット）経由でも enableFormationDice が .default(false) 補完される
+    it('(F4) houseRulesConfigSchema 経由で enableFormationDice 欠落 JSON が false 補完されて success', () => {
+        const result = houseRulesConfigSchema.safeParse({
+            houseRules: validHouseRulesNoFormationDice,
+            strategies: [],
+        });
+        expect(result.success).toBe(true);
+        if (result.success) {
+            expect(result.data.houseRules.enableFormationDice).toBe(false);
+        }
+    });
+});
