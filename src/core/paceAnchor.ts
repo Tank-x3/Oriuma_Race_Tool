@@ -178,19 +178,34 @@ export const isPhaseConfigValid = (
  * 「現在の構成」表示用に、ペースを挿入したフェーズラベル列を返す。
  * 例: 序盤 1 / 中盤 1 / 終盤 1 / pace='Start' → ['序盤', 'ペース', '中盤', '終盤']。
  * pacePosition=null（なし）の場合はペースを挿入しない。
+ *
+ * CR-SA-20-Followup / 2026-06-12: `enableFormationDice = true` のとき、隊列スロット
+ * （§6.4、`getFormationSlotAnchorId`）の直後に `隊列` を挿入する。挿入規則は実走行の
+ * フェーズ列生成 `buildPhaseSequence`（useRaceEngine.ts、E4）と同一: ループ内でペース
+ * 判定 → 隊列判定の順に評価し、同一アンカー時はペース → 隊列順を構造的に保証する。
+ * 省略時 false = 従来と完全同一（後方互換）。
+ * pacePosition=null × 隊列 ON は禁止構成（E3 確定ブロック対象）だが、本関数は
+ * buildPhaseSequence と同じく隊列のみ挿入して返す（表示と実走行の一致を最優先）。
  */
 export const getPhaseConfigDisplayLabels = (
     startPhaseCount: number,
     midPhaseCount: number,
     endPhaseCount: number,
     pacePosition: PacePosition,
+    enableFormationDice = false,
 ): string[] => {
+    const formationSlot = enableFormationDice
+        ? getFormationSlotAnchorId(startPhaseCount, midPhaseCount)
+        : null;
     const seq = getNonPacePhaseSequence(startPhaseCount, midPhaseCount, endPhaseCount);
     const labels: string[] = [];
     for (const phase of seq) {
         labels.push(phase.label);
         if (pacePosition !== null && phase.id === pacePosition) {
             labels.push('ペース');
+        }
+        if (formationSlot !== null && phase.id === formationSlot) {
+            labels.push('隊列');
         }
     }
     return labels;

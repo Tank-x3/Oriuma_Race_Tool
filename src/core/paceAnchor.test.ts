@@ -12,6 +12,10 @@ import {
     getPhaseConfigDisplayLabels,
     PACE_NONE_LABEL,
 } from './paceAnchor';
+// CR-SA-20-Followup / 2026-06-12: 表示列と実走行フェーズ列の一致担保テスト用
+//（buildPhaseSequence = 挿入規則の正、getPhaseLabel = ID → ラベル変換）。
+import { buildPhaseSequence, getPhaseLabel } from '../hooks/useRaceEngine';
+import type { PacePosition } from '../types';
 
 describe('getValidPaceAnchors - §7.5 有効アンカー（end 後除外）', () => {
     it('序盤1/中盤1/終盤1 → 序盤・中盤（終盤の後は除外）', () => {
@@ -256,5 +260,58 @@ describe('getPhaseConfigDisplayLabels - 現在の構成表示', () => {
         expect(getPhaseConfigDisplayLabels(2, 2, 1, 'Mid1')).toEqual([
             '序盤1', '序盤2', '中盤1', 'ペース', '中盤2', '終盤',
         ]);
+    });
+});
+
+// CR-SA-20-Followup / 2026-06-12: 隊列 ON 時の「現在の構成」表示（§6.4 隊列スロット位置 +
+// buildPhaseSequence〔E4〕と同一挿入規則）。表示と実走行のフェーズ列が食い違わないことが目的。
+describe('getPhaseConfigDisplayLabels - 隊列 ON（CR-SA-20-Followup）', () => {
+    it('中盤1/ペース序盤直後（同一アンカー）→ ペース → 隊列の順（§6.4）', () => {
+        expect(getPhaseConfigDisplayLabels(1, 1, 1, 'Start', true)).toEqual([
+            '序盤', 'ペース', '隊列', '中盤', '終盤',
+        ]);
+    });
+    it('中盤2/ペース序盤直後 → 隊列は中盤1の後（§6.4 中盤2以上）', () => {
+        expect(getPhaseConfigDisplayLabels(1, 2, 1, 'Start', true)).toEqual([
+            '序盤', 'ペース', '中盤1', '隊列', '中盤2', '終盤',
+        ]);
+    });
+    it('中盤0/ペース序盤直後 → 序盤 → ペース → 隊列 → 終盤', () => {
+        expect(getPhaseConfigDisplayLabels(1, 0, 1, 'Start', true)).toEqual([
+            '序盤', 'ペース', '隊列', '終盤',
+        ]);
+    });
+    it('序盤2の可変構成/ペース=序盤1の後 → 隊列は序盤ブロック（序盤2）直後', () => {
+        expect(getPhaseConfigDisplayLabels(2, 1, 1, 'Start1', true)).toEqual([
+            '序盤1', 'ペース', '序盤2', '隊列', '中盤', '終盤',
+        ]);
+    });
+    it('禁止構成（ペースなし × 隊列 ON）は buildPhaseSequence と同じく隊列のみ挿入（固定挙動）', () => {
+        expect(getPhaseConfigDisplayLabels(1, 1, 1, null, true)).toEqual([
+            '序盤', '隊列', '中盤', '終盤',
+        ]);
+    });
+    it('隊列 OFF（明示 false / 引数省略）は従来と完全同一', () => {
+        expect(getPhaseConfigDisplayLabels(1, 1, 1, 'Start', false)).toEqual(
+            getPhaseConfigDisplayLabels(1, 1, 1, 'Start'),
+        );
+        expect(getPhaseConfigDisplayLabels(1, 1, 1, 'Start', false)).toEqual(['序盤', 'ペース', '中盤', '終盤']);
+    });
+    it('代表構成で実走行フェーズ列（buildPhaseSequence）と一致する（表示と実走行の一致担保）', () => {
+        // buildPhaseSequence の ID 列を「現在の構成」表示語彙へ変換して比較する
+        //（Pace の進行画面ラベルは「ペース判定」だが、構成表示では「ペース」を用いる）。
+        const toDisplayLabel = (id: string): string =>
+            id === 'Pace' ? 'ペース' : getPhaseLabel(id);
+        const cases: [number, number, number, PacePosition][] = [
+            [1, 1, 1, 'Start'],   // 同一アンカー（ペース → 隊列順)
+            [1, 2, 1, 'Start'],   // 中盤2（隊列 = 中盤1の後)
+            [1, 0, 1, 'Start'],   // 中盤0
+            [2, 1, 1, 'Start1'],  // 序盤2の可変構成
+            [2, 3, 2, 'Mid1'],    // 複数終盤 + ペース = 隊列と同一アンカー（Mid1）
+        ];
+        for (const [start, mid, end, pace] of cases) {
+            const engine = buildPhaseSequence(true, start, mid, end, pace, true).map(toDisplayLabel);
+            expect(getPhaseConfigDisplayLabels(start, mid, end, pace, true)).toEqual(engine);
+        }
     });
 });

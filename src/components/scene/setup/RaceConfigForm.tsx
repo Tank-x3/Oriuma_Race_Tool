@@ -75,6 +75,9 @@ export const RaceConfigForm: React.FC = () => {
         config.midPhaseCount,
         config.endPhaseCount,
         config.pacePosition,
+        // CR-SA-20-Followup / 2026-06-12: 隊列 ON 時は実走行（buildPhaseSequence）と同一位置に
+        // 「隊列」を表示する（チェックボックス切替で再レンダリングされ即時反映）。
+        config.houseRules.enableFormationDice,
     );
 
     // CR-SA-17-E3 / 2026-06-07: ペース位置 UI = スライダー（序盤・中盤・終盤の回数スライダーと統一）。
