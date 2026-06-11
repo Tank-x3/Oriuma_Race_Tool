@@ -3,6 +3,8 @@ import {
     sanitizeInputForParser,
     isUniqueDice,
     classifyDiceResultsForParticipant,
+    countDicePrefixes,
+    detectPhasePrefixViolations,
 } from './phaseInput.preprocessors';
 import type { UniqueSkillType, UniqueDiceConfig } from '../../../types';
 import { DEFAULT_UNIQUE_DICE_CONFIG } from '../../../core/strategies';
@@ -408,6 +410,83 @@ describe('CR-SA-15-E2: phaseInput preprocessors uniqueDiceConfig 参照化', () 
             );
             expect(result.uniqueDice).toEqual({ diceStr: '1d10', values: [], sum: 8 });
             expect(result.baseDice).toBeUndefined();
+        });
+    });
+});
+
+// CR-SA-17-Followup-multistart-NZ-output（ESC-1）/ 2026-06-11:
+// フェーズ依存プレフィックス数チェック（scene3-race.md §2「結果取り込み時の余分なプレフィックス検知」）。
+describe('CR-SA-17-Followup ESC-1: フェーズ依存プレフィックス数チェック', () => {
+    describe('countDicePrefixes', () => {
+        it('1プレフィックス "30+dice3d8=..." → 1', () => {
+            expect(countDicePrefixes('① ウマ娘　30+dice3d8=5 5 5 (15)')).toBe(1);
+        });
+        it('2プレフィックス "84+30+dice3d8=..." → 2', () => {
+            expect(countDicePrefixes('① ウマ娘　84+30+dice3d8=5 5 5 (15)')).toBe(2);
+        });
+        it('2プレフィックス Z=0 "84+0+dice1d9=..." → 2', () => {
+            expect(countDicePrefixes('① 追込　84+0+dice1d9=5 (5)')).toBe(2);
+        });
+        it('3プレフィックス "10+20+30+dice3d8=..." → 3', () => {
+            expect(countDicePrefixes('① ウマ娘　10+20+30+dice3d8=5 5 5 (15)')).toBe(3);
+        });
+        it('0プレフィックス（大逃げ Fixなし負dice "-dice1d27="）→ 0（独立マイナスは数えない）', () => {
+            expect(countDicePrefixes('① 大逃げ　-dice1d27=10 (10)')).toBe(0);
+        });
+        it('1プレフィックス（終盤大逃げ "112-dice1d27="）→ 1（dice 隣接の減算演算子はプレフィックスの符号）', () => {
+            expect(countDicePrefixes('① 大逃げ　112-dice1d27=10 (10)')).toBe(1);
+        });
+        it('複合減算 "36+-dice1d27=" → 1（先頭 36+ がプレフィックス、独立マイナスは別）', () => {
+            expect(countDicePrefixes('① 大逃げ　36+-dice1d27=10 (10)')).toBe(1);
+        });
+        it('固有ダイス行（"5+dice1d10="）→ 1（フェーズ最小許容1以下で誤検知しない）', () => {
+            expect(countDicePrefixes('① ウマ娘　5+dice1d10=8 (8)')).toBe(1);
+        });
+        it('dice 行でない（ヘッダー "【中盤ダイス】"）→ null', () => {
+            expect(countDicePrefixes('【中盤ダイス】')).toBeNull();
+        });
+        it('全角プラス "84＋30＋dice3d8=" → 2', () => {
+            expect(countDicePrefixes('① ウマ娘　84＋30＋dice3d8=5 5 5 (15)')).toBe(2);
+        });
+    });
+
+    describe('detectPhasePrefixViolations', () => {
+        const line2 = '① ウマ娘　84+30+dice3d8=5 5 5 (15)'; // 2プレフィックス
+        const line1 = '① ウマ娘　52+dice3d5=5 5 (10)'; // 1プレフィックス
+        const lineMod = '① ウマ娘　52+10+dice3d5=5 5 (10)'; // 中盤改変（数値2つ）
+
+        it('序盤2回目以降（Start2）で2プレフィックス行 → 受理（エラーなし）', () => {
+            expect(detectPhasePrefixViolations(line2, 'Start2')).toHaveLength(0);
+        });
+        it('中盤（Mid）で2プレフィックスの改変行 → クリティカルエラー（L351 文言）', () => {
+            const errors = detectPhasePrefixViolations(lineMod, 'Mid');
+            expect(errors).toHaveLength(1);
+            expect(errors[0]).toContain('このフェーズで使用しないダイス形式です');
+            expect(errors[0]).toContain('レスを改変せず確認してください');
+        });
+        it('終盤（End）で2プレフィックスの改変行 → クリティカルエラー', () => {
+            expect(detectPhasePrefixViolations(line2, 'End')).toHaveLength(1);
+        });
+        it('先頭序盤（Start / Start1）で2プレフィックス行 → クリティカルエラー（許容1個）', () => {
+            expect(detectPhasePrefixViolations(line2, 'Start')).toHaveLength(1);
+            expect(detectPhasePrefixViolations(line2, 'Start1')).toHaveLength(1);
+        });
+        it('各フェーズの1プレフィックス正常行 → 受理（先頭序盤・中盤・終盤・序盤2以降すべて）', () => {
+            expect(detectPhasePrefixViolations(line1, 'Start')).toHaveLength(0);
+            expect(detectPhasePrefixViolations(line1, 'Mid')).toHaveLength(0);
+            expect(detectPhasePrefixViolations(line1, 'End')).toHaveLength(0);
+            expect(detectPhasePrefixViolations(line1, 'Start2')).toHaveLength(0);
+        });
+        it('3プレフィックス行 → どのフェーズでもクリティカルエラー（最大2超過）', () => {
+            const line3 = '① ウマ娘　10+20+30+dice3d8=5 5 5 (15)';
+            expect(detectPhasePrefixViolations(line3, 'Start2')).toHaveLength(1);
+            expect(detectPhasePrefixViolations(line3, 'Mid')).toHaveLength(1);
+        });
+        it('複数行入力で改変行のみ検出（正常行は通す）', () => {
+            const input = [line1, lineMod].join('\n');
+            const errors = detectPhasePrefixViolations(input, 'Mid');
+            expect(errors).toHaveLength(1);
+            expect(errors[0]).toContain(lineMod);
         });
     });
 });

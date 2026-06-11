@@ -21,6 +21,9 @@ import { DEFAULT_UNIQUE_DICE_CONFIG } from '../../../core/strategies';
 import {
     getExpectedUniqueDiceStr,
     getExpectedUniqueFixValue,
+    // CR-SA-17-Followup-multistart-NZ-output（ESC-1）/ 2026-06-11:
+    // 序盤2回目以降（Start2〜）判定。フェーズ依存プレフィックス数チェックの許容数決定に使用。
+    isSecondaryStartPhase,
 } from './phaseOutput.helpers';
 
 /**
@@ -185,4 +188,64 @@ export const classifyDiceResultsForParticipant = (
     }
 
     return result;
+};
+
+/**
+ * CR-SA-17-Followup-multistart-NZ-output（ESC-1）/ 2026-06-11:
+ * 1 行の「dice」直前に連続する「数値+符号」プレフィックスの個数を数える純粋関数。
+ *
+ * SSoT: `scene3-race.md §2`「結果取り込み時の余分なプレフィックス検知」+
+ *       `parser-system.md §A` 複数プレフィックス受理の拡張（フェーズ依存チェックは Parser 外）。
+ *
+ * Parser（不変厳守エリア）の文法に合わせ、`名前(区切り)(数値+符号)*(独立マイナス)?dice` の
+ * `(数値+符号)*` 部分を greedy に切り出して個数を数える。名前部の数字や、大逃げ Fix なしの
+ * dice 直前独立マイナス（`-dice`）はプレフィックスに含めない。
+ *
+ * - dice 行でない（`dice\d*d\d+` 非含有）→ `null`（チェック対象外）。
+ * - プレフィックス領域を特定できない（区切りなし等）→ `0`。
+ * - 固有ダイス行・絆スキル行は常に 0〜1 個のため、フェーズ許容数（最小 1）を超えず
+ *   本チェックで誤検知しない（別系統として明示除外する必要はない）。
+ */
+export const countDicePrefixes = (line: string): number | null => {
+    if (!/dice\d*d\d+/iu.test(line)) return null;
+    // 区切り（半角/全角空白・🎲）の直後から dice までのプレフィックス列を greedy に捕捉。
+    // 末尾の独立マイナス（-dice）は (?:-?\d+[+＋-]\s*)* の後段 -? で吸収しプレフィックスに数えない。
+    const m = line.match(/[\s🎲]((?:-?\d+[+＋-]\s*)*)-?\s*dice\d*d\d+/iu);
+    if (!m) return 0;
+    const tokens = m[1].match(/-?\d+[+＋-]/gu);
+    return tokens ? tokens.length : 0;
+};
+
+/**
+ * CR-SA-17-Followup-multistart-NZ-output（ESC-1）/ 2026-06-11:
+ * 現フェーズが要求するプレフィックス数を超える行（改変の疑い）を検出し、エラー文言を返す。
+ *
+ * SSoT: `scene3-race.md §2`「結果取り込み時の余分なプレフィックス検知」+ §「Error Handling」L349-352。
+ *
+ * フェーズ別許容プレフィックス数:
+ *  - 先頭序盤（`Start` / `Start1`）・中盤（`Mid`〜）・終盤（`End`〜）= 1 個まで
+ *  - 序盤2回目以降（`Start2`〜）= 2 個まで（`N+Z+dice`）
+ *
+ * ペース・隊列フェーズは `dice1d9` 全文検索の専用解析（プレフィックス概念なし）のため
+ * 呼び出し側（RACE コンテキストのみ呼ぶ）で対象外とする。
+ */
+export const detectPhasePrefixViolations = (
+    inputText: string,
+    currentPhaseId: string,
+): string[] => {
+    const allowed = isSecondaryStartPhase(currentPhaseId) ? 2 : 1;
+    const errors: string[] = [];
+    const lines = inputText.split(/\r?\n/);
+    for (const rawLine of lines) {
+        // Parser と同じ前処理（trim + 単純 HTML タグ除去）で体裁を揃える。
+        const line = rawLine.trim().replace(/<[^>]*>?/gm, '');
+        if (!line) continue;
+        const count = countDicePrefixes(line);
+        if (count !== null && count > allowed) {
+            errors.push(
+                `・このフェーズで使用しないダイス形式です: "${line}"（中間値の前に余分な数値が付いていないか、レスを改変せず確認してください）`,
+            );
+        }
+    }
+    return errors;
 };

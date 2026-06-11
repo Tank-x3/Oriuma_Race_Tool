@@ -6,9 +6,10 @@ import { clsx } from 'clsx';
 import {
     getUniqueDiceFormula,
     getExpectedUniqueDiceStr,
-    // Bundle-4-Followup-special-strategy-timing-E1 / 2026-05-12 (SA21 案 A 採択):
-    // ダイス式 [基礎値] 算出を helpers へ切り出し。効果値反映前のスコアを使用する。
-    getDiceFormulaBaseValue,
+    // CR-SA-17-Followup-multistart-NZ-output（ESC-1）/ 2026-06-11:
+    // ダイス式の「dice 前プレフィックス」生成。序盤2回目以降は `N+Z`（数値2つ）、
+    // それ以外は従来の単一基礎値（効果値反映前のスコア）を返す。
+    getDiceFormulaPrefix,
 } from './phaseOutput.helpers';
 // Bundle-4 / P4-1, P4-5 / 2026-05-10: 通常ダイス行末への特殊戦法併記
 import { getSpecialStrategyAnnotation } from './specialStrategy.helpers';
@@ -41,15 +42,15 @@ export const PhaseOutput: React.FC = () => {
         return 0; // Should not happen in Scene 3
     });
 
-    // Helper: Get Base Value for Phase
+    // Helper: Get Dice Formula Prefix for Phase
     // Bundle-4-Followup-special-strategy-timing-E1 / 2026-05-12 (SA21 案 A 採択):
     // ダイス式 [基礎値] は specialStrategy 効果値反映前のスコアを使用する
     // （houserule-features.md §3 Application Timing 改訂分、scene3-race.md §2 特殊戦法併記）。
-    // 算出ロジックは phaseOutput.helpers#getDiceFormulaBaseValue に切り出し。
-    // ※ CR-SA-17-E4 Round 2「序盤2 以降の N+Z 出力」は round-trip（投稿→貼り戻し）に parser 拡張が
-    //   必要なため ESCALATION 起票（BOARD 参照）。本コミットでは機能する Z 基準出力を維持する。
-    const getBaseValue = (p: typeof participants[0]) =>
-        getDiceFormulaBaseValue(p, currentPhaseId, config.houseRules, strategies);
+    // CR-SA-17-Followup-multistart-NZ-output（ESC-1）/ 2026-06-11:
+    //   序盤2回目以降（Start2〜）は `[中間値 N]+[脚質固定値 Z]`（数値2つ）、それ以外は従来どおり
+    //   単一の基礎値を返す。算出ロジックは phaseOutput.helpers#getDiceFormulaPrefix に集約。
+    const getPrefix = (p: typeof participants[0]) =>
+        getDiceFormulaPrefix(p, currentPhaseId, config.houseRules, strategies);
 
     // Helper: Get Dice Formula
     const getDiceFormula = (strategyName: string) => {
@@ -216,7 +217,7 @@ export const PhaseOutput: React.FC = () => {
             if (filterCorrection && !status.base && !status.unique) return;
 
             const gateSym = getGateSymbol(p.gate ?? 0);
-            const base = getBaseValue(p);
+            const prefix = getPrefix(p);
             const dice = getDiceFormula(p.strategy);
 
             // Output Base Dice ONLY if:
@@ -227,9 +228,9 @@ export const PhaseOutput: React.FC = () => {
                 let formula = "";
                 if (dice.startsWith('-')) {
                     const positiveDice = dice.substring(1);
-                    formula = `${base}-dice${positiveDice}=`;
+                    formula = `${prefix}-dice${positiveDice}=`;
                 } else {
-                    formula = `${base}+dice${dice}=`;
+                    formula = `${prefix}+dice${dice}=`;
                 }
                 // Bundle-4 / P4-1, P4-5 / 2026-05-10: 通常ダイス行末に特殊戦法併記
                 // （該当なしは空文字列、scene3-race.md §2 「特殊戦法併記」準拠）

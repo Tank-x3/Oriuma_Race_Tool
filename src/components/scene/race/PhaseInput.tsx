@@ -22,7 +22,13 @@ import { clsx } from 'clsx';
 // classifyDiceResultsForParticipant（規則 R-1/R-2/R-3 三段判定）へ置換。
 // 参加者単位グループ化により 1 回の Parser 呼び出しで同一参加者宛に複数結果が
 // 到達するパターンも一貫した振り分けで処理する。
-import { sanitizeInputForParser, classifyDiceResultsForParticipant } from './phaseInput.preprocessors';
+// CR-SA-17-Followup-multistart-NZ-output（ESC-1）/ 2026-06-11: フェーズ依存プレフィックス数チェック
+// （中盤以降で N+M+dice の改変投稿を検知・ブロック）を解析フローに接続する。
+import {
+    sanitizeInputForParser,
+    classifyDiceResultsForParticipant,
+    detectPhasePrefixViolations,
+} from './phaseInput.preprocessors';
 // Bundle-8-T5 / CR-SA-4 / 2026-05-10 [ESCALATION 案 V Provisional 適用]:
 // 終盤【絆スキル】セクション解析後の bondDice 格納分岐用拡張型
 // （scene3-race.md §2、houserule-features.md §2 [v] §データ仕様 L141）。
@@ -73,6 +79,21 @@ export const PhaseInput: React.FC<PhaseInputProps> = ({ onErrors }) => {
             const sanitizedInput = sanitizeInputForParser(inputText);
 
             const context = isPacePhase ? 'PACE' : 'RACE';
+
+            // CR-SA-17-Followup-multistart-NZ-output（ESC-1）/ 2026-06-11:
+            // RACE コンテキストのみ、現フェーズの許容プレフィックス数を超える行（改変の疑い）を
+            // 解析前にブロックする（ペースは dice1d9 専用解析でプレフィックス概念なし → 対象外）。
+            // Parser（不変厳守エリア）は最大2プレフィックスを「フェーズ非依存」で受理するため、
+            // 「中盤以降なのに数値2つ」の検知はここ（preprocessor 層）が担う。
+            const prefixErrors = isPacePhase
+                ? []
+                : detectPhasePrefixViolations(sanitizedInput, currentPhaseId);
+            if (prefixErrors.length > 0) {
+                onErrors?.(prefixErrors);
+                setIsParsing(false);
+                return;
+            }
+
             const parser = ParserFactory.getParser(sanitizedInput);
             // Bundle-8-T5 / CR-SA-4 / 2026-05-10 [ESCALATION 案 V Provisional 適用]:
             // ParserStrategy.parse() の戻り型は ParseResult（interface.ts 不変厳守）だが、StandardParser /

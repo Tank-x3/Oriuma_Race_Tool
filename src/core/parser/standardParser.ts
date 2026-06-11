@@ -73,7 +73,7 @@ export class StandardParser implements ParserStrategy {
             if (!cleanLine) continue;
 
             // Regex Updated (same as parseRace): supports Half/Full width Plus and Negative dice
-            const regex = /^(.*?)[\s\u3000🎲]+(?:(-?\d+)([+＋\-]))?\s*(-)?\s*dice(\d*d\d+?)\s*=\s*(.*?)(?:\s*\((-?\d+)\))?$/iu;
+            const regex = /^(.*?)[\s\u3000🎲]+(?:(-?\d+)([+＋-]))?(?:(-?\d+)([+＋-]))?\s*(-)?\s*dice(\d*d\d+?)\s*=\s*(.*?)(?:\s*\((-?\d+)\))?$/iu;
             const match = cleanLine.match(regex);
 
             if (!match) {
@@ -83,10 +83,14 @@ export class StandardParser implements ParserStrategy {
                 continue;
             }
 
-            const [, nameRaw, fixRaw, fixOperator, negativeSign, diceStr, rollRaw, parensRaw] = match;
-            const fixValue = fixRaw ? parseInt(fixRaw, 10) : 0;
+            const [, nameRaw, fix1Raw, fix1Op, fix2Raw, fix2Op, negativeSign, diceStr, rollRaw, parensRaw] = match;
+            // CR-SA-17-Followup-multistart-NZ-output（ESC-1）/ 2026-06-11: 最大2プレフィックス受理。
+            // fixValue には末尾(dice に近い側)= Z を格納（R-3 整合）。先頭側 N は読み飛ばす。
+            const tailFixRaw = fix2Raw ?? fix1Raw;
+            const tailFixOp = fix2Raw !== undefined ? fix2Op : fix1Op;
+            const fixValue = tailFixRaw ? parseInt(tailFixRaw, 10) : 0;
             // Fix演算子 '-' または dice前の '-' のどちらかが付いていたら減算扱い
-            const isSubtractive = fixOperator === '-' || Boolean(negativeSign);
+            const isSubtractive = tailFixOp === '-' || Boolean(negativeSign);
             let diceResult = 0;
 
             if (parensRaw) {
@@ -175,18 +179,25 @@ export class StandardParser implements ParserStrategy {
             // 4. Bundle-2 / D-1, D-14 / 2026-05-09 [ESCALATION 案 V Provisional]:
             //    拡張固有タイプ「超ギャンブル -10+dice1d35=」等の負の Fix value を
             //    捕捉できるよう (\d+) → (-?\d+) に拡張。既存挙動は完全互換。
+            // 5. CR-SA-17-Followup-multistart-NZ-output（ESC-1）/ 2026-06-11:
+            //    序盤2回目以降 `N+Z+dice`（数値2つ）を受理するため、先頭プレフィックスグループを
+            //    2 つに拡張（最大2個まで）。3個以上は非マッチ → Invalid dice format
+            //    （parser-system.md §A 複数プレフィックス受理の拡張）。
 
-            // Regex Analysis:
+            // Regex Analysis（CR-SA-17-Followup で Group 4/5 を追加、以降を繰り下げ）:
             // ^(.*?)          -> Group 1: Name
             // [\s\u3000🎲]+   -> Separator
-            // (?:(-?\d+)([+＋\-]))? -> Group 2: Fix value, Group 3: Fix operator ('+' or '-')
-            // \s*(-)?         -> Group 4: Negative sign before 'dice' (Fixなし大逃げ用)
-            // dice(\d*d\d+?)  -> Group 5: DiceStr
+            // (?:(-?\d+)([+＋-]))? -> Group 2: 先頭プレフィックス値 N, Group 3: その演算子
+            // (?:(-?\d+)([+＋-]))? -> Group 4: 末尾プレフィックス値 Z, Group 5: その演算子
+            //                         （0/1 個時は Group 2/3 のみ、Group 4/5 = undefined）
+            // \s*(-)?         -> Group 6: Negative sign before 'dice' (Fixなし大逃げ用)
+            // dice(\d*d\d+?)  -> Group 7: DiceStr
             // \s*=\s*         -> Equals
-            // (.*?)           -> Group 6: Roll Result
-            // (?:\s*\((-?\d+)\))?$ -> Group 7: Parens Value (Sum of dice, absolute)
+            // (.*?)           -> Group 8: Roll Result
+            // (?:\s*\((-?\d+)\))?$ -> Group 9: Parens Value (Sum of dice, absolute)
+            // fixValue = 末尾プレフィックス(Z) = Group 4 ?? Group 2（R-3 振り分け整合）
 
-            const regex = /^(.*?)[\s\u3000🎲]+(?:(-?\d+)([+＋\-]))?\s*(-)?\s*dice(\d*d\d+?)\s*=\s*(.*?)(?:\s*\((-?\d+)\))?$/iu;
+            const regex = /^(.*?)[\s\u3000🎲]+(?:(-?\d+)([+＋-]))?(?:(-?\d+)([+＋-]))?\s*(-)?\s*dice(\d*d\d+?)\s*=\s*(.*?)(?:\s*\((-?\d+)\))?$/iu;
 
             const match = cleanLine.match(regex);
 
@@ -197,11 +208,15 @@ export class StandardParser implements ParserStrategy {
                 continue;
             }
 
-            const [, nameRaw, fixRaw, fixOperator, negativeSign, diceStr, rollRaw, parensRaw] = match;
+            const [, nameRaw, fix1Raw, fix1Op, fix2Raw, fix2Op, negativeSign, diceStr, rollRaw, parensRaw] = match;
 
-            const fixValue = fixRaw ? parseInt(fixRaw, 10) : 0;
+            // CR-SA-17-Followup-multistart-NZ-output（ESC-1）/ 2026-06-11: 最大2プレフィックス受理。
+            // fixValue には末尾(dice に近い側)= Z を格納（R-3 整合）。先頭側 N（中間値）は読み飛ばす。
+            const tailFixRaw = fix2Raw ?? fix1Raw;
+            const tailFixOp = fix2Raw !== undefined ? fix2Op : fix1Op;
+            const fixValue = tailFixRaw ? parseInt(tailFixRaw, 10) : 0;
             // Fix演算子 '-' または dice前の '-' のどちらかが付いていたら減算扱い
-            const isSubtractive = fixOperator === '-' || Boolean(negativeSign);
+            const isSubtractive = tailFixOp === '-' || Boolean(negativeSign);
             let diceResult = 0;
             let total = 0;
 

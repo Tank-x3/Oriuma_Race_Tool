@@ -4,6 +4,8 @@ import {
     getExpectedUniqueDiceStr,
     getExpectedUniqueFixValue,
     getDiceFormulaBaseValue,
+    isSecondaryStartPhase,
+    getDiceFormulaPrefix,
 } from './phaseOutput.helpers';
 import type { Strategy, Umamusume, UniqueDiceConfig } from '../../../types';
 import { DEFAULT_UNIQUE_DICE_CONFIG } from '../../../core/strategies';
@@ -286,6 +288,79 @@ describe('CR-SA-15-E2: 固有ダイス 3 関数の uniqueDiceConfig 参照化', 
             expect(getExpectedUniqueFixValue('Stability', config)).toBe(7);
             // getExpectedUniqueFixValue は本ファイルに既存テストがないため引数省略時の挙動も併せて検証
             expect(getExpectedUniqueFixValue('Stability')).toBe(5);
+        });
+    });
+});
+
+// CR-SA-17-Followup-multistart-NZ-output（ESC-1）/ 2026-06-11:
+// 序盤2回目以降の N+Z（中間値+脚質固定値）投稿用ダイス出力（scene3-race.md §2 値の構成ルール）。
+describe('CR-SA-17-Followup ESC-1: 序盤2回目以降 N+Z 出力', () => {
+    // fixValue: 先行=10, 差し=0（Z=0 ケース検証用）
+    const strategiesForNZ: Strategy[] = [
+        {
+            name: '大逃げ',
+            fixValue: 30,
+            dice: { start: 'dice3d8', mid: 'dice2d8', end: '-dice1d27' },
+            paceModifiers: {},
+        },
+        ...strategiesFixture,
+    ];
+
+    describe('isSecondaryStartPhase', () => {
+        it('先頭序盤（Start / Start1）→ false', () => {
+            expect(isSecondaryStartPhase('Start')).toBe(false);
+            expect(isSecondaryStartPhase('Start1')).toBe(false);
+        });
+        it('序盤2回目以降（Start2〜Start4）→ true', () => {
+            expect(isSecondaryStartPhase('Start2')).toBe(true);
+            expect(isSecondaryStartPhase('Start3')).toBe(true);
+            expect(isSecondaryStartPhase('Start4')).toBe(true);
+        });
+        it('非序盤フェーズ（Mid / Mid1 / End / Pace）→ false', () => {
+            expect(isSecondaryStartPhase('Mid')).toBe(false);
+            expect(isSecondaryStartPhase('Mid1')).toBe(false);
+            expect(isSecondaryStartPhase('End')).toBe(false);
+            expect(isSecondaryStartPhase('End2')).toBe(false);
+            expect(isSecondaryStartPhase('Pace')).toBe(false);
+        });
+    });
+
+    describe('getDiceFormulaPrefix', () => {
+        it('序盤2回目以降（Start2、大逃げ）→ "N+Z"（中間値 84 + 脚質固定値 30、数値2つ）', () => {
+            const p = makeParticipant({ strategy: '大逃げ', score: 84 });
+            expect(
+                getDiceFormulaPrefix(p, 'Start2', houseRulesEnabled, strategiesForNZ)
+            ).toBe('84+30');
+        });
+        it('序盤2回目以降 + Z=0（Start2、差し fixValue 0）→ "N+0"（2プレフィックス維持）', () => {
+            const p = makeParticipant({ strategy: '差し', score: 84 });
+            expect(
+                getDiceFormulaPrefix(p, 'Start2', houseRulesEnabled, strategiesForNZ)
+            ).toBe('84+0');
+        });
+        it('先頭序盤（Start、大逃げ）→ Z 単独 "30"（従来どおり、N を付けない）', () => {
+            const p = makeParticipant({ strategy: '大逃げ', score: 84 });
+            expect(
+                getDiceFormulaPrefix(p, 'Start', houseRulesEnabled, strategiesForNZ)
+            ).toBe('30');
+        });
+        it('先頭序盤（Start1、先行）→ Z 単独 "10"（従来どおり）', () => {
+            const p = makeParticipant({ strategy: '先行', score: 50 });
+            expect(
+                getDiceFormulaPrefix(p, 'Start1', houseRulesEnabled, strategiesForNZ)
+            ).toBe('10');
+        });
+        it('中盤（Mid）→ 累積スコア1個 "52"（従来どおり、getDiceFormulaBaseValue 委譲）', () => {
+            const p = makeParticipant({ strategy: '先行', score: 52 });
+            expect(
+                getDiceFormulaPrefix(p, 'Mid', houseRulesDisabled, strategiesForNZ)
+            ).toBe('52');
+        });
+        it('終盤（End）→ 累積スコア1個 "112"（従来どおり）', () => {
+            const p = makeParticipant({ strategy: '大逃げ', score: 112 });
+            expect(
+                getDiceFormulaPrefix(p, 'End', houseRulesDisabled, strategiesForNZ)
+            ).toBe('112');
         });
     });
 });

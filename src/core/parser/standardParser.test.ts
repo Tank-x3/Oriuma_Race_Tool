@@ -254,6 +254,58 @@ describe('StandardParser', () => {
             });
         });
     });
+
+    // CR-SA-17-Followup-multistart-NZ-output（ESC-1）/ 2026-06-11:
+    // 序盤2回目以降 `N+Z+dice`（数値2つ）の受理。fixValue=末尾(Z)、3個以上は Invalid dice format。
+    // parser-system.md §A「複数プレフィックス受理の拡張」SSoT。
+    describe('複数プレフィックス受理（N+Z、CR-SA-17-Followup ESC-1）', () => {
+        it('2プレフィックス "84+30+dice3d8=..." を受理し fixValue=末尾(Z=30)', () => {
+            const text = '② Silence Suzuka　84+30+dice3d8=5 5 5 (15)';
+            const result = StandardParser.parse(text, participants);
+
+            expect(result.errors).toHaveLength(0);
+            expect(result.results).toHaveLength(1);
+            expect(result.results[0]).toMatchObject({
+                name: 'Silence Suzuka',
+                diceStr: '3d8',
+                fixValue: 30, // 末尾(Z)、先頭 N=84 は fixValue に含めない
+                diceResult: 15,
+                total: 45, // fixValue(30) + diceResult(15)、N=84 はスコアに伝播しない
+                validChecksum: true,
+            });
+        });
+
+        it('2プレフィックス Z=0 "84+0+dice3d8=..." を受理し fixValue=0（追込等の Z=0 体裁）', () => {
+            const text = '① Special Week　84+0+dice3d8=5 5 5 (15)';
+            const result = StandardParser.parse(text, participants);
+
+            expect(result.errors).toHaveLength(0);
+            expect(result.results).toHaveLength(1);
+            expect(result.results[0]).toMatchObject({
+                name: 'Special Week',
+                fixValue: 0,
+                diceResult: 15,
+                total: 15,
+                validChecksum: true,
+            });
+        });
+
+        it('3プレフィックス "10+20+30+dice3d8=..." は Invalid dice format（最大2個まで）', () => {
+            const text = '② Silence Suzuka　10+20+30+dice3d8=5 5 5 (15)';
+            const result = StandardParser.parse(text, participants);
+
+            expect(result.results).toHaveLength(0);
+            expect(result.errors[0]).toContain('Invalid dice format');
+        });
+
+        it('1プレフィックス（従来）は末尾選択ロジックでも従来どおり（後方互換 regression）', () => {
+            const text = '② Silence Suzuka　30+dice3d8=5 5 5 (15)';
+            const result = StandardParser.parse(text, participants);
+
+            expect(result.errors).toHaveLength(0);
+            expect(result.results[0]).toMatchObject({ fixValue: 30, diceResult: 15, total: 45 });
+        });
+    });
 });
 
 // Bundle-8-T5 / CR-SA-4 / 2026-05-10:

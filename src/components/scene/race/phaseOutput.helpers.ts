@@ -65,9 +65,57 @@ export const getDiceFormulaBaseValue = (
         : p.score + houseRules.effectValue;
 };
 
-// CR-SA-17-E4 / 2026-06-08（Round 2）: 序盤2 以降の「N+Z（中間値+脚質固定値）」ダイス出力は
-// round-trip（投稿→貼り戻し）に parser（不変厳守エリア）の拡張が必要なため、本 E4 では未実装。
-// N+Z 出力 + parser 拡張を結合した後追いタスクとして ESCALATION 起票（BOARD 参照）。
+/**
+ * CR-SA-17-Followup-multistart-NZ-output（ESC-1）/ 2026-06-11:
+ * 当該フェーズが「序盤2回目以降（`Start2`〜`Start4`）」かを判定する。
+ *
+ * フェーズ構成変更（`houserule-features.md §7`）ON で序盤を 2 回以上にしたときのみ
+ * 出現する。先頭序盤（`Start` / `Start1`）は false（従来どおり脚質固定値 Z 単独出力）。
+ * 非序盤フェーズ（`Mid`〜 / `End`〜 / `Pace`）も false。
+ *
+ * 序盤2回目以降の投稿用ダイスは `[中間値 N]+[脚質固定値 Z]+dice` 形式（数値2つ）で出力し、
+ * 貼り戻し解析時の許容プレフィックス数（`phaseInput.preprocessors.ts`）の基準にもなる。
+ */
+export const isSecondaryStartPhase = (phaseId: string): boolean => {
+    if (!phaseId.startsWith('Start')) return false;
+    const suffix = phaseId.slice('Start'.length); // '' | '1' | '2' | …
+    const n = parseInt(suffix, 10);
+    return !Number.isNaN(n) && n >= 2;
+};
+
+/**
+ * CR-SA-17-Followup-multistart-NZ-output（ESC-1）/ 2026-06-11:
+ * 投稿用ダイス式の「`dice` より前のプレフィックス文字列」を生成する純粋関数。
+ *
+ * 仕様根拠: `scene3-race.md §2`「値の構成ルール」
+ *  - 序盤2回目以降（`Start2`〜）: `[中間値 N]+[脚質固定値 Z]`（数値2つ、畳まない）。
+ *      - `N`（中間値）= 当該序盤フェーズ進入時点の累積スコア（= `p.score`、当該フェーズの
+ *        ダイス未取り込み時点の値）。
+ *      - `Z`（脚質固定値）= `strategy.fixValue`（先頭序盤の Z と同値）。
+ *      - **Z=0（追込等）も `N+0` の2プレフィックスを維持**する（フェーズ別プレフィックス数の
+ *        一貫性 = 序盤2以降は常に2個。preprocessor の「2個まで」許容・parser の末尾Z格納と整合）。
+ *  - 上記以外（先頭序盤 / 中盤 / 終盤）: 従来どおり単一の基礎値（`getDiceFormulaBaseValue`）。
+ *
+ * **スコア無影響:** `N` / `Z` の並びはスコア計算に使われない（`calculator` は `baseDice.sum` +
+ * `strategy.fixValue` で算出。`ParsedLine.fixValue` は `DiceResult` に伝播しない）。N+Z 形式は
+ * 表示・貼り戻し体裁のための表記であり、二重加算は発生しない。
+ *
+ * 戻り値は `dice` の直前に置く文字列（演算子 `+` / `-` は呼び出し側で付与）。
+ */
+export const getDiceFormulaPrefix = (
+    p: Umamusume,
+    currentPhaseId: string,
+    houseRules: HouseRulesForBaseValue,
+    strategies: Strategy[]
+): string => {
+    if (isSecondaryStartPhase(currentPhaseId)) {
+        const strategy = strategies.find((s) => s.name === p.strategy);
+        const z = strategy?.fixValue ?? 0;
+        // N = 当該序盤進入時点の累積スコア（ダイス未取り込みの p.score）
+        return `${p.score}+${z}`;
+    }
+    return String(getDiceFormulaBaseValue(p, currentPhaseId, houseRules, strategies));
+};
 
 /**
  * 固有スキルタイプから「投稿用ダイス出力」用のダイス文字列を返す。

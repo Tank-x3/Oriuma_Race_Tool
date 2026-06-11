@@ -121,22 +121,31 @@ export class EmojiParser implements ParserStrategy {
                 // 拡張固有タイプ「超ギャンブル (-10+dice1d35=)」等の負の Fix value を捕捉できるよう
                 // (\d+) → (-?\d+) に拡張。既存の正の Fix value 挙動は完全互換（-? は optional）。
                 // 仕様 SSoT (parser-system.md §B Step 1) は本 Bundle スコープ外、PM46/SA 判断委ね。
-                const fixMatch = preMatch.match(/^(.*?)(-?\d+)([+-])\s*$/);
+                // CR-SA-17-Followup-multistart-NZ-output（ESC-1）/ 2026-06-11:
+                // 序盤2回目以降 `名前 84+30+🎲 dice...`（数値2つ）に対応するため、dice 左側の Fix 抽出を
+                // 末尾から最大2個の「数値+符号」プレフィックス受理に拡張する（parser-system.md §B）。
+                // fixValue には末尾(dice に近い側)= Z を格納し、先頭側(N=中間値)は名前部に混入させず
+                // 読み飛ばす。3個以上は拒否（CC-2 厳格バリデーション）。後方互換（0/1 個）は完全維持。
+                const fixMatch = preMatch.match(/^(.*?)\s*(?:(-?\d+)[+-]\s*)?(-?\d+)([+-])\s*$/);
 
                 let nameRaw = preMatch;
                 let fixValue = 0;
                 let isFixPlus = true; // Default to plus
 
                 if (fixMatch) {
-                    nameRaw = fixMatch[1].trim();
-                    fixValue = parseInt(fixMatch[2], 10);
-                    const operator = fixMatch[3];
+                    const namePart = fixMatch[1];
+                    // 3個目のプレフィックスが名前部末尾に残っていたら最大2個超過 → 拒否（StandardParser §A と対称）
+                    if (/(-?\d+)[+-]\s*$/.test(namePart)) {
+                        errors.push(`Invalid dice format: "${trimmed}"`);
+                        currentBlock = null;
+                        continue;
+                    }
+                    nameRaw = namePart.trim();
+                    fixValue = parseInt(fixMatch[3], 10); // 末尾(dice に近い側)= Z
+                    const operator = fixMatch[4];
                     if (operator === '-') {
                         isFixPlus = false;
                     }
-                } else if (preMatch.includes(' ')) {
-                    // fallback if space separation?
-                    // But maybe no fix value.
                 }
 
                 // 演算子がマイナスの場合、インライン結果を負数に変換

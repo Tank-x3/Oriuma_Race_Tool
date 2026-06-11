@@ -923,3 +923,48 @@ describe('EmojiParser - Bundle-8-T5 / 【絆スキル】セクション認識', 
         });
     });
 });
+
+// CR-SA-17-Followup-multistart-NZ-output（ESC-1）/ 2026-06-11:
+// 88ch 形式での序盤2回目以降 `N+Z+🎲 dice`（数値2つ）受理。fixValue=末尾(Z)、3個以上は拒否。
+// parser-system.md §B「複数プレフィックス受理の拡張」SSoT。
+describe('EmojiParser - 複数プレフィックス受理（N+Z、CR-SA-17-Followup ESC-1）', () => {
+    const parser = new EmojiParser();
+    const participants: Umamusume[] = [
+        { id: '1', name: 'ウマ娘A', strategy: '逃げ', uniqueSkill: { type: 'Stability', phases: [] }, gate: 1, entryIndex: 1, score: 0, history: {} } as unknown as Umamusume,
+    ];
+    it('Single line 2プレフィックス "84+30+🎲 dice3d6=15" → fixValue=末尾(Z=30), total=45', () => {
+        const input = '① ウマ娘A 84+30+🎲 dice3d6=15';
+        const result = parser.parse(input, participants, 'RACE');
+        expect(result.errors).toHaveLength(0);
+        expect(result.results).toHaveLength(1);
+        expect(result.results[0]).toMatchObject({
+            name: 'ウマ娘A',
+            diceStr: '3d6',
+            fixValue: 30, // 末尾(Z)、先頭 N=84 は混入させない
+            diceResult: 15,
+            total: 45, // fixValue(30) + diceResult(15)
+        });
+    });
+    it('Multi-line 2プレフィックス（合計行）→ fixValue=末尾(Z=30), total=45', () => {
+        const input = [
+            '② ウマ娘A 84+30+🎲 dice3d6=',
+            '合計: 15',
+        ].join('\n');
+        const result = parser.parse(input, participants, 'RACE');
+        expect(result.errors).toHaveLength(0);
+        expect(result.results).toHaveLength(1);
+        expect(result.results[0]).toMatchObject({ name: 'ウマ娘A', fixValue: 30, diceResult: 15, total: 45 });
+    });
+    it('3プレフィックス "10+20+30+🎲 dice3d6=15" は Invalid dice format（最大2個まで）', () => {
+        const input = '① ウマ娘A 10+20+30+🎲 dice3d6=15';
+        const result = parser.parse(input, participants, 'RACE');
+        expect(result.results).toHaveLength(0);
+        expect(result.errors.some(e => e.includes('Invalid dice format'))).toBe(true);
+    });
+    it('1プレフィックス（従来 15+🎲）は後方互換維持（regression）', () => {
+        const input = '① ウマ娘A 15+🎲 dice3d6=10';
+        const result = parser.parse(input, participants, 'RACE');
+        expect(result.errors).toHaveLength(0);
+        expect(result.results[0]).toMatchObject({ name: 'ウマ娘A', fixValue: 15, diceResult: 10, total: 25 });
+    });
+});
