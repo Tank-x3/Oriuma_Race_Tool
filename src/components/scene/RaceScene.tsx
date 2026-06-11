@@ -20,10 +20,15 @@ export const RaceScene: React.FC = () => {
         prevPhase,
         isLastPhase,
         isFirstPhase,
+        // CR-SA-20-E4 / 2026-06-11: 遷移先フェーズの事前判定（隊列フェーズ到達前の禁止構成検出）に使用
+        phaseSequence,
+        currentIndex,
     } = useRaceEngine();
 
     const {
         paceResult,
+        // CR-SA-20-E4 / 2026-06-11: 隊列確定結果（未確定ブロック + 遷移時の補正反映に使用）
+        formationResult,
         participants,
         strategies,
         config,
@@ -59,8 +64,28 @@ export const RaceScene: React.FC = () => {
             return;
         }
 
+        // CR-SA-20-E4 / 2026-06-11: 隊列フェーズの未確定ブロック（ペース判定と同型）。
+        if (currentPhaseId === 'Formation' && !formationResult.face) {
+            setPhaseErrors(['隊列判定が完了していません。ダイス結果を貼り付けて解析してください。']);
+            return;
+        }
+
+        // CR-SA-20-E4 / 2026-06-11: Scene 3 側の禁止構成検出（houserule-features.md §7.6
+        // 「フェーズ進行時（隊列フェーズ到達前）」= 最終防衛線）。隊列 ON × ペースなし等で
+        // 「次のフェーズが隊列なのにペース未確定」となる構成は、Scene 1 確定ブロック（E3）を
+        // すり抜けた Import / state 復元由来でのみ発生しうる。隊列効果はペース結果を参照する
+        // （§6.3）ため、ここでクリティカルエラーとして進行をブロックする（文言 = L301 流用）。
+        const upcomingPhaseId =
+            !isLastPhase && currentIndex >= 0 ? phaseSequence[currentIndex + 1] : null;
+        if (upcomingPhaseId === 'Formation' && paceResult.face === null) {
+            setPhaseErrors(['・隊列(バ群)ダイスを使用する場合はペースが必要です。ペース位置を「なし」以外にするか、隊列ダイスをオフにしてください']);
+            return;
+        }
+
         // Validation: Cannot proceed from Race Phases (Start/Mid/End) if not analyzed
-        if (currentPhaseId !== 'Pace') {
+        // CR-SA-20-E4 / 2026-06-11: 隊列フェーズも GM ダイス専用（participants の history を持たない）
+        // ため、ペースと同様に整合チェック・取り込み済みチェックの対象外とする。
+        if (currentPhaseId !== 'Pace' && currentPhaseId !== 'Formation') {
             // 1. Consistency Check (Config Changes vs History)
             const hasMismatch = participants.some(p => {
                 const history = p.history[currentPhaseId];
@@ -121,8 +146,21 @@ export const RaceScene: React.FC = () => {
 
         // Logic: Transitioning FROM Pace -> Next (Mid)
         // Recalculate all scores to include Pace Modifier
-        if (currentPhaseId === 'Pace') {
+        // CR-SA-20-E4 / 2026-06-11: 隊列フェーズからの遷移時も同方式で再計算する（§6.5「隊列直後
+        // フェーズへ遷移する瞬間に 1 回加算」）。計算は履歴全再構築のため二重加算は発生せず、
+        // 中盤 0/1 回構成（ペース → 隊列が連続）では Pace 遷移時にペース補正、Formation 遷移時に
+        // 隊列補正が順に反映され、両補正が当該フェーズ基礎値に合算される（§6.5 ペース補正との累積）。
+        if (currentPhaseId === 'Pace' || currentPhaseId === 'Formation') {
             let updatedCount = 0;
+            // CR-SA-20-E4 / 2026-06-11: 隊列補正は「隊列フェーズから出る遷移」でのみ反映する
+            //（§6.5「隊列直後フェーズへ遷移する瞬間に 1 回加算」）。Pace から出る遷移の先は
+            // 「ペースは隊列より前」の不変ルールにより常に隊列フェーズ以前のため、Pace 遷移では
+            // 隊列補正を乗せない（戻る操作後の再進行〔出目確定済み × ペース → 隊列〕で隊列フェーズ
+            // 自体に補正が先乗りするのを防ぐ）。OFF 時は値が残っていても渡さない（OFF 透過）。
+            const formationFace =
+                config.houseRules.enableFormationDice && currentPhaseId === 'Formation'
+                    ? formationResult.face
+                    : null;
             participants.forEach(p => {
                 // CR-SA-15-E2 / 2026-05-15: 固有固定値を houseRules.uniqueDiceConfig 参照化
                 const totalScore = Calculator.calculateTotalScore(
@@ -130,7 +168,8 @@ export const RaceScene: React.FC = () => {
                     strategies,
                     paceResult.face,
                     getActivePhaseIdsForConfig(config),
-                    config.houseRules.uniqueDiceConfig
+                    config.houseRules.uniqueDiceConfig,
+                    formationFace
                 );
                 // Only update if changed (optimization)
                 if (totalScore !== p.score) {
@@ -138,7 +177,7 @@ export const RaceScene: React.FC = () => {
                     updatedCount++;
                 }
             });
-            console.log(`Pace transition: Updated ${updatedCount} participants.`);
+            console.log(`${currentPhaseId} transition: Updated ${updatedCount} participants.`);
         }
 
         if (isLastPhase) {

@@ -716,11 +716,13 @@ describe('CR-5a: zustand persist 設定', () => {
 
         // CR-SA-16-E1 / 2026-05-15: appliedPresetName / isPresetDirty 永続化対象拡張に追従
         // （§4 案 X1 = 既存テスト構造的検証への期待値追加は DoD 内対応）
+        // CR-SA-20-E4 / 2026-06-11: formationResult 永続化対象拡張に追従（隊列出目の中間リロード復元）
         expect(partialized).toEqual({
             config: fullState.config,
             participants: fullState.participants,
             currentPhaseId: fullState.currentPhaseId,
             paceResult: fullState.paceResult,
+            formationResult: fullState.formationResult,
             strategies: fullState.strategies,
             gateAssignments: fullState.gateAssignments,
             appliedPresetName: fullState.appliedPresetName,
@@ -742,10 +744,12 @@ describe('CR-5a: zustand persist 設定', () => {
         expect(partializedKeys).not.toContain('moveToGate');
         // CR-SA-16-E1 / 2026-05-15: appliedPresetName / isPresetDirty 永続化対象拡張に追従
         // （§4 案 X1 = 既存テスト構造的検証への期待値追加は DoD 内対応）
+        // CR-SA-20-E4 / 2026-06-11: formationResult 永続化対象拡張に追従
         expect(partializedKeys.sort()).toEqual([
             'appliedPresetName',
             'config',
             'currentPhaseId',
+            'formationResult',
             'gateAssignments',
             'isPresetDirty',
             'paceResult',
@@ -763,7 +767,8 @@ describe('CR-5a: zustand persist 設定', () => {
         // CR-SA-19 / 2026-06-06: 5 → 6 にバンプ（uniqueDiceConfig 旧 5 キー → 新 7 キー補完）
         // CR-SA-17-E1 / 2026-06-06: 6 → 7 にバンプ（enablePhaseConfig + config 3 フィールド追加）
         // CR-SA-20-E1 / 2026-06-11: 7 → 8 にバンプ（enableFormationDice 追加）
-        expect(PERSIST_VERSION).toBe(8);
+        // CR-SA-20-E4 / 2026-06-11: 8 → 9 にバンプ（formationResult 追加）
+        expect(PERSIST_VERSION).toBe(9);
         expect(PERSIST_NAME).toBe('race-store');
     });
 
@@ -3728,12 +3733,13 @@ describe('CR-SA-16-E1 / 2026-05-15 appliedPresetName + isPresetDirty', () => {
         expect(migrated.isPresetDirty).toBe(false);
     });
 
-    // (S18) PERSIST_VERSION === 8（バンプの構造的証跡）
+    // (S18) PERSIST_VERSION === 9（バンプの構造的証跡）
     // CR-SA-19 / 2026-06-06: 5 → 6（uniqueDiceConfig 旧 5 キー → 新 7 キー補完）
     // CR-SA-17-E1 / 2026-06-06: 6 → 7（enablePhaseConfig + config 3 フィールド追加）
     // CR-SA-20-E1 / 2026-06-11: 7 → 8（enableFormationDice 追加）
-    it('(S18) PERSIST_VERSION === 8', () => {
-        expect(PERSIST_VERSION).toBe(8);
+    // CR-SA-20-E4 / 2026-06-11: 8 → 9（formationResult 追加）
+    it('(S18) PERSIST_VERSION === 9', () => {
+        expect(PERSIST_VERSION).toBe(9);
     });
 });
 
@@ -4006,5 +4012,123 @@ describe('useRaceStore - CR-SA-16-Followup-reset-houserules / 2026-06-06 resetHo
         useRaceStore.getState().resetHouseRules();
 
         expect(useRaceStore.getState().config.houseRules.enableFormationDice).toBe(false);
+    });
+});
+// CR-SA-20-E4 / 2026-06-11: formationResult（隊列〔バ群〕ダイス確定結果）の state・action・永続化・
+// 計算反映ゲート（houserule-features.md §6.5 / §6.7、paceResult と対称設計）。
+describe('CR-SA-20-E4 / 2026-06-11 formationResult（隊列確定結果）', () => {
+    beforeEach(() => {
+        useRaceStore.getState().resetRace();
+        useNotificationStore.setState({ notifications: [] });
+    });
+    // 大逃げ Start: fix 30 + dice 10 = 40。pace 5（ミドル ±0）。
+    // formation 1（超縦長）× pace 5（ミドル以下）→ 大逃げ +10。
+    const installFormationFixture = (enableFormationDice: boolean) => {
+        const uma = setupParticipant({
+            strategy: '大逃げ',
+            uniqueSkill: { type: 'Gamble', phases: [] },
+            history: {
+                Start: { baseDice: makeDice('3d8', [3, 3, 4]), computedScore: 0 },
+            },
+            score: 40,
+        });
+        useRaceStore.setState((state) => ({
+            participants: [uma],
+            paceResult: { face: 5, label: 'ミドル' },
+            formationResult: { face: 1, label: '超縦長' },
+            config: {
+                ...state.config,
+                midPhaseCount: 1,
+                houseRules: {
+                    ...state.config.houseRules,
+                    enableFormationDice,
+                },
+            },
+        }));
+    };
+    it('(F1) 初期 state: formationResult = { face: null, label: null }', () => {
+        const { formationResult } = useRaceStore.getState();
+        expect(formationResult).toEqual({ face: null, label: null });
+    });
+    it('(F2) setFormationResult で face / label がセットされる', () => {
+        useRaceStore.getState().setFormationResult(9, '超団子');
+        expect(useRaceStore.getState().formationResult).toEqual({ face: 9, label: '超団子' });
+    });
+    it('(F3) setFormationResult は participants の score を変更しない（解析時スコア不変、§6.5）', () => {
+        installFormationFixture(true);
+        useRaceStore.setState({ formationResult: { face: null, label: null } });
+        const before = useRaceStore.getState().participants[0].score;
+        useRaceStore.getState().setFormationResult(1, '超縦長');
+        expect(useRaceStore.getState().participants[0].score).toBe(before);
+    });
+    it('(F4) resetRace で formationResult がリセットされる', () => {
+        useRaceStore.getState().setFormationResult(5, '普通');
+        useRaceStore.getState().resetRace();
+        expect(useRaceStore.getState().formationResult).toEqual({ face: null, label: null });
+    });
+    it('(F5) persistMigrate: v8 旧データ（formationResult 欠落）は { null, null } で補完される', () => {
+        const persisted = {
+            config: {
+                midPhaseCount: 1,
+                fullGateSize: null,
+                startPhaseCount: 1,
+                endPhaseCount: 1,
+                pacePosition: 'Start',
+                houseRules: { ...DEFAULT_HOUSE_RULES },
+            },
+            participants: [],
+            currentPhaseId: 'setup',
+            paceResult: { face: null, label: null },
+            strategies: DEFAULT_STRATEGIES,
+            gateAssignments: null,
+            uiState: { scene: 'setup' as const },
+        };
+        const migrated = persistMigrate(persisted, 8);
+        expect(migrated.formationResult).toEqual({ face: null, label: null });
+    });
+    it('(F6) persistMigrate: formationResult の既存値（v9 データ）は保持される', () => {
+        const persisted = {
+            config: {
+                midPhaseCount: 1,
+                fullGateSize: null,
+                startPhaseCount: 1,
+                endPhaseCount: 1,
+                pacePosition: 'Start',
+                houseRules: { ...DEFAULT_HOUSE_RULES, enableFormationDice: true },
+            },
+            participants: [],
+            currentPhaseId: 'Mid',
+            paceResult: { face: 5, label: 'ミドル' },
+            formationResult: { face: 9, label: '超団子' },
+            strategies: DEFAULT_STRATEGIES,
+            gateAssignments: null,
+            uiState: { scene: 'race' as const },
+        };
+        const migrated = persistMigrate(persisted, 9);
+        expect(migrated.formationResult).toEqual({ face: 9, label: '超団子' });
+        expect(migrated.config.houseRules.enableFormationDice).toBe(true);
+    });
+    it('(F7) updateHouseRules: 隊列 ON→OFF 切替で隊列補正が score から除去される', () => {
+        installFormationFixture(true);
+        // ON 状態の score を隊列補正込みへ同期（updateHouseRules の再計算経路で確定させる）
+        useRaceStore.getState().updateHouseRules({ enableFormationDice: true });
+        // ON のままの再計算 = formationDiceChanged ではないが、他トリガーなしのため score 不変（40 のまま）。
+        // 明示的に OFF → ON 切替で補正込み値を確認してから ON → OFF を検証する。
+        useRaceStore.getState().updateHouseRules({ enableFormationDice: false });
+        expect(useRaceStore.getState().participants[0].score).toBe(40); // 補正除去（fix30+dice10）
+        useRaceStore.getState().updateHouseRules({ enableFormationDice: true });
+        expect(useRaceStore.getState().participants[0].score).toBe(50); // 40 + 超縦長 +10 復帰
+    });
+    it('(F8) updateHouseRules: 隊列 OFF→ON 切替（出目確定済み）で隊列補正が score へ反映される', () => {
+        installFormationFixture(false);
+        expect(useRaceStore.getState().participants[0].score).toBe(40);
+        useRaceStore.getState().updateHouseRules({ enableFormationDice: true });
+        expect(useRaceStore.getState().participants[0].score).toBe(50); // 40 + 10
+    });
+    it('(F9) 解析未確定（formationResult.face = null）では ON でも補正されない', () => {
+        installFormationFixture(false);
+        useRaceStore.setState({ formationResult: { face: null, label: null } });
+        useRaceStore.getState().updateHouseRules({ enableFormationDice: true });
+        expect(useRaceStore.getState().participants[0].score).toBe(40);
     });
 });

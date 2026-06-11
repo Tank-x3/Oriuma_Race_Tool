@@ -124,6 +124,10 @@ interface RaceStoreState extends RaceState {
     startRace: () => void;
     setCurrentPhase: (phaseId: string) => void;
     setPaceResult: (face: number, label: string) => void;
+    // CR-SA-20-E4 / 2026-06-11: 隊列〔バ群〕ダイス確定結果の設定（setPaceResult と対称、§6.6）。
+    // 解析時点では participants の score を再計算しない（解析時スコア不変 = scene3-race.md §1 L118。
+    // 反映は隊列直後フェーズへの遷移時 = RaceScene.handleNext の再計算で行う、§6.5）。
+    setFormationResult: (face: number, label: string) => void;
     // Bundle-6 / P4-4 + CR-19 / 2026-05-10: 仕様 scene3-race.md §6「完全な状態復元」準拠。
     // CR-8 (2026-04) で導入された revertPhaseHistory action は本 Bundle で完全削除した。
     // 戻る操作（useRaceEngine.prevPhase）は setCurrentPhase で前フェーズに戻すのみで、
@@ -142,9 +146,11 @@ interface RaceStoreState extends RaceState {
 // CR-5a-2: gateAssignments を中間状態として永続化対象に含める（houserule-features.md §4.2 #6）。
 // CR-SA-16-E1 / 2026-05-15: appliedPresetName / isPresetDirty を永続化対象に追加
 // （scene1-setup.md §0-4 SA24 ユーザー判断「論点 6 永続化: 含める」）。
+// CR-SA-20-E4 / 2026-06-11: formationResult（隊列出目・形態）を永続化対象に追加
+// （paceResult と対称。中間リロード復元 = houserule-features.md §6.7 / CR-5a 既存方針）。
 export type PersistedRaceState = Pick<
     RaceStoreState,
-    'config' | 'participants' | 'currentPhaseId' | 'paceResult' | 'strategies' | 'gateAssignments' | 'appliedPresetName' | 'isPresetDirty'
+    'config' | 'participants' | 'currentPhaseId' | 'paceResult' | 'formationResult' | 'strategies' | 'gateAssignments' | 'appliedPresetName' | 'isPresetDirty'
 > & {
     uiState: { scene: RaceStoreState['uiState']['scene'] };
 };
@@ -179,7 +185,11 @@ export const PRESET_KEY_PREFIX = 'race-store-presets:';
 // version=7 旧データ（houseRules.enableFormationDice 欠落）→ version=8 への補完を
 // persistMigrate で実施（DEFAULT_HOUSE_RULES.enableFormationDice 追加 = `...DEFAULT_HOUSE_RULES`
 // 浅いマージで透過対応、enablePhaseConfig と同方式）。
-export const PERSIST_VERSION = 8;
+// CR-SA-20-E4 / 2026-06-11: PERSIST_VERSION 8 → 9 にバンプ。
+// version=8 旧データ（formationResult 欠落 = 隊列〔バ群〕ダイスの確定結果 state 追加前）→
+// version=9 への補完を persistMigrate で実施（`?? { face: null, label: null }` 加法的補完で透過対応、
+// appliedPresetName / isPresetDirty と同方式。houserule-features.md §6.7「戻る操作・状態復元の対象」）。
+export const PERSIST_VERSION = 9;
 export const RESTORE_ERROR_MESSAGE = '保存データの復元に失敗しました。新規セッションを開始します。';
 
 // CR-SA-17-E1 / 2026-06-06: ペース挿入位置のデフォルト値（houserule-features.md §7.2 / §7.5）。
@@ -210,6 +220,8 @@ export const persistPartialize = (state: RaceStoreState): PersistedRaceState => 
     participants: state.participants,
     currentPhaseId: state.currentPhaseId,
     paceResult: state.paceResult,
+    // CR-SA-20-E4 / 2026-06-11: 隊列確定結果の永続化（paceResult と対称、§6.7）。
+    formationResult: state.formationResult,
     strategies: state.strategies,
     gateAssignments: state.gateAssignments,
     // CR-SA-16-E1 / 2026-05-15: 適用中プリセット名 + dirty 状態の永続化（SA24 論点 6 採択）。
@@ -290,6 +302,9 @@ export const persistMigrate = (persistedState: unknown, version: number): Persis
         // `?? null` / `?? false` 加法的補完で透過対応（既存 houseRules マージと同方針）。
         appliedPresetName: state.appliedPresetName ?? null,
         isPresetDirty: state.isPresetDirty ?? false,
+        // CR-SA-20-E4 / 2026-06-11: 旧データ（version=8 以前）の formationResult 欠落補完。
+        // 未確定（face/label = null）で補完 = 旧データに隊列出目は存在しないため安全（加法的補完）。
+        formationResult: state.formationResult ?? { face: null, label: null },
     } as PersistedRaceState;
 };
 
@@ -338,6 +353,11 @@ export const useRaceStore = create<RaceStoreState>()(
                 face: null,
                 label: null,
             },
+            // CR-SA-20-E4 / 2026-06-11: 隊列〔バ群〕ダイス確定結果（paceResult と対称、§6.7）。
+            formationResult: {
+                face: null,
+                label: null,
+            },
             strategies: STRATEGIES,
             gateAssignments: null,
 
@@ -353,6 +373,9 @@ export const useRaceStore = create<RaceStoreState>()(
 
             setCurrentPhase: (phaseId) => set({ currentPhaseId: phaseId }),
             setPaceResult: (face, label) => set({ paceResult: { face, label } }),
+            // CR-SA-20-E4 / 2026-06-11: 隊列確定結果の設定。score 再計算は行わない（解析時スコア不変、
+            // 反映は隊列直後フェーズ遷移時 = RaceScene.handleNext、§6.5。setPaceResult と同方針）。
+            setFormationResult: (face, label) => set({ formationResult: { face, label } }),
 
             // #1-3a-9 Soft Delete:
             // midPhaseCount を変更しても history は削除しない（データ保持）。
@@ -392,6 +415,7 @@ export const useRaceStore = create<RaceStoreState>()(
                                 state.paceResult.face,
                                 activePhaseIds,
                                 state.config.houseRules,
+                                state.formationResult.face,
                             ),
                         })),
                     };
@@ -427,6 +451,7 @@ export const useRaceStore = create<RaceStoreState>()(
                                 state.paceResult.face,
                                 activePhaseIds,
                                 state.config.houseRules,
+                                state.formationResult.face,
                             ),
                         })),
                     };
@@ -462,6 +487,7 @@ export const useRaceStore = create<RaceStoreState>()(
                                 state.paceResult.face,
                                 activePhaseIds,
                                 state.config.houseRules,
+                                state.formationResult.face,
                             ),
                         })),
                     };
@@ -538,12 +564,22 @@ export const useRaceStore = create<RaceStoreState>()(
                         updates.uniqueDiceConfig !== undefined &&
                         updates.uniqueDiceConfig !==
                             state.config.houseRules.uniqueDiceConfig;
+                    // CR-SA-20-E4 / 2026-06-11: 隊列〔バ群〕ダイス ON/OFF 切替時にも score 再計算を
+                    // トリガーする（隊列出目が確定済みの状態で OFF→補正除去 / ON→補正復帰。
+                    // calculateScoreWithBondSkill 内の enableFormationDice ゲートが新 houseRules で
+                    // 評価されるため、formationResult は保持したまま計算への反映のみ切り替わる =
+                    // scene1-setup.md L211「入力済みの値は内部保持、計算へは反映しない」と整合）。
+                    const formationDiceChanged =
+                        updates.enableFormationDice !== undefined &&
+                        updates.enableFormationDice !==
+                            state.config.houseRules.enableFormationDice;
 
                     if (
                         !effectValueChanged &&
                         !enableChanged &&
                         !bondSkillChanged &&
-                        !uniqueDiceConfigChanged
+                        !uniqueDiceConfigChanged &&
+                        !formationDiceChanged
                     ) {
                         // CR-SA-16-E1 / 2026-05-15: updateHouseRules は dirty フラグを ON（変更があったとみなす）。
                         // scene1-setup.md §0-4 SSoT: updateHouseRules → isPresetDirty: true セット。
@@ -563,6 +599,7 @@ export const useRaceStore = create<RaceStoreState>()(
                                 state.paceResult.face,
                                 activePhaseIds,
                                 newHouseRules,
+                                state.formationResult.face,
                             ),
                         })),
                     };
@@ -598,6 +635,7 @@ export const useRaceStore = create<RaceStoreState>()(
                                     state.paceResult.face,
                                     activePhaseIds,
                                     state.config.houseRules,
+                                    state.formationResult.face,
                                 ),
                             };
                         }),
@@ -633,6 +671,7 @@ export const useRaceStore = create<RaceStoreState>()(
                                     state.paceResult.face,
                                     activePhaseIds,
                                     state.config.houseRules,
+                                    state.formationResult.face,
                                 ),
                             };
                         }),
@@ -666,6 +705,7 @@ export const useRaceStore = create<RaceStoreState>()(
                                     state.paceResult.face,
                                     activePhaseIds,
                                     state.config.houseRules,
+                                    state.formationResult.face,
                                 ),
                             };
                         }),
@@ -693,6 +733,7 @@ export const useRaceStore = create<RaceStoreState>()(
                                     state.paceResult.face,
                                     activePhaseIds,
                                     state.config.houseRules,
+                                    state.formationResult.face,
                                 ),
                             };
                         }),
@@ -764,6 +805,7 @@ export const useRaceStore = create<RaceStoreState>()(
                                 state.paceResult.face,
                                 activePhaseIds,
                                 state.config.houseRules,
+                                state.formationResult.face,
                             ),
                         })),
                     };
@@ -801,6 +843,7 @@ export const useRaceStore = create<RaceStoreState>()(
                                     state.paceResult.face,
                                     activePhaseIds,
                                     state.config.houseRules,
+                                    state.formationResult.face,
                                 ),
                             };
                         }),
@@ -945,6 +988,7 @@ export const useRaceStore = create<RaceStoreState>()(
                                 state.paceResult.face,
                                 activePhaseIds,
                                 config.houseRules,
+                                state.formationResult.face,
                             ),
                         })),
                     };
@@ -977,6 +1021,7 @@ export const useRaceStore = create<RaceStoreState>()(
                                 state.paceResult.face,
                                 activePhaseIds,
                                 DEFAULT_HOUSE_RULES,
+                                state.formationResult.face,
                             ),
                         })),
                     };
@@ -1064,6 +1109,7 @@ export const useRaceStore = create<RaceStoreState>()(
                                 state.paceResult.face,
                                 getActivePhaseIdsForConfig(state.config),
                                 state.config.houseRules,
+                                state.formationResult.face,
                             );
                         } else if (updates.history) {
                             // Bundle-4 Round 2 / 2026-05-10: history 単独更新時も score 再計算（PhaseInput 解析実行経路で
@@ -1076,6 +1122,7 @@ export const useRaceStore = create<RaceStoreState>()(
                                 state.paceResult.face,
                                 getActivePhaseIdsForConfig(state.config),
                                 state.config.houseRules,
+                                state.formationResult.face,
                             );
                         }
 
@@ -1150,6 +1197,8 @@ export const useRaceStore = create<RaceStoreState>()(
                     currentPhaseId: 'setup',
                     uiState: { scene: 'setup', isParsingInput: false },
                     paceResult: { face: null, label: null },
+                    // CR-SA-20-E4 / 2026-06-11: 隊列確定結果もリセット（paceResult と対称）。
+                    formationResult: { face: null, label: null },
                     // CR-5a-2: 中間状態もリセット（houserule-features.md §4.5）
                     gateAssignments: null,
                     // CR-SA-16-E1 / 2026-05-15: レースリセット時は適用中プリセット名 + dirty 状態もリセット

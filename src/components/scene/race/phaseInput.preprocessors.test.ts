@@ -5,6 +5,8 @@ import {
     classifyDiceResultsForParticipant,
     countDicePrefixes,
     detectPhasePrefixViolations,
+    // CR-SA-20-E4 / 2026-06-11: 隊列専用解析（dice1d9 全文抽出）
+    parseFormationDiceText,
 } from './phaseInput.preprocessors';
 import type { UniqueSkillType, UniqueDiceConfig } from '../../../types';
 import { DEFAULT_UNIQUE_DICE_CONFIG } from '../../../core/strategies';
@@ -488,5 +490,49 @@ describe('CR-SA-17-Followup ESC-1: フェーズ依存プレフィックス数チ
             expect(errors).toHaveLength(1);
             expect(errors[0]).toContain(lineMod);
         });
+    });
+});
+// CR-SA-20-E4 / 2026-06-11: 隊列専用解析（dice1d9 全文抽出、houserule-features.md §6.6 +
+// scene3-race.md §1 L117 / Error Handling L359-364）。
+describe('parseFormationDiceText - CR-SA-20-E4 / 隊列専用解析', () => {
+    it('標準形式 dice1d9= 5 から出目を抽出する', () => {
+        const r = parseFormationDiceText('dice1d9= 5');
+        expect(r.face).toBe(5);
+        expect(r.errors).toEqual([]);
+    });
+    it('絵文字形式 🎲 dice1d9= 9 から出目を抽出する（ペース解析と同一正規表現）', () => {
+        const r = parseFormationDiceText('🎲 dice1d9= 9');
+        expect(r.face).toBe(9);
+        expect(r.errors).toEqual([]);
+    });
+    it('影響値テンプレート・名前行が混在する全文からでも 1 件抽出する（行数チェック・名前照合なし）', () => {
+        const text = [
+            '隊列いきます',
+            'dice1d9= 1',
+            '1,超縦長　大逃げに+10、逃げに+7、差しに-5、追込に-5',
+            '2.3,縦長　大逃げ・逃げ・先行に+5',
+        ].join('\n');
+        const r = parseFormationDiceText(text);
+        expect(r.face).toBe(1);
+        expect(r.errors).toEqual([]);
+    });
+    it('dice1d9 以外のダイス（dice3d8 等）は無視される', () => {
+        const r = parseFormationDiceText('① ウマ娘A　30+dice3d8= 15 (45)\ndice1d9= 7');
+        expect(r.face).toBe(7);
+        expect(r.errors).toEqual([]);
+    });
+    it('欠落: dice1d9 が見つからない場合は L361 文言（完全一致）', () => {
+        const r = parseFormationDiceText('① ウマ娘A　30+dice3d8= 15 (45)');
+        expect(r.face).toBeNull();
+        expect(r.errors).toEqual([
+            '・隊列ダイス(dice1d9)が見つかりません。コピー漏れがないか確認してください',
+        ]);
+    });
+    it('重複: dice1d9 が複数検出された場合は L364 文言（完全一致）', () => {
+        const r = parseFormationDiceText('dice1d9= 3\ndice1d9= 8');
+        expect(r.face).toBeNull();
+        expect(r.errors).toEqual([
+            '・複数の隊列ダイスが検出されました。内容を確認してください',
+        ]);
     });
 });

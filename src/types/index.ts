@@ -158,6 +158,15 @@ export interface RaceState {
         face: number | null; // 1-9
         label: string | null; // "High", "Slow" etc - derived
     };
+    // CR-SA-20-E4 / 2026-06-11: 隊列〔バ群〕ダイスの確定結果（houserule-features.md §6.2 / §6.7）。
+    // ペースと同じ「GM がレース全体に 1 回振る」全体補正のため、paceResult と対称の
+    // グローバル state として保持する（participants[*].history 配下ではない）。
+    // face = 隊列出目（1-9）、label = 隊列形態名（超縦長/縦長/普通/団子/超団子、getFormationLabel 導出）。
+    // null = 未確定。enableFormationDice OFF 時は値が残っていても計算・出力・進行へ反映しない（OFF 透過）。
+    formationResult: {
+        face: number | null; // 1-9
+        label: string | null; // 隊列形態名
+    };
     strategies: Strategy[]; // Default + Custom strategies
     // CR-SA-7 / SA07: Scene 2 解析実行直後の中間状態。null = 未解析 / 解析失敗。
     gateAssignments: GateAssignment[] | null;

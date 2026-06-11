@@ -249,3 +249,44 @@ export const detectPhasePrefixViolations = (
     }
     return errors;
 };
+// CR-SA-20-E4 / 2026-06-11: 隊列〔バ群〕ダイスの専用解析（houserule-features.md §6.6 +
+// scene3-race.md §1 L117「隊列専用解析」）。
+//
+// ペース専用解析（StandardParser.parsePace）と同型: 「ダイスの行数チェック」「名前の照合」は
+// 行わず、テキスト全体から `dice1d9` の結果のみを抽出する。正規表現はペース解析と同一
+// （絵文字 🎲 プレフィックス許容）。parser 本体（standardParser / emojiParser）は不変厳守エリアの
+// ため改修せず、解析前処理層（本ファイル）に隊列用の同型抽出を新設して配線する。
+// ペースとは別フェーズで振る・解析するため衝突しない（§6.6「ペースダイスとの区別」）。
+/** 隊列専用解析の結果。face = 確定した隊列出目（エラー時 null）。 */
+export interface FormationDiceParseResult {
+    face: number | null;
+    errors: string[];
+}
+/**
+ * テキスト全体から隊列ダイス `dice1d9` の結果を 1 件だけ抽出する。
+ *
+ * - 0 件: 欠落エラー（scene3-race.md Error Handling L361 文言固定）
+ * - 2 件以上: 重複エラー（同 L364 文言固定）
+ * - 1 件: face に出目を返す（範囲チェックはペース解析と同方針で行わない。範囲外出目は
+ *   getFormationLabel = '不明' / getFormationModifier = 0 のフォールバックで安全側に倒れる）
+ *
+ * 解析時点では合計スコアへの加減算を行わない（呼び出し側も setFormationResult のみで
+ * score 再計算を行わない。反映は隊列直後フェーズへの遷移時、§6.5）。
+ */
+export const parseFormationDiceText = (text: string): FormationDiceParseResult => {
+    const regex = /(?:🎲)?\s*dice1d9\s*=\s*(\d+)/g;
+    const matches = [...text.matchAll(regex)];
+    if (matches.length === 0) {
+        return {
+            face: null,
+            errors: ['・隊列ダイス(dice1d9)が見つかりません。コピー漏れがないか確認してください'],
+        };
+    }
+    if (matches.length > 1) {
+        return {
+            face: null,
+            errors: ['・複数の隊列ダイスが検出されました。内容を確認してください'],
+        };
+    }
+    return { face: parseInt(matches[0][1], 10), errors: [] };
+};

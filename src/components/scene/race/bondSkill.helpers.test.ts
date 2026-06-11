@@ -539,3 +539,51 @@ describe('CR-SA-17-E4: 絆スキルの可変終盤対応', () => {
         expect(score - baseOnly).toBe(12);
     });
 });
+// CR-SA-20-E4 / 2026-06-11: 隊列〔バ群〕補正の enableFormationDice ゲート
+// （houserule-features.md §6.5 + scene1-setup.md L211「OFF 時は値が残っていても反映しない」）。
+describe('calculateScoreWithBondSkill - CR-SA-20-E4 / 隊列補正ゲート', () => {
+    const strategies: Strategy[] = DEFAULT_STRATEGIES;
+    const activePhaseIds = getActivePhaseIds(1); // Start, Mid, End
+    // 大逃げ Start: fix 30 + dice 10 = 40。pace 5（ミドル ±0）。
+    // formation 1（超縦長）× pace 5（ミドル以下）→ 大逃げ +10。
+    const p = makeParticipant({
+        strategy: '大逃げ',
+        history: {
+            Start: { baseDice: makeDice('3d8', [3, 3, 4]), computedScore: 0 },
+        },
+    });
+    const baseHouseRules = {
+        enableBondSkill: false,
+        enableSpecialStrategy: false,
+        effectValue: 15,
+        uniqueDiceConfig: DEFAULT_UNIQUE_DICE_CONFIG,
+    };
+    it('enableFormationDice=true × 隊列出目確定 → 補正が加算される', () => {
+        const score = calculateScoreWithBondSkill(
+            p, strategies, 5, activePhaseIds,
+            { ...baseHouseRules, enableFormationDice: true },
+            1,
+        );
+        expect(score).toBe(50); // 40 + 10
+    });
+    it('enableFormationDice=false × 隊列出目あり → 補正なし（OFF 透過 = 値が残っていても反映しない）', () => {
+        const score = calculateScoreWithBondSkill(
+            p, strategies, 5, activePhaseIds,
+            { ...baseHouseRules, enableFormationDice: false },
+            1,
+        );
+        expect(score).toBe(40);
+    });
+    it('enableFormationDice 省略（旧 4 キー houseRules）× formationFace 省略 → 従来と完全同一', () => {
+        const score = calculateScoreWithBondSkill(p, strategies, 5, activePhaseIds, baseHouseRules);
+        expect(score).toBe(40);
+    });
+    it('enableFormationDice=true × 隊列未確定（null）→ 補正なし', () => {
+        const score = calculateScoreWithBondSkill(
+            p, strategies, 5, activePhaseIds,
+            { ...baseHouseRules, enableFormationDice: true },
+            null,
+        );
+        expect(score).toBe(40);
+    });
+});

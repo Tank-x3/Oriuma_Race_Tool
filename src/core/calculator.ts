@@ -1,6 +1,8 @@
 import type { Umamusume, Strategy, UniqueDiceConfig, RaceState } from '../types';
 import { getPaceModifier, getStrategy, DEFAULT_UNIQUE_DICE_CONFIG } from './strategies';
 import { getNonPacePhaseIds } from './phaseSequence';
+// CR-SA-20-E4 / 2026-06-11: 隊列〔バ群〕ダイス補正の取得（E2 完成品の配線、houserule-features.md §6.3 / §6.5）。
+import { getFormationModifier } from './formation';
 
 /**
  * 現在のフェーズ構成からアクティブなフェーズ ID 集合を導出する。
@@ -68,7 +70,10 @@ export class Calculator {
         strategies: Strategy[],
         paceRoll: number | null,
         activePhaseIds?: readonly string[],
-        uniqueDiceConfig: UniqueDiceConfig = DEFAULT_UNIQUE_DICE_CONFIG
+        uniqueDiceConfig: UniqueDiceConfig = DEFAULT_UNIQUE_DICE_CONFIG,
+        // CR-SA-20-E4 / 2026-06-11: 確定済み隊列出目（1-9）。null = 未確定 / 隊列ハウスルール OFF。
+        // 省略時 null = 既存呼び出しは完全に従来挙動（OFF 透過）。
+        formationRoll: number | null = null
     ): number {
         const activeSet = activePhaseIds ? new Set(activePhaseIds) : null;
         let total = 0;
@@ -186,6 +191,16 @@ export class Calculator {
             // カスタム脚質の paceModifiers が実機計算に反映される。
             const mod = getPaceModifier(participant.strategy, paceRoll, strategies);
             total += mod;
+
+            // CR-SA-20-E4 / 2026-06-11: 隊列〔バ群〕補正の 1 回加算（houserule-features.md §6.5、
+            // ペース補正と同方式 = 履歴全再構築時に確定済みなら 1 回だけ上乗せ、二重加算なし）。
+            // 効果表（§6.3）は (隊列出目, ペース出目, 脚質名) で引く（超縦長/超団子のみペース依存）。
+            // カスタム脚質は getFormationModifier 側で常に 0。
+            // paceRoll ブロック内に置く理由: 「隊列は必ずペースより後」（§6.1 不変ルール）のため、
+            // ペース未確定で隊列のみ確定の状態は正常進行で発生しない（発生時は加算しない安全側）。
+            if (formationRoll !== null) {
+                total += getFormationModifier(formationRoll, paceRoll, participant.strategy);
+            }
         }
 
         return total;

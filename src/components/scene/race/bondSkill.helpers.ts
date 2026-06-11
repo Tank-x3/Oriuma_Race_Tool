@@ -170,8 +170,17 @@ export const calculateScoreWithBondSkill = (
     strategies: Strategy[],
     paceFace: number | null,
     activePhaseIds: readonly string[],
-    houseRules: Pick<HouseRules, 'effectValue' | 'enableSpecialStrategy' | 'enableBondSkill' | 'uniqueDiceConfig'>,
+    // CR-SA-20-E4 / 2026-06-11: 'enableFormationDice' を optional 交差で追加（隊列補正の ON/OFF ゲート）。
+    // useRaceStore の呼び出しは houseRules オブジェクト全体を渡しているため透過的に有効化される。
+    // optional にする理由 = 既存テスト・呼び出しの部分オブジェクト（旧 Pick 4 キー）を無改修で通す
+    //（省略 = undefined = OFF 扱いで従来挙動と完全同一）。
+    houseRules: Pick<HouseRules, 'effectValue' | 'enableSpecialStrategy' | 'enableBondSkill' | 'uniqueDiceConfig'> & { enableFormationDice?: boolean },
+    // CR-SA-20-E4 / 2026-06-11: 確定済み隊列出目（store の formationResult.face）。省略時 null =
+    // 既存呼び出し・テストは従来挙動。enableFormationDice OFF なら値が残っていても反映しない
+    //（OFF 透過、scene1-setup.md L211 の既存 enableXxxx 群と同方針）。
+    formationFace: number | null = null,
 ): number => {
+    const effectiveFormationFace = houseRules.enableFormationDice ? formationFace : null;
     const baseScore = calculateScoreWithSpecialStrategy(
         p,
         strategies,
@@ -180,6 +189,7 @@ export const calculateScoreWithBondSkill = (
         houseRules.effectValue,
         houseRules.enableSpecialStrategy,
         houseRules.uniqueDiceConfig,
+        effectiveFormationFace,
     );
     // CR-SA-17-E4 / 2026-06-08: 最後の終盤フェーズ ID を非ペース列（activePhaseIds）の末尾から導出し、
     // 絆スキル最終加算へ伝播する（OFF / 終盤 1 = 'End'、終盤 ≥2 = 'End{n}'）。

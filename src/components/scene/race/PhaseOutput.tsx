@@ -18,6 +18,10 @@ import { getBondSkillSection } from './bondSkill.helpers';
 // CR-SA-17-E4 / 2026-06-08: 可変序盤・終盤対応のフェーズ別ダイス式 + 最後の終盤フェーズ ID 導出
 import { getStrategyDice } from '../../../core/strategies';
 import { getLastEndPhaseId } from '../../../core/calculator';
+// CR-SA-20-E4 / 2026-06-11: 隊列フェーズの投稿用ダイス出力（E2 完成品の配線、houserule-features.md §6.6）。
+// getFormationTemplateLines = 確定済みペース出目に対応する影響値テンプレート行群、
+// getFormationModifier / getFormationLabel = 解析後の形態・脚質別補正値の画面表示に使用。
+import { getFormationTemplateLines, getFormationModifier } from '../../../core/formation';
 
 export const PhaseOutput: React.FC = () => {
     const {
@@ -25,6 +29,8 @@ export const PhaseOutput: React.FC = () => {
         strategies,
         currentPhaseId,
         paceResult,
+        // CR-SA-20-E4 / 2026-06-11: 隊列フェーズの確定済み表示に使用
+        formationResult,
         // Bundle-4 / P4-1, P4-5 / 2026-05-10: 効果値を併記文字列の生成に使用
         config,
     } = useRaceStore();
@@ -131,6 +137,30 @@ export const PhaseOutput: React.FC = () => {
 
     // Re-generate text with correct symbols
     const displayText = (() => {
+        // CR-SA-20-E4 / 2026-06-11: 隊列フェーズの投稿用ダイス出力（houserule-features.md §6.6 +
+        // scene3-race.md §2「隊列ダイス出力セクション」）。ペースフェーズと同形式の専用出力で
+        // early return するため、他フェーズの出力に隊列セクションが混入することはない（L205）。
+        if (currentPhaseId === 'Formation') {
+            // 解析済み: 確定した隊列形態 + 脚質別補正値を画面表示する（§6.6「解析と表示」）。
+            // この時点で score は不変（補正反映は次フェーズ遷移時、§6.5）。
+            if (formationResult.face !== null) {
+                const paceFace = paceResult.face ?? 0;
+                const entries = strategies
+                    .map(s => ({ name: s.name, value: getFormationModifier(formationResult.face!, paceFace, s.name) }))
+                    .filter(e => e.value !== 0);
+                const modText = entries.length === 0
+                    ? '増減なし'
+                    : entries.map(e => `${e.name}に${e.value > 0 ? '+' : ''}${e.value}`).join('、');
+                return `【隊列判定】\n隊列確定済み: ${formationResult.face} (${formationResult.label})\n脚質別補正: ${modText}`;
+            }
+
+            // 未解析: dice1d9= + 確定済みペースに対応する影響値テンプレート（E2 書式、1 パターンのみ）。
+            // ペース未確定（禁止構成のすり抜け）は RaceScene.handleNext の最終防衛線で隊列フェーズ
+            // 到達前にブロックされる。万一到達した場合は paceFace=0 → テンプレートは空（安全側）。
+            const templateLines = getFormationTemplateLines(paceResult.face ?? 0);
+            return `【隊列判定】\ndice1d9=\n${templateLines.join('\n')}\n`;
+        }
+
         if (currentPhaseId === 'Pace') {
             // ... (Pace logic unchanged for now, usually single shot)
             if (paceResult.face !== null) {

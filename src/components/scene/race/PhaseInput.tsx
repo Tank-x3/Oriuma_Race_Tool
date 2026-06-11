@@ -24,11 +24,15 @@ import { clsx } from 'clsx';
 // 到達するパターンも一貫した振り分けで処理する。
 // CR-SA-17-Followup-multistart-NZ-output（ESC-1）/ 2026-06-11: フェーズ依存プレフィックス数チェック
 // （中盤以降で N+M+dice の改変投稿を検知・ブロック）を解析フローに接続する。
+// CR-SA-20-E4 / 2026-06-11: 隊列専用解析（dice1d9 全文抽出、ペース解析と同型・parser 本体不変）。
 import {
     sanitizeInputForParser,
     classifyDiceResultsForParticipant,
     detectPhasePrefixViolations,
+    parseFormationDiceText,
 } from './phaseInput.preprocessors';
+// CR-SA-20-E4 / 2026-06-11: 隊列形態名（超縦長〜超団子）の導出（E2 完成品の配線）。
+import { getFormationLabel } from '../../../core/formation';
 // Bundle-8-T5 / CR-SA-4 / 2026-05-10 [ESCALATION 案 V Provisional 適用]:
 // 終盤【絆スキル】セクション解析後の bondDice 格納分岐用拡張型
 // （scene3-race.md §2、houserule-features.md §2 [v] §データ仕様 L141）。
@@ -45,14 +49,19 @@ export const PhaseInput: React.FC<PhaseInputProps> = ({ onErrors }) => {
         currentPhaseId,
         strategies,
         paceResult,
+        // CR-SA-20-E4 / 2026-06-11: 確定済み隊列出目（通常解析経路の score 再計算への伝播に使用）
+        formationResult,
         config,
         updateParticipant,
-        setPaceResult
+        setPaceResult,
+        setFormationResult
     } = useRaceStore();
 
     // We might need to know "isPacePhase" from PhaseId?
     // currentPhaseId: 'Start', 'Pace', 'Mid', 'End'
     const isPacePhase = currentPhaseId === 'Pace';
+    // CR-SA-20-E4 / 2026-06-11: 隊列フェーズ（GM ダイス専用、ペースと同型の単発全体補正）。
+    const isFormationPhase = currentPhaseId === 'Formation';
 
     const [inputText, setInputText] = useState('');
     const { addNotification } = useNotificationStore();
@@ -73,6 +82,29 @@ export const PhaseInput: React.FC<PhaseInputProps> = ({ onErrors }) => {
 
         try {
             await new Promise(resolve => setTimeout(resolve, 50)); // UI flush
+
+            // CR-SA-20-E4 / 2026-06-11: 隊列フェーズは専用解析で完結する（houserule-features.md §6.6 +
+            // scene3-race.md §1 L117）。parser（ParserFactory）を経由せず dice1d9 を全文抽出し、
+            // 形態名を確定して store へ保存する。この early return により、フェーズ依存プレフィックス
+            // チェック（detectPhasePrefixViolations、L226「隊列フェーズは対象外」）と通常解析は
+            // 隊列フェーズで一切実行されない。
+            // ★解析時点では participants の score を変更しない（解析時スコア不変、反映は §6.5 の
+            // 隊列直後フェーズ遷移時 = RaceScene.handleNext）。
+            if (isFormationPhase) {
+                const formationParse = parseFormationDiceText(inputText);
+                if (formationParse.errors.length > 0 || formationParse.face === null) {
+                    onErrors?.(formationParse.errors);
+                    setIsParsing(false);
+                    return;
+                }
+                const formationLabel = getFormationLabel(formationParse.face);
+                setFormationResult(formationParse.face, formationLabel);
+                addNotification('success', `隊列判定: ${formationParse.face} (${formationLabel}) が確定しました。`);
+                setInputText('');
+                onErrors?.([]); // Clear errors on success
+                setIsParsing(false);
+                return;
+            }
 
             // CR-SA-11-Sub-B-E1 / 2026-05-11: preprocessor 層経由で戦法注釈を除去。
             // 旧 Bundle-4 ENG28 由来の stripStrategyAnnotations 直接呼び出しを置換。
@@ -184,13 +216,16 @@ export const PhaseInput: React.FC<PhaseInputProps> = ({ onErrors }) => {
 
                     // Calc Total Score with the Accumulated History
                     // CR-SA-15-E2 / 2026-05-15: 固有固定値を houseRules.uniqueDiceConfig 参照化
+                    // CR-SA-20-E4 / 2026-06-11: 隊列補正の伝播（ON かつ出目確定時のみ）。履歴全再構築の
+                    // ため、隊列直後フェーズ以降のダイス取り込みで隊列補正が脱落しない（§6.5 永続性）。
                     const updatedPForCalc = { ...p, history: newTotalHistory };
                     const totalScore = Calculator.calculateTotalScore(
                         updatedPForCalc,
                         strategies,
                         paceResult.face,
                         activePhaseIds,
-                        config.houseRules.uniqueDiceConfig
+                        config.houseRules.uniqueDiceConfig,
+                        config.houseRules.enableFormationDice ? formationResult.face : null
                     );
 
                     // Store updated state in map
@@ -281,7 +316,7 @@ export const PhaseInput: React.FC<PhaseInputProps> = ({ onErrors }) => {
                     <h3>[2] 結果取り込み</h3>
                 </div>
                 <div className="text-xs text-gray-400">
-                    {isPacePhase ? '1d9の結果を貼るだけ' : '88-chのレスをそのままペースト'}
+                    {isPacePhase || isFormationPhase ? '1d9の結果を貼るだけ' : '88-chのレスをそのままペースト'}
                 </div>
             </div>
 
@@ -292,7 +327,7 @@ export const PhaseInput: React.FC<PhaseInputProps> = ({ onErrors }) => {
                         setInputText(e.target.value);
                         // Optional: Clear errors on change? Maybe keep until next parse.
                     }}
-                    placeholder={isPacePhase
+                    placeholder={isPacePhase || isFormationPhase
                         ? "ここに 'dice1d9=...' を貼り付けてください"
                         : "ここに掲示板のレスを丸ごと貼り付けてください...\n※自動的に名前とダイスを解析します\n※行数制限などで複数レスに分割して投稿した場合も、1回にまとめて解析実行してください"}
                     className="w-full h-32 p-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-mono focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all placeholder:text-gray-400"

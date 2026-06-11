@@ -126,3 +126,79 @@ describe('getPhaseLabel - CR-SA-17-E4 / 可変序盤・終盤ラベル', () => {
         expect(getPhaseLabel('setup')).toBe('setup');
     });
 });
+// CR-SA-20-E4 / 2026-06-11: 隊列〔バ群〕ダイス ON 時の隊列フェーズ挿入（houserule-features.md §6.4）。
+// 挿入位置 = getFormationSlotAnchorId（中盤 0/1 回 = 序盤ブロック直後 / 2 回以上 = 中盤1 直後）の
+// アンカー直後。同一アンカーにペースが重なる場合はペース → 隊列順（§6.4 + E3 採用案）。
+describe('buildPhaseSequence - CR-SA-20-E4 / 隊列フェーズ挿入', () => {
+    // ★OFF 透過: enableFormationDice 省略（false）= 従来列と完全同一
+    it('隊列 OFF（省略時）: 従来列と完全同一（非挿入）', () => {
+        expect(buildPhaseSequence(false, 1, 1, 1, 'Start')).toEqual(['Start', 'Pace', 'Mid', 'End']);
+        expect(buildPhaseSequence(true, 2, 2, 2, 'Mid2')).toEqual(
+            ['Start1', 'Start2', 'Mid1', 'Mid2', 'Pace', 'End1', 'End2'],
+        );
+    });
+    it('隊列 OFF（明示 false）: 非挿入', () => {
+        expect(buildPhaseSequence(false, 1, 1, 1, 'Start', false)).toEqual(['Start', 'Pace', 'Mid', 'End']);
+    });
+    // §6.4 表: 中盤 0 / 1 / 2 以上（フェーズ構成変更 OFF = 現行固定構成）
+    it('隊列 ON × 中盤 0 回: [Start, Pace, Formation, End]（序盤 → ペース → 隊列 → 終盤）', () => {
+        expect(buildPhaseSequence(false, 1, 0, 1, 'Start', true)).toEqual(
+            ['Start', 'Pace', 'Formation', 'End'],
+        );
+    });
+    it('隊列 ON × 中盤 1 回: [Start, Pace, Formation, Mid, End]', () => {
+        expect(buildPhaseSequence(false, 1, 1, 1, 'Start', true)).toEqual(
+            ['Start', 'Pace', 'Formation', 'Mid', 'End'],
+        );
+    });
+    it('隊列 ON × 中盤 2 回: [Start, Pace, Mid1, Formation, Mid2, End]（中盤1 直後）', () => {
+        expect(buildPhaseSequence(false, 1, 2, 1, 'Start', true)).toEqual(
+            ['Start', 'Pace', 'Mid1', 'Formation', 'Mid2', 'End'],
+        );
+    });
+    it('隊列 ON × 中盤 3・4 回: 2 回以上と同規則（中盤1 直後）', () => {
+        expect(buildPhaseSequence(false, 1, 3, 1, 'Start', true)).toEqual(
+            ['Start', 'Pace', 'Mid1', 'Formation', 'Mid2', 'Mid3', 'End'],
+        );
+        expect(buildPhaseSequence(false, 1, 4, 1, 'Start', true)).toEqual(
+            ['Start', 'Pace', 'Mid1', 'Formation', 'Mid2', 'Mid3', 'Mid4', 'End'],
+        );
+    });
+    // ペースと隊列スロットが同一アンカー（中盤 0/1 回 = 序盤ブロック直後）→ ペース → 隊列順
+    it('隊列 ON × 同一アンカー（フェーズ構成 ON・序盤 2・ペース位置 = Start2 = 隊列スロット）: ペース → 隊列順', () => {
+        expect(buildPhaseSequence(true, 2, 1, 1, 'Start2', true)).toEqual(
+            ['Start1', 'Start2', 'Pace', 'Formation', 'Mid', 'End'],
+        );
+    });
+    // 可変構成: ペースが隊列スロットより前のアンカー
+    it('隊列 ON × 可変構成（序盤 2・ペース位置 = Start1）: [Start1, Pace, Start2, Formation, Mid, End]', () => {
+        expect(buildPhaseSequence(true, 2, 1, 1, 'Start1', true)).toEqual(
+            ['Start1', 'Pace', 'Start2', 'Formation', 'Mid', 'End'],
+        );
+    });
+    it('隊列 ON × 可変構成（中盤 2 回・終盤 2 回）: 隊列 = 中盤1 直後、ペース = 序盤直後', () => {
+        expect(buildPhaseSequence(true, 1, 2, 2, 'Start', true)).toEqual(
+            ['Start', 'Pace', 'Mid1', 'Formation', 'Mid2', 'End1', 'End2'],
+        );
+    });
+    // ★OFF 透過ゲートとの合成: enablePhaseConfig=false なら可変値が残っていても実効序盤 1 で
+    // 隊列スロットを解決する（'Start' 直後）
+    it('隊列 ON × フェーズ構成 OFF（可変値残存）: 実効序盤 1 で固定列に挿入', () => {
+        expect(buildPhaseSequence(false, 2, 1, 2, 'Mid', true)).toEqual(
+            ['Start', 'Pace', 'Formation', 'Mid', 'End'],
+        );
+    });
+    // 禁止構成（隊列 ON × ペースなし）でも列生成自体は防御的に成立する
+    //（進行ブロックは RaceScene.handleNext の最終防衛線 = §7.6 が担う）
+    it('隊列 ON × ペースなし（null、禁止構成）: Pace 非挿入のまま Formation は挿入される', () => {
+        expect(buildPhaseSequence(true, 1, 1, 1, null, true)).toEqual(
+            ['Start', 'Formation', 'Mid', 'End'],
+        );
+    });
+});
+// CR-SA-20-E4 / 2026-06-11: 隊列フェーズのラベル（DoD #1）。
+describe('getPhaseLabel - CR-SA-20-E4 / 隊列ラベル', () => {
+    it("Formation → '隊列'", () => {
+        expect(getPhaseLabel('Formation')).toBe('隊列');
+    });
+});

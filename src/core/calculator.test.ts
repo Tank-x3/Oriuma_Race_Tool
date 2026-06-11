@@ -503,3 +503,66 @@ describe('Calculator', () => {
         });
     });
 });
+// CR-SA-20-E4 / 2026-06-11: 隊列〔バ群〕補正の 1 回加算（houserule-features.md §6.3 / §6.5）。
+// (隊列出目, ペース出目, 脚質名) → 効果表の補正値をペース補正と同方式で total に上乗せする。
+describe('CR-SA-20-E4: calculateTotalScore 隊列補正（formationRoll）', () => {
+    const baseUma: Umamusume = {
+        id: 'f1',
+        entryIndex: 1,
+        name: 'フォーメーションテスト',
+        strategy: '大逃げ',
+        uniqueSkill: { type: 'Gamble', phases: [] },
+        gate: 1,
+        score: 0,
+        history: {
+            // 大逃げ Start: fixValue 30 + dice 10 = 40
+            'Start': { baseDice: { diceStr: '3d8', values: [4, 3, 3], sum: 10 }, computedScore: 0 },
+        },
+    };
+    it('formationRoll 省略時は従来と完全同一（OFF 透過）', () => {
+        // 大逃げ: 30 (fix) + 10 (dice) + 0 (pace 5 = ミドル ±0) = 40
+        const score = Calculator.calculateTotalScore(baseUma, DEFAULT_STRATEGIES, 5);
+        expect(score).toBe(40);
+    });
+    it('超縦長（出目 1）× ミドル以下（ペース 5）: 大逃げ +10', () => {
+        const score = Calculator.calculateTotalScore(baseUma, DEFAULT_STRATEGIES, 5, undefined, DEFAULT_UNIQUE_DICE_CONFIG, 1);
+        expect(score).toBe(50); // 40 + 10
+    });
+    it('超縦長（出目 1）× ハイ以上（ペース 9）: 大逃げ ±0 だが追込は +10（ペース境界の切替）', () => {
+        // 大逃げ: pace 9 = -7、formation(1, 9, 大逃げ) = 0 → 30 + 10 - 7 = 33
+        const oonige = Calculator.calculateTotalScore(baseUma, DEFAULT_STRATEGIES, 9, undefined, DEFAULT_UNIQUE_DICE_CONFIG, 1);
+        expect(oonige).toBe(33);
+        // 追込: fix 0 + dice 10、pace 9 = +10、formation(1, 9, 追込) = +10 → 30
+        const oikomi = { ...baseUma, strategy: '追込' };
+        const score = Calculator.calculateTotalScore(oikomi, DEFAULT_STRATEGIES, 9, undefined, DEFAULT_UNIQUE_DICE_CONFIG, 1);
+        expect(score).toBe(30); // 0 + 10 + 10 + 10
+    });
+    it('普通（出目 4-6）は全脚質 ±0（補正なし）', () => {
+        const score = Calculator.calculateTotalScore(baseUma, DEFAULT_STRATEGIES, 5, undefined, DEFAULT_UNIQUE_DICE_CONFIG, 5);
+        expect(score).toBe(40);
+    });
+    it('超団子（出目 9）× ミドル以下: 大逃げ -10', () => {
+        const score = Calculator.calculateTotalScore(baseUma, DEFAULT_STRATEGIES, 5, undefined, DEFAULT_UNIQUE_DICE_CONFIG, 9);
+        expect(score).toBe(30); // 40 - 10
+    });
+    it('カスタム脚質（効果表に列がない）は補正 0', () => {
+        const customStrategies = [
+            ...DEFAULT_STRATEGIES,
+            {
+                name: 'カスタムX',
+                fixValue: 30,
+                dice: { start: '3d8', mid: '3d5', end: '1d7' },
+                paceModifiers: {},
+            },
+        ];
+        const customUma = { ...baseUma, strategy: 'カスタムX' };
+        // 30 (fix) + 10 (dice) + pace 5 補正なし + formation(1, 5, カスタムX) = 0 → 40
+        const score = Calculator.calculateTotalScore(customUma, customStrategies, 5, undefined, DEFAULT_UNIQUE_DICE_CONFIG, 1);
+        expect(score).toBe(40);
+    });
+    it('ペース未確定（paceRoll = null）では隊列補正も加算しない（隊列はペースより後の安全側）', () => {
+        // pace null → fix 30 + dice 10 = 40（pace 補正もなし）
+        const score = Calculator.calculateTotalScore(baseUma, DEFAULT_STRATEGIES, null, undefined, DEFAULT_UNIQUE_DICE_CONFIG, 1);
+        expect(score).toBe(40);
+    });
+});

@@ -174,7 +174,11 @@ export const calculateScoreWithSpecialStrategy = (
     activePhaseIds: readonly string[],
     effectValue: number,
     enableSpecialStrategy: boolean,
-    uniqueDiceConfig: UniqueDiceConfig = DEFAULT_UNIQUE_DICE_CONFIG
+    uniqueDiceConfig: UniqueDiceConfig = DEFAULT_UNIQUE_DICE_CONFIG,
+    // CR-SA-20-E4 / 2026-06-11: 確定済み隊列出目（houserule-features.md §6.5）。
+    // 省略時 null = 既存呼び出し・テストは完全に従来挙動（OFF 透過）。
+    // enableFormationDice の ON/OFF ゲートは呼び出し側（calculateScoreWithBondSkill）が担う。
+    formationFace: number | null = null
 ): number => {
     const filtered = filterAnalyzedHistory(p);
     const baseScore = Calculator.calculateTotalScore(
@@ -182,7 +186,8 @@ export const calculateScoreWithSpecialStrategy = (
         strategies,
         paceFace,
         activePhaseIds,
-        uniqueDiceConfig
+        uniqueDiceConfig,
+        formationFace
     );
     // CR-SA-17-E4 / 2026-06-08: 終盤反動は「最後の終盤フェーズ」取り込み時に反映する。
     // 非ペース列（activePhaseIds）の末尾 = 終盤ブロックの最後（OFF / 終盤 1 = 'End'）。
