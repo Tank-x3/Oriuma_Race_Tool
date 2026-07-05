@@ -6,7 +6,10 @@ export type PhaseType = 'Start' | 'Pace' | 'Mid' | 'End';
 // される識別子（houserule-features.md §2 [v] 拡張固有タイプ §データ仕様 L112 例示準拠）。
 // CR-SA-19 / 2026-06-06: ギャンブル型Ⅱ（GambleII）/ 安定型Ⅱ（StabilityII）を追加（5 → 7 タイプ）。
 // いずれも超ギャンブル / 超安定と同じく enableExtendedUnique ON 時のみ Scene 1 選択肢へ現れる。
-export type UniqueSkillType =
+// CR-SA-21+22-E1 / 2026-07-06: 「なし」「カスタム」との型分離のため組み込み 7 タイプを
+// BuiltInUniqueSkillType として独立させ、UniqueSkillType は拡張後の値域（正式値）とする。
+// 設定表（UniqueDiceConfig）等の「組み込み専用」データ構造は BuiltInUniqueSkillType を使用する。
+export type BuiltInUniqueSkillType =
     | 'Stability'
     | 'Gamble'
     | 'Persistent'
@@ -15,6 +18,12 @@ export type UniqueSkillType =
     | 'GambleII'
     | 'StabilityII';
 
+// CR-SA-21+22-E1 / 2026-07-06: 出走者の固有スキル選択値の値域
+// （houserule-features.md §8.2 + §2 [v] 固有スキルなし出走者「データ仕様」SSoT）。
+// 'None' = §2 [v] 固有スキルなし出走者の正式値（未選択 null / '---' とは明確に区別）。
+// 'Custom' = §8 カスタム固有スキル参照。詳細は Umamusume.uniqueSkill.customUniqueSkillId を併用。
+export type UniqueSkillType = BuiltInUniqueSkillType | 'None' | 'Custom';
+
 // CR-SA-15-E1 / 2026-05-14: 固有スキル設定（houserule-features.md §5）。
 // 固有スキル各タイプの「固定値」「ダイス式」。デフォルト値は strategies.ts の
 // DEFAULT_UNIQUE_DICE_CONFIG、state（houseRules.uniqueDiceConfig）を SSoT として保持する。
@@ -22,7 +31,22 @@ export interface UniqueDiceEntry {
     fixValue: number; // 固定値（負の整数を許容、超ギャンブルの -10 等）
     diceStr: string;  // ダイス式（XdY 形式、例: 1d10 / 1d11）
 }
-export type UniqueDiceConfig = Record<UniqueSkillType, UniqueDiceEntry>;
+// CR-SA-21+22-E1 / 2026-07-06: 設定表は組み込み 7 タイプ専用（§8.2「別フィールド」方針）。
+// 'None' / 'Custom' は本 Record のキーには含まれない（カスタムは houseRules.customUniqueSkills
+// の配列で個別保持し、「なし」は固有ダイス自体を持たない）。
+export type UniqueDiceConfig = Record<BuiltInUniqueSkillType, UniqueDiceEntry>;
+
+// CR-SA-21+22-E1 / 2026-07-06: カスタム固有スキル（houserule-features.md §8.2）。
+// 組み込み 7 タイプの `uniqueDiceConfig`（キー固定 Record）とは別フィールドで、
+// `houseRules.customUniqueSkills: CustomUniqueSkill[]` として保持する。
+// `id` は追加時に自動採番する不変 ID（出走者からの参照は `id` 経由、rename 安全）。
+// `name` は Scene 1 選択肢等に表示する自由名称（バリデーションは §8.3 参照）。
+export interface CustomUniqueSkill {
+    id: string;      // 不変識別子（crypto.randomUUID 等、Engineer 裁量。出走者からの参照キー）
+    name: string;    // 表示名（20 文字以内、trim 後空欄禁止、禁止文字 + / = / 改行、予約語重複禁止）
+    fixValue: number; // 整数（負値許容、小数不可）
+    diceStr: string;  // XdY 形式（/^\d+d\d+$/）
+}
 
 // Represents "Start", "Pace", "Mid1", "Mid2", "End" etc.
 export interface PhaseConfig {
@@ -67,6 +91,10 @@ export interface Umamusume {
     uniqueSkill: {
         type: UniqueSkillType;
         phases: string[]; // Phase IDs where it activates
+        // CR-SA-21+22-E1 / 2026-07-06: カスタム固有スキル参照（houserule-features.md §8.2）。
+        // `type === 'Custom'` のとき houseRules.customUniqueSkills の当該 id を指す。
+        // 組み込み 7 タイプ / 'None' の場合は不要（未設定 = undefined）。
+        customUniqueSkillId?: string;
     };
     // Bundle-8-T1 / CR-SA-4 / 2026-05-10: 絆スキル種別 (houserule-features.md §2 [v] 絆スキル §データ仕様)
     // フェーズ非依存で参加者直下に配置。終盤後一括発動のため history 配下ではない。
@@ -149,6 +177,18 @@ export interface RaceState {
             // ハウスルールトグル = JSON プリセット対象（§6.7）。デフォルト false。
             // ON 時のみ隊列フェーズ・関連 UI を開放（効果表・補正は E2、UI は E3、進行統合は E4 スコープ）。
             enableFormationDice: boolean;
+            // CR-SA-22 / CR-SA-21+22-E1 / 2026-07-06: 固有スキルなし出走者を許可するハウスルール
+            // （houserule-features.md §2 [v] 固有スキルなし出走者 / §4 zod 検証範囲）。
+            // ハウスルールトグル = JSON プリセット対象（§8.7 で customUniqueSkills と合同マイグレ）。
+            // デフォルト false。ON 時のみ Scene 1 選択肢先頭に「なし」が現れる（UI は E2 スコープ）。
+            enableNoUniqueSkill: boolean;
+            // CR-SA-21 / CR-SA-21+22-E1 / 2026-07-06: カスタム固有スキルの一覧
+            // （houserule-features.md §8 / §8.2 データ構造）。組み込み 7 タイプの uniqueDiceConfig
+            // とは別フィールド（キー構造が異なる。組み込み = 固定キー Record / カスタム = id 付き配列）。
+            // 常時アクセス（専用トグルなし、複合固有 / 拡張固有 HR と完全独立、§8.1）。
+            // JSON プリセット対象 = §8.7 で enableNoUniqueSkill と合同 v9→v10 マイグレ。
+            // Scene 1 選択肢反映（末尾登録順）は E2、Scene 3 出力・R-3 拡張は E3 スコープ。
+            customUniqueSkills: CustomUniqueSkill[];
         };
     };
     participants: Umamusume[];

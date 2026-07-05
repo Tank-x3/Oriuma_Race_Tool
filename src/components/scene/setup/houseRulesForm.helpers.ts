@@ -8,7 +8,12 @@ type HouseRules = RaceState['config']['houseRules'];
 // CR-SA-15-E1 / 2026-05-14: houseRules に非 boolean フィールド uniqueDiceConfig が追加されたため、
 // チェックボックス用キー型から effectValue に加えて uniqueDiceConfig も除外する（型のみの追従、
 // getHouseRuleCheckboxes の返却内容・実行時挙動は完全不変）。
-type HouseRuleBooleanKey = Exclude<keyof HouseRules, 'effectValue' | 'uniqueDiceConfig'>;
+// CR-SA-21+22-E1 / 2026-07-06: 非 boolean フィールド customUniqueSkills（カスタム固有スキル一覧）
+// を追加除外（型のみの追従、実行時挙動は完全不変）。
+type HouseRuleBooleanKey = Exclude<
+    keyof HouseRules,
+    'effectValue' | 'uniqueDiceConfig' | 'customUniqueSkills'
+>;
 
 export interface HouseRuleCheckboxMeta {
     key: HouseRuleBooleanKey;

@@ -28,6 +28,9 @@ const sampleHouseRules: HouseRulesData = {
     enablePhaseConfig: false,
     // CR-SA-20-E1 / 2026-06-11: 型定義拡張に追従（9 フィールド）
     enableFormationDice: false,
+    // CR-SA-21+22-E1 / 2026-07-06: 型定義拡張に追従（11 フィールド）
+    enableNoUniqueSkill: false,
+    customUniqueSkills: [],
 };
 
 const customStrategy: Strategy = {

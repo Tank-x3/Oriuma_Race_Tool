@@ -3,14 +3,17 @@
 // UI 表示・入力ハンドリング・フォーム状態変換を純粋関数として切り出し、
 // UniqueSkillEditorModal.tsx 本体からロジックを分離する。テストは
 // uniqueSkillEditor.helpers.test.ts に集約（strategyEditor.helpers.ts と同方針）。
-import type { UniqueSkillType, UniqueDiceConfig, UniqueDiceEntry } from '../../../types';
+// CR-SA-21+22-E1 / 2026-07-06: 固有スキル設定モーダルは組み込み 7 タイプ専用のため
+// BuiltInUniqueSkillType を使用する（'None' / 'Custom' の編集は §5 対象外、カスタム追加は
+// §8 = E2 スコープで別 UI として提供される）。
+import type { BuiltInUniqueSkillType, UniqueDiceConfig, UniqueDiceEntry } from '../../../types';
 import { DEFAULT_UNIQUE_DICE_CONFIG } from '../../../core/strategies';
 import { getUniqueDiceFormula } from '../race/phaseOutput.helpers';
 
 // 固有スキル 7 タイプの表示名（modal-houserule.md §4 ワイヤーフレーム準拠、編集対象外）。
 // houserule-features.md §5.2「表示名は編集不可」= 固有タイプ識別子に紐づく固定値。
-// CR-SA-19 / 2026-06-06: ギャンブル型Ⅱ / 安定型Ⅱ を追加（Record<UniqueSkillType,...> の網羅強制で機械的）。
-export const UNIQUE_SKILL_TYPE_LABELS: Record<UniqueSkillType, string> = {
+// CR-SA-19 / 2026-06-06: ギャンブル型Ⅱ / 安定型Ⅱ を追加（Record<BuiltInUniqueSkillType,...> の網羅強制で機械的）。
+export const UNIQUE_SKILL_TYPE_LABELS: Record<BuiltInUniqueSkillType, string> = {
     Stability: '安定型',
     Gamble: 'ギャンブル型',
     Persistent: '持続型',
@@ -22,7 +25,7 @@ export const UNIQUE_SKILL_TYPE_LABELS: Record<UniqueSkillType, string> = {
 
 // 固有スキル 7 タイプの表示順（modal-houserule.md §4 テーブル L100-104 の並び）。
 // CR-SA-19 / 2026-06-06: 超安定の後に ギャンブル型Ⅱ → 安定型Ⅱ を末尾追加。
-const ALL_UNIQUE_SKILL_TYPES_ORDER: UniqueSkillType[] = [
+const ALL_UNIQUE_SKILL_TYPES_ORDER: BuiltInUniqueSkillType[] = [
     'Stability',
     'Gamble',
     'Persistent',
@@ -34,7 +37,7 @@ const ALL_UNIQUE_SKILL_TYPES_ORDER: UniqueSkillType[] = [
 
 // 拡張固有タイプ（enableExtendedUnique ON 時のみ表示する 4 タイプ）。
 // CR-SA-19 / 2026-06-06: ギャンブル型Ⅱ / 安定型Ⅱ も enableExtendedUnique 共用（専用トグルなし）。
-const EXTENDED_UNIQUE_SKILL_TYPES: UniqueSkillType[] = [
+const EXTENDED_UNIQUE_SKILL_TYPES: BuiltInUniqueSkillType[] = [
     'SuperGamble',
     'SuperStability',
     'GambleII',
@@ -42,15 +45,15 @@ const EXTENDED_UNIQUE_SKILL_TYPES: UniqueSkillType[] = [
 ];
 
 // 複合固有スキル連動の固有タイプ（enableCompositeUnique ON 時のみ表示する 1 タイプ）。
-// entryForm.helpers.ts getUniqueSkillTypeOptions の挙動と整合させる
+// entryForm.helpers.ts getBuiltInUniqueSkillTypeOptions の挙動と整合させる
 // （持続型は「複合固有スキル(発動位置複数選択)を許可」オプションで有効化される）。
-const COMPOSITE_UNIQUE_SKILL_TYPES: UniqueSkillType[] = ['Persistent'];
+const COMPOSITE_UNIQUE_SKILL_TYPES: BuiltInUniqueSkillType[] = ['Persistent'];
 
 /**
  * 一覧テーブルに表示する固有タイプを算出する（modal-houserule.md §4 拡張固有タイプの表示条件）。
  *
  * Round 2 修正（2026-05-15 ユーザーフィードバック）: 持続型は `enableCompositeUnique` 連動。
- * `entryForm.helpers.ts` の `getUniqueSkillTypeOptions` の挙動と整合させる。
+ * `entryForm.helpers.ts` の `getBuiltInUniqueSkillTypeOptions` の挙動と整合させる。
  *
  * - `enableExtendedUnique` OFF + `enableCompositeUnique` OFF → 安定型 / ギャンブル型（2 種）
  * - `enableExtendedUnique` OFF + `enableCompositeUnique` ON  → 安定型 / ギャンブル型 / 持続型（3 種）
@@ -66,7 +69,7 @@ const COMPOSITE_UNIQUE_SKILL_TYPES: UniqueSkillType[] = ['Persistent'];
 export function getVisibleUniqueSkillTypes(
     enableExtendedUnique: boolean,
     enableCompositeUnique: boolean,
-): UniqueSkillType[] {
+): BuiltInUniqueSkillType[] {
     return ALL_UNIQUE_SKILL_TYPES_ORDER.filter((type) => {
         if (EXTENDED_UNIQUE_SKILL_TYPES.includes(type)) {
             return enableExtendedUnique;
@@ -102,7 +105,7 @@ export function createEditFormState(entry: UniqueDiceEntry): UniqueDiceFormState
  * 固有タイプは 5 種固定のため、脚質エディタの createDefaultResetFormState と異なり
  * null を返すケースはない。
  */
-export function createDefaultResetFormState(type: UniqueSkillType): UniqueDiceFormState {
+export function createDefaultResetFormState(type: BuiltInUniqueSkillType): UniqueDiceFormState {
     return createEditFormState(DEFAULT_UNIQUE_DICE_CONFIG[type]);
 }
 
@@ -153,7 +156,7 @@ export function validateUniqueDiceFixValue(raw: string): string[] {
  */
 export function buildUpdatedUniqueDiceConfig(
     current: UniqueDiceConfig,
-    type: UniqueSkillType,
+    type: BuiltInUniqueSkillType,
     entry: UniqueDiceEntry,
 ): UniqueDiceConfig {
     return { ...current, [type]: entry };
@@ -170,7 +173,7 @@ export function buildUpdatedUniqueDiceConfig(
  * `getUniqueDiceFormula` は `(type, uniqueDiceConfig)` 形式で `uniqueDiceConfig[type]`
  * のみを参照するため、当該タイプのエントリだけ差し替えた config を渡して再利用する。
  */
-export function getUniqueDicePreview(type: UniqueSkillType, entry: UniqueDiceEntry): string {
+export function getUniqueDicePreview(type: BuiltInUniqueSkillType, entry: UniqueDiceEntry): string {
     const config: UniqueDiceConfig = { ...DEFAULT_UNIQUE_DICE_CONFIG, [type]: entry };
     return getUniqueDiceFormula(type, config);
 }

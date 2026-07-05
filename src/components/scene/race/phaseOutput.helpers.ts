@@ -1,4 +1,4 @@
-import type { RaceState, Strategy, Umamusume, UniqueSkillType, UniqueDiceConfig } from '../../../types';
+import type { RaceState, Strategy, Umamusume, BuiltInUniqueSkillType, UniqueSkillType, UniqueDiceConfig } from '../../../types';
 import { isPhaseResultLoaded } from './specialStrategy.helpers';
 // CR-SA-15-E2 / 2026-05-15: 固有ダイス 3 関数のフォールバック値（houserule-features.md §5.4）。
 import { DEFAULT_UNIQUE_DICE_CONFIG } from '../../../core/strategies';
@@ -136,7 +136,10 @@ export const getUniqueDiceFormula = (
     type: UniqueSkillType,
     uniqueDiceConfig: UniqueDiceConfig = DEFAULT_UNIQUE_DICE_CONFIG,
 ): string => {
-    const entry = uniqueDiceConfig[type];
+    // CR-SA-21+22-E1 / 2026-07-06: uniqueDiceConfig は組み込み 7 タイプ専用 Record のためキャスト。
+    // 'None' / 'Custom' が渡った場合 entry は undefined となり、下段の `if (!entry) return ''` /
+    // `if (!entry) return 0` で安全に空・0 を返す（E1 未配線・E3 で計算経路拡張予定）。
+    const entry = uniqueDiceConfig[type as BuiltInUniqueSkillType];
     if (!entry) return '';
     const { fixValue, diceStr } = entry;
     if (fixValue === 0) return `dice${diceStr}=`;
@@ -155,7 +158,10 @@ export const getExpectedUniqueDiceStr = (
     type: UniqueSkillType,
     uniqueDiceConfig: UniqueDiceConfig = DEFAULT_UNIQUE_DICE_CONFIG,
 ): string => {
-    const entry = uniqueDiceConfig[type];
+    // CR-SA-21+22-E1 / 2026-07-06: uniqueDiceConfig は組み込み 7 タイプ専用 Record のためキャスト。
+    // 'None' / 'Custom' が渡った場合 entry は undefined となり、下段の `if (!entry) return ''` /
+    // `if (!entry) return 0` で安全に空・0 を返す（E1 未配線・E3 で計算経路拡張予定）。
+    const entry = uniqueDiceConfig[type as BuiltInUniqueSkillType];
     if (!entry) return '';
     return entry.diceStr;
 };
@@ -170,7 +176,10 @@ export const getExpectedUniqueFixValue = (
     type: UniqueSkillType,
     uniqueDiceConfig: UniqueDiceConfig = DEFAULT_UNIQUE_DICE_CONFIG,
 ): number => {
-    const entry = uniqueDiceConfig[type];
+    // CR-SA-21+22-E1 / 2026-07-06: uniqueDiceConfig は組み込み 7 タイプ専用 Record のためキャスト。
+    // 'None' / 'Custom' が渡った場合 entry は undefined となり、下段の `if (!entry) return ''` /
+    // `if (!entry) return 0` で安全に空・0 を返す（E1 未配線・E3 で計算経路拡張予定）。
+    const entry = uniqueDiceConfig[type as BuiltInUniqueSkillType];
     if (!entry) return 0;
     return entry.fixValue;
 };

@@ -189,7 +189,12 @@ export const PRESET_KEY_PREFIX = 'race-store-presets:';
 // version=8 旧データ（formationResult 欠落 = 隊列〔バ群〕ダイスの確定結果 state 追加前）→
 // version=9 への補完を persistMigrate で実施（`?? { face: null, label: null }` 加法的補完で透過対応、
 // appliedPresetName / isPresetDirty と同方式。houserule-features.md §6.7「戻る操作・状態復元の対象」）。
-export const PERSIST_VERSION = 9;
+// CR-SA-21+22-E1 / 2026-07-06: PERSIST_VERSION 9 → 10 にバンプ。
+// version=9 旧データ（houseRules.customUniqueSkills / enableNoUniqueSkill 欠落 = カスタム固有スキル /
+// 固有スキルなし出走者の追加前）→ version=10 への補完を persistMigrate で実施
+// （houseRulesSchema の .default([]) / .default(false) 経路で透過対応、houserule-features.md §8.7 SSoT。
+// カスタム固有 / 固有スキルなし出走者を合同で 1 回バンプすることでバージョン繰り上げの乱発を防止する）。
+export const PERSIST_VERSION = 10;
 export const RESTORE_ERROR_MESSAGE = '保存データの復元に失敗しました。新規セッションを開始します。';
 
 // CR-SA-17-E1 / 2026-06-06: ペース挿入位置のデフォルト値（houserule-features.md §7.2 / §7.5）。
@@ -203,6 +208,7 @@ export const DEFAULT_PACE_POSITION = 'Start';
 // CR-SA-15-E1 / 2026-05-14: uniqueDiceConfig 追加（6 → 7 フィールド）。
 // CR-SA-17-E1 / 2026-06-06: enablePhaseConfig 追加（7 → 8 フィールド）。
 // CR-SA-20-E1 / 2026-06-11: enableFormationDice 追加（8 → 9 フィールド）。
+// CR-SA-21+22-E1 / 2026-07-06: enableNoUniqueSkill / customUniqueSkills 追加（9 → 11 フィールド）。
 export const DEFAULT_HOUSE_RULES: HouseRulesData = {
     enableModifier: false,
     enableSpecialStrategy: false,
@@ -213,6 +219,10 @@ export const DEFAULT_HOUSE_RULES: HouseRulesData = {
     uniqueDiceConfig: DEFAULT_UNIQUE_DICE_CONFIG,
     enablePhaseConfig: false,
     enableFormationDice: false,
+    // CR-SA-21+22-E1 / 2026-07-06: 固有スキルなし出走者を許可するハウスルール（デフォルト OFF = 現行完全同一）
+    enableNoUniqueSkill: false,
+    // CR-SA-21+22-E1 / 2026-07-06: カスタム固有スキル一覧（デフォルト空配列 = 現行完全同一）
+    customUniqueSkills: [],
 };
 
 export const persistPartialize = (state: RaceStoreState): PersistedRaceState => ({
@@ -236,6 +246,8 @@ export const persistPartialize = (state: RaceStoreState): PersistedRaceState => 
 // version=1 旧データ: houseRules.enableExtendedUnique / effectValue を補完（Bundle-7 から）。
 // Bundle-8-T1 / 2026-05-10: version=2 旧データ: houseRules.enableBondSkill を補完（Bundle-8-T1 から）。
 // CR-SA-15-E1 / 2026-05-14: version=3 旧データ: houseRules.uniqueDiceConfig を補完（CR-SA-15-E1 から）。
+// CR-SA-21+22-E1 / 2026-07-06: version=9 旧データ: houseRules.enableNoUniqueSkill / customUniqueSkills
+// を補完（DEFAULT_HOUSE_RULES 拡張のみで透過対応。zod .default() が二重の安全網となる）。
 // 実装方針: DEFAULT_HOUSE_RULES でマージ補完するため version 引数分岐は不要（DEFAULT 拡張のみで透過対応）。
 // zod 検証で型不正・値域違反（effectValue 小数/負値/上限超、uniqueDiceConfig の 5 キー不揃い等）を検知し、
 // 失敗時は throw → onRehydrateStorage の handleRehydrateError に合流（RESTORE_ERROR_MESSAGE 通知 +
@@ -345,6 +357,10 @@ export const useRaceStore = create<RaceStoreState>()(
                     enablePhaseConfig: false,
                     // CR-SA-20-E1 / 2026-06-11: 隊列〔バ群〕ダイス ON/OFF（デフォルト false = OFF 透過）。
                     enableFormationDice: false,
+                    // CR-SA-21+22-E1 / 2026-07-06: 固有スキルなし出走者 許可 ON/OFF（デフォルト false = OFF 透過）。
+                    enableNoUniqueSkill: false,
+                    // CR-SA-21+22-E1 / 2026-07-06: カスタム固有スキル一覧（デフォルト空配列 = 未登録 = OFF 相当）。
+                    customUniqueSkills: [],
                 },
             },
             participants: [],

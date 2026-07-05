@@ -1,4 +1,4 @@
-import type { Umamusume, Strategy, UniqueDiceConfig, RaceState } from '../types';
+import type { BuiltInUniqueSkillType, Umamusume, Strategy, UniqueDiceConfig, RaceState } from '../types';
 import { getPaceModifier, getStrategy, DEFAULT_UNIQUE_DICE_CONFIG } from './strategies';
 import { getNonPacePhaseIds } from './phaseSequence';
 // CR-SA-20-E4 / 2026-06-11: 隊列〔バ群〕ダイス補正の取得（E2 完成品の配線、houserule-features.md §6.3 / §6.5）。
@@ -115,7 +115,11 @@ export class Calculator {
                 const skillType = participant.uniqueSkill.type;
                 // CR-SA-15-E2 / 2026-05-15: 固有固定値を uniqueDiceConfig 参照化（houserule-features.md §5.4）。
                 // Start phase と同じ「全 5 タイプ一律 fixValue 加算」に統一（既存挙動と完全一致）。
-                total += uniqueDiceConfig[skillType].fixValue;
+                // CR-SA-21+22-E1 / 2026-07-06: skillType は組み込み 7 タイプ以外に 'None' / 'Custom' も
+                // 取りうるが、E1 未配線段階では実行時に届かない（UI がその値を設定しない）。
+                // uniqueDiceConfig は組み込み 7 タイプ専用 Record のため、キャストで型のみ narrow する
+                // （§1.2 分岐追加禁止のため。'None' / 'Custom' の計算経路は E3 スコープ）。
+                total += uniqueDiceConfig[skillType as BuiltInUniqueSkillType].fixValue;
                 total += data.uniqueDice.sum;
             }
             // Add Manual Modifier

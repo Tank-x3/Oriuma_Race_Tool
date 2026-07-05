@@ -12,7 +12,9 @@ import { useRaceStore } from '../../../store/useRaceStore';
 import { validateDiceFormat } from '../../../core/validator';
 // CR-SA-15-E3 / 2026-05-15: 出力プレビューは E2 成果物 getUniqueDiceFormula を再利用（§5.3 再実装禁止）。
 import { getUniqueDiceFormula } from '../race/phaseOutput.helpers';
-import type { UniqueSkillType } from '../../../types';
+// CR-SA-21+22-E1 / 2026-07-06: 本モーダルは組み込み 7 タイプ専用（'None' / 'Custom' は §5 対象外）。
+// カスタム追加 UI は E2 スコープで別途提供する。
+import type { BuiltInUniqueSkillType } from '../../../types';
 import {
     UNIQUE_SKILL_TYPE_LABELS,
     getVisibleUniqueSkillTypes,
@@ -36,9 +38,9 @@ export const UniqueSkillEditorModal: React.FC<UniqueSkillEditorModalProps> = ({
 }) => {
     const { config, updateHouseRules } = useRaceStore();
     // Round 2 修正 (2026-05-15 ユーザーフィードバック): 持続型は enableCompositeUnique 連動。
-    // entryForm.helpers.ts getUniqueSkillTypeOptions の挙動と整合させる。
+    // entryForm.helpers.ts getBuiltInUniqueSkillTypeOptions の挙動と整合させる。
     const { uniqueDiceConfig, enableExtendedUnique, enableCompositeUnique } = config.houseRules;
-    const [editingType, setEditingType] = useState<UniqueSkillType | null>(null);
+    const [editingType, setEditingType] = useState<BuiltInUniqueSkillType | null>(null);
 
     // Escape キーで最前面のレイヤーを閉じる（編集サブモーダル > メインモーダル の優先順）。
     useEffect(() => {
@@ -59,7 +61,7 @@ export const UniqueSkillEditorModal: React.FC<UniqueSkillEditorModalProps> = ({
 
     const visibleTypes = getVisibleUniqueSkillTypes(enableExtendedUnique, enableCompositeUnique);
 
-    const handleSubmitForm = (type: UniqueSkillType, form: UniqueDiceFormState) => {
+    const handleSubmitForm = (type: BuiltInUniqueSkillType, form: UniqueDiceFormState) => {
         const entry = formStateToEntry(form);
         // buildUpdatedUniqueDiceConfig は必ず新しいオブジェクトを返す。
         // updateHouseRules は uniqueDiceConfig の変更を参照比較で検知するため
@@ -195,7 +197,7 @@ export const UniqueSkillEditorModal: React.FC<UniqueSkillEditorModalProps> = ({
 // ===== Sub-Modal: 編集フォーム =====
 
 interface UniqueDiceEditSubModalProps {
-    type: UniqueSkillType;
+    type: BuiltInUniqueSkillType;
     initialForm: UniqueDiceFormState;
     onSubmit: (form: UniqueDiceFormState) => void;
     onCancel: () => void;

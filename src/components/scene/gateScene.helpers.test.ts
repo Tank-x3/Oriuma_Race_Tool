@@ -50,6 +50,9 @@ const baseHouseRules: HouseRules = {
     enablePhaseConfig: false,
     // CR-SA-20-E1 / 2026-06-11: 型定義拡張に追従（9 フィールド）
     enableFormationDice: false,
+    // CR-SA-21+22-E1 / 2026-07-06: 型定義拡張に追従（11 フィールド）
+    enableNoUniqueSkill: false,
+    customUniqueSkills: [],
 };
 
 describe('gateScene.helpers - Bundle-8-T3 / CR-SA-4 / 2026-05-10', () => {

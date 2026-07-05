@@ -10,6 +10,10 @@ import {
     // CR-SA-15-E1 / 2026-05-14: 固有スキル設定スキーマ
     uniqueDiceEntrySchema,
     uniqueDiceConfigSchema,
+    // CR-SA-21+22-E1 / 2026-07-06: カスタム固有スキル + 固有スキルなし出走者
+    customUniqueSkillSchema,
+    CUSTOM_UNIQUE_SKILL_NAME_MAX,
+    CUSTOM_UNIQUE_SKILL_RESERVED_NAMES,
 } from './houseRules';
 import { DEFAULT_UNIQUE_DICE_CONFIG } from '../strategies';
 
@@ -581,6 +585,235 @@ describe('CR-SA-20-E1 / 2026-06-11 houseRulesSchema enableFormationDice (default
         expect(result.success).toBe(true);
         if (result.success) {
             expect(result.data.houseRules.enableFormationDice).toBe(false);
+        }
+    });
+});
+
+// CR-SA-21+22-E1 / 2026-07-06:
+// houserule-features.md §8 カスタム固有スキル + §2 [v] 固有スキルなし出走者 + §4 zod 検証範囲表
+// に基づく customUniqueSkills / enableNoUniqueSkill フィールドの検証。
+describe('CR-SA-21+22-E1 / 2026-07-06 customUniqueSkillSchema (要素バリデーション)', () => {
+    const validEntry = {
+        id: 'skill-a',
+        name: '先行特化',
+        fixValue: 0,
+        diceStr: '1d25',
+    };
+
+    it('(C1) 正常な要素で success', () => {
+        expect(customUniqueSkillSchema.safeParse(validEntry).success).toBe(true);
+    });
+
+    it('(C2) id が空文字で failure', () => {
+        expect(customUniqueSkillSchema.safeParse({ ...validEntry, id: '' }).success).toBe(false);
+    });
+
+    it('(C3) name が trim 後空文字（半角スペースのみ）で failure', () => {
+        expect(customUniqueSkillSchema.safeParse({ ...validEntry, name: '' }).success).toBe(false);
+        expect(customUniqueSkillSchema.safeParse({ ...validEntry, name: '   ' }).success).toBe(false);
+    });
+
+    it('(C4) name が 20 文字ちょうどで success（境界値）', () => {
+        const name20 = 'あ'.repeat(CUSTOM_UNIQUE_SKILL_NAME_MAX);
+        expect(name20.length).toBe(20);
+        expect(customUniqueSkillSchema.safeParse({ ...validEntry, name: name20 }).success).toBe(true);
+    });
+
+    it('(C5) name が 21 文字で failure', () => {
+        const name21 = 'あ'.repeat(CUSTOM_UNIQUE_SKILL_NAME_MAX + 1);
+        expect(customUniqueSkillSchema.safeParse({ ...validEntry, name: name21 }).success).toBe(false);
+    });
+
+    it('(C6) name に禁止文字 + / = / 改行 を含む場合 failure', () => {
+        expect(customUniqueSkillSchema.safeParse({ ...validEntry, name: 'A+B' }).success).toBe(false);
+        expect(customUniqueSkillSchema.safeParse({ ...validEntry, name: 'A=B' }).success).toBe(false);
+        expect(customUniqueSkillSchema.safeParse({ ...validEntry, name: 'A\nB' }).success).toBe(false);
+        expect(customUniqueSkillSchema.safeParse({ ...validEntry, name: 'A\rB' }).success).toBe(false);
+    });
+
+    it('(C7) name が予約語（組み込み 7 表示名 + 「なし」）で failure（8 パターン網羅）', () => {
+        for (const reserved of CUSTOM_UNIQUE_SKILL_RESERVED_NAMES) {
+            expect(customUniqueSkillSchema.safeParse({ ...validEntry, name: reserved }).success).toBe(false);
+        }
+        // trim 後比較（前後スペース付き予約語も拒否）
+        expect(customUniqueSkillSchema.safeParse({ ...validEntry, name: '  安定型  ' }).success).toBe(false);
+        expect(customUniqueSkillSchema.safeParse({ ...validEntry, name: ' なし ' }).success).toBe(false);
+    });
+
+    it('(C8) fixValue が整数（負値含む）で success、小数で failure', () => {
+        expect(customUniqueSkillSchema.safeParse({ ...validEntry, fixValue: -20 }).success).toBe(true);
+        expect(customUniqueSkillSchema.safeParse({ ...validEntry, fixValue: 5 }).success).toBe(true);
+        expect(customUniqueSkillSchema.safeParse({ ...validEntry, fixValue: 0 }).success).toBe(true);
+        expect(customUniqueSkillSchema.safeParse({ ...validEntry, fixValue: 5.5 }).success).toBe(false);
+    });
+
+    it('(C9) diceStr が XdY 形式のみ success（複数ダイス 2d7 含む）', () => {
+        expect(customUniqueSkillSchema.safeParse({ ...validEntry, diceStr: '1d10' }).success).toBe(true);
+        expect(customUniqueSkillSchema.safeParse({ ...validEntry, diceStr: '2d7' }).success).toBe(true);
+        expect(customUniqueSkillSchema.safeParse({ ...validEntry, diceStr: '' }).success).toBe(false);
+        expect(customUniqueSkillSchema.safeParse({ ...validEntry, diceStr: 'abc' }).success).toBe(false);
+        expect(customUniqueSkillSchema.safeParse({ ...validEntry, diceStr: '1d' }).success).toBe(false);
+    });
+});
+
+describe('CR-SA-21+22-E1 / 2026-07-06 houseRulesSchema.customUniqueSkills / enableNoUniqueSkill', () => {
+    // enableNoUniqueSkill / customUniqueSkills を含まない旧 houseRules
+    // （CR-SA-20-E1 期の 9 フィールド構造 = 直前のバンプ済スキーマ入力）
+    const validHouseRulesNoCustom = {
+        enableModifier: false,
+        enableSpecialStrategy: false,
+        enableCompositeUnique: false,
+        enableExtendedUnique: false,
+        enableBondSkill: false,
+        effectValue: 15,
+        uniqueDiceConfig: DEFAULT_UNIQUE_DICE_CONFIG,
+        enablePhaseConfig: false,
+        enableFormationDice: false,
+    };
+
+    it('(N1) enableNoUniqueSkill 欠落 → success + false 補完（後方互換の要）', () => {
+        const result = houseRulesSchema.safeParse(validHouseRulesNoCustom);
+        expect(result.success).toBe(true);
+        if (result.success) {
+            expect(result.data.enableNoUniqueSkill).toBe(false);
+        }
+    });
+
+    it('(N2) enableNoUniqueSkill = true / false 明示値保持', () => {
+        const trueResult = houseRulesSchema.safeParse({
+            ...validHouseRulesNoCustom,
+            enableNoUniqueSkill: true,
+        });
+        expect(trueResult.success).toBe(true);
+        if (trueResult.success) {
+            expect(trueResult.data.enableNoUniqueSkill).toBe(true);
+        }
+    });
+
+    it('(N3) enableNoUniqueSkill が boolean 以外で failure', () => {
+        expect(
+            houseRulesSchema.safeParse({
+                ...validHouseRulesNoCustom,
+                enableNoUniqueSkill: 'true' as unknown as boolean,
+            }).success,
+        ).toBe(false);
+        expect(
+            houseRulesSchema.safeParse({
+                ...validHouseRulesNoCustom,
+                enableNoUniqueSkill: 1 as unknown as boolean,
+            }).success,
+        ).toBe(false);
+    });
+
+    it('(A1) customUniqueSkills 欠落 → success + [] 補完（後方互換の要）', () => {
+        const result = houseRulesSchema.safeParse(validHouseRulesNoCustom);
+        expect(result.success).toBe(true);
+        if (result.success) {
+            expect(result.data.customUniqueSkills).toEqual([]);
+        }
+    });
+
+    it('(A2) customUniqueSkills 単一要素で success + 値保持', () => {
+        const entry = { id: 'a1', name: '先行特化', fixValue: 5, diceStr: '1d10' };
+        const result = houseRulesSchema.safeParse({
+            ...validHouseRulesNoCustom,
+            customUniqueSkills: [entry],
+        });
+        expect(result.success).toBe(true);
+        if (result.success) {
+            expect(result.data.customUniqueSkills).toEqual([entry]);
+        }
+    });
+
+    it('(A3) customUniqueSkills 複数要素で success + 順序保持', () => {
+        const entries = [
+            { id: 'a1', name: '先行特化', fixValue: 5, diceStr: '1d10' },
+            { id: 'a2', name: '差し加速', fixValue: -5, diceStr: '1d20' },
+            { id: 'a3', name: '追込爆発', fixValue: 0, diceStr: '2d7' },
+        ];
+        const result = houseRulesSchema.safeParse({
+            ...validHouseRulesNoCustom,
+            customUniqueSkills: entries,
+        });
+        expect(result.success).toBe(true);
+        if (result.success) {
+            expect(result.data.customUniqueSkills).toEqual(entries);
+        }
+    });
+
+    it('(A4) customUniqueSkills 配列内 id 重複で failure（superRefine）', () => {
+        const result = houseRulesSchema.safeParse({
+            ...validHouseRulesNoCustom,
+            customUniqueSkills: [
+                { id: 'dup', name: 'A', fixValue: 0, diceStr: '1d10' },
+                { id: 'dup', name: 'B', fixValue: 0, diceStr: '1d20' },
+            ],
+        });
+        expect(result.success).toBe(false);
+    });
+
+    it('(A5) customUniqueSkills 配列内 name 重複（trim 後比較）で failure', () => {
+        const result = houseRulesSchema.safeParse({
+            ...validHouseRulesNoCustom,
+            customUniqueSkills: [
+                { id: 'a1', name: '先行特化', fixValue: 0, diceStr: '1d10' },
+                { id: 'a2', name: '  先行特化  ', fixValue: 0, diceStr: '1d20' },
+            ],
+        });
+        expect(result.success).toBe(false);
+    });
+
+    it('(A6) customUniqueSkills 要素内バリデーション失敗（禁止文字）で failure', () => {
+        const result = houseRulesSchema.safeParse({
+            ...validHouseRulesNoCustom,
+            customUniqueSkills: [{ id: 'a1', name: 'A+B', fixValue: 0, diceStr: '1d10' }],
+        });
+        expect(result.success).toBe(false);
+    });
+
+    it('(CF1) houseRulesConfigSchema 経由で 2 フィールド欠落 JSON が補完されて success', () => {
+        const result = houseRulesConfigSchema.safeParse({
+            houseRules: validHouseRulesNoCustom,
+            strategies: [],
+        });
+        expect(result.success).toBe(true);
+        if (result.success) {
+            expect(result.data.houseRules.enableNoUniqueSkill).toBe(false);
+            expect(result.data.houseRules.customUniqueSkills).toEqual([]);
+        }
+    });
+
+    it('(CF2) houseRulesConfigSchema 経由で customUniqueSkills を含む完全 JSON が往復', () => {
+        const entries = [{ id: 'a1', name: '先行特化', fixValue: 0, diceStr: '1d10' }];
+        const result = houseRulesConfigSchema.safeParse({
+            houseRules: {
+                ...validHouseRulesNoCustom,
+                enableNoUniqueSkill: true,
+                customUniqueSkills: entries,
+            },
+            strategies: [],
+        });
+        expect(result.success).toBe(true);
+        if (result.success) {
+            expect(result.data.houseRules.enableNoUniqueSkill).toBe(true);
+            expect(result.data.houseRules.customUniqueSkills).toEqual(entries);
+        }
+    });
+
+    it('(VF1) validateHouseRulesConfig 経由で id 重複が既定文言で拒否', () => {
+        const result = validateHouseRulesConfig({
+            houseRules: {
+                ...validHouseRulesNoCustom,
+                customUniqueSkills: [
+                    { id: 'dup', name: 'A', fixValue: 0, diceStr: '1d10' },
+                    { id: 'dup', name: 'B', fixValue: 0, diceStr: '1d20' },
+                ],
+            },
+            strategies: [],
+        });
+        expect(result.success).toBe(false);
+        if (!result.success) {
+            expect(result.error).toBe(VALIDATION_ERROR_MESSAGE);
         }
     });
 });

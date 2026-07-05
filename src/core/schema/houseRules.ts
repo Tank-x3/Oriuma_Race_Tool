@@ -13,6 +13,24 @@ import { DEFAULT_UNIQUE_DICE_CONFIG } from '../strategies';
 export const EFFECT_VALUE_MIN = 1;
 export const EFFECT_VALUE_MAX = 999;
 
+// CR-SA-21+22-E1 / 2026-07-06: カスタム固有スキル名バリデーション定数
+// （houserule-features.md §8.3 命名・バリデーション表 SSoT）。
+export const CUSTOM_UNIQUE_SKILL_NAME_MAX = 20;
+// 予約語 = 組み込み 7 タイプの表示名 +「なし」（§2 [v] 固有スキルなし出走者の選択肢表記）。
+// カスタム同士の重複は zod の superRefine で trim 後比較（配列内スキャン）。
+export const CUSTOM_UNIQUE_SKILL_RESERVED_NAMES: readonly string[] = [
+    '安定型',
+    'ギャンブル型',
+    '持続型',
+    '超ギャンブル',
+    '超安定',
+    'ギャンブル型Ⅱ',
+    '安定型Ⅱ',
+    'なし',
+];
+// 禁止文字 = 出走者名の禁止文字と同方針の安全側統一（§8.3、+ / = / 改行）。
+export const CUSTOM_UNIQUE_SKILL_NAME_FORBIDDEN_PATTERN = /[+=\n\r]/;
+
 // modal-houserule.md §3 ⚠️ Import Validation 既定文言（変更不可）
 export const VALIDATION_ERROR_MESSAGE =
     'ファイル形式が正しくありません。オリウマツール用の設定ファイルを選択してください';
@@ -34,6 +52,33 @@ export const uniqueDiceEntrySchema = z.object({
 // （houserule-features.md §5.4 SSoT。CR-SA-15-E4「欠落キーのデフォルト補完」方針を 7 キーに拡張）。
 // 旧 5 キーのうちいずれかが欠落した不揃いデータ（例: Stability 欠落の 4 キー）は、旧 5 キーが
 // 必須のままのため従来どおり検証失敗で拒否される（CR-SA-15-E4 の「不完全構造の拒否」方針を維持）。
+// CR-SA-21+22-E1 / 2026-07-06: カスタム固有スキル（houserule-features.md §8.2 / §8.3）。
+// 各要素のフィールドバリデーションのみ（配列全体の id / name 重複チェックは
+// houseRulesSchema.customUniqueSkills の superRefine で実施 = §8.3 命名重複禁止）。
+export const customUniqueSkillSchema = z.object({
+    // id: 非空文字列（配列全体の重複チェックは houseRulesSchema 側の superRefine で実施）
+    id: z.string().min(1),
+    // name: trim 後空欄禁止 + 20 文字以内 + 禁止文字なし + 予約語重複禁止
+    // （§8.3。予約語 = 組み込み 7 表示名 + 「なし」。他カスタム名との重複は superRefine で実施）
+    name: z
+        .string()
+        .refine((v) => v.trim() !== '', { message: 'name must not be empty after trim' })
+        .refine((v) => v.length <= CUSTOM_UNIQUE_SKILL_NAME_MAX, {
+            message: `name must be ${CUSTOM_UNIQUE_SKILL_NAME_MAX} characters or fewer`,
+        })
+        .refine((v) => !CUSTOM_UNIQUE_SKILL_NAME_FORBIDDEN_PATTERN.test(v), {
+            message: 'name must not contain "+", "=", or newline',
+        })
+        .refine(
+            (v) => !CUSTOM_UNIQUE_SKILL_RESERVED_NAMES.includes(v.trim()),
+            { message: 'name must not collide with reserved names' },
+        ),
+    // fixValue: 整数（負値許容、小数不可。§8.3 / §5.2 同一）
+    fixValue: z.number().int(),
+    // diceStr: XdY 形式（§5.2 / §1 同一）
+    diceStr: z.string().regex(/^\d+d\d+$/),
+});
+
 export const uniqueDiceConfigSchema = z.object({
     Stability: uniqueDiceEntrySchema,
     Gamble: uniqueDiceEntrySchema,
@@ -70,6 +115,42 @@ export const houseRulesSchema = z.object({
     // .default(false) により、enableFormationDice フィールドが欠落した旧データ
     // （旧 persist データ / 旧 JSON プリセット）が検証通過し、false で補完される（後方互換、enablePhaseConfig と同方式）。
     enableFormationDice: z.boolean().default(false),
+    // CR-SA-22 / CR-SA-21+22-E1 / 2026-07-06: 固有スキルなし出走者を許可するハウスルール
+    // （houserule-features.md §2 [v] / §4 zod 検証範囲表）。
+    // .default(false) により、enableNoUniqueSkill フィールドが欠落した旧データ
+    // （旧 persist データ / 旧 JSON プリセット）が検証通過し、false で補完される（後方互換）。
+    enableNoUniqueSkill: z.boolean().default(false),
+    // CR-SA-21 / CR-SA-21+22-E1 / 2026-07-06: カスタム固有スキル一覧
+    // （houserule-features.md §8 / §4 zod 検証範囲表）。
+    // .default([]) により、customUniqueSkills フィールドが欠落した旧データが検証通過し、
+    // 空配列で補完される（後方互換、§8.7 欠落キー補完）。
+    customUniqueSkills: z.array(customUniqueSkillSchema).default([]),
+})
+// 配列内の id / name 重複拒否（§8.3 命名重複禁止「他のカスタム固有名 trim 後比較」+ id 一意性）。
+// フィールド単体の空欄・文字数・禁止文字・予約語チェックは customUniqueSkillSchema 側で完結。
+.superRefine((data, ctx) => {
+    const ids = new Set<string>();
+    const trimmedNames = new Set<string>();
+    for (let i = 0; i < data.customUniqueSkills.length; i++) {
+        const entry = data.customUniqueSkills[i];
+        if (ids.has(entry.id)) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['customUniqueSkills', i, 'id'],
+                message: `customUniqueSkills[${i}].id "${entry.id}" is duplicated`,
+            });
+        }
+        ids.add(entry.id);
+        const nameKey = entry.name.trim();
+        if (trimmedNames.has(nameKey)) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['customUniqueSkills', i, 'name'],
+                message: `customUniqueSkills[${i}].name "${entry.name}" duplicates another custom name`,
+            });
+        }
+        trimmedNames.add(nameKey);
+    }
 });
 
 export type HouseRulesData = z.infer<typeof houseRulesSchema>;
