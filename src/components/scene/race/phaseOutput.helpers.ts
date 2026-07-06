@@ -1,4 +1,4 @@
-import type { RaceState, Strategy, Umamusume, BuiltInUniqueSkillType, UniqueSkillType, UniqueDiceConfig } from '../../../types';
+import type { RaceState, Strategy, Umamusume, UniqueSkillType, UniqueDiceConfig, CustomUniqueSkill } from '../../../types';
 import { isPhaseResultLoaded } from './specialStrategy.helpers';
 // CR-SA-15-E2 / 2026-05-15: 固有ダイス 3 関数のフォールバック値（houserule-features.md §5.4）。
 import { DEFAULT_UNIQUE_DICE_CONFIG } from '../../../core/strategies';
@@ -132,14 +132,37 @@ export const getDiceFormulaPrefix = (
  *  - `fixValue < 0` → `${fixValue}+dice${diceStr}=`（負号は数値に含む、例: 超ギャンブル `-10+dice1d35=`）
  *  - `fixValue === 0` → `dice${diceStr}=`（例: ギャンブル型 `dice1d20=`）
  */
+/**
+ * CR-SA-21+22-E3 / 2026-07-06: `type === 'Custom'` 選択者の設定エントリ lookup 純粋関数。
+ * `customUniqueSkillId` / `customUniqueSkills` が揃った場合のみ該当エントリを返す。
+ * 参照切れ（当該 id 不在）+ 引数欠落は undefined = 呼び出し側の空文字/0 フォールバックへ委譲。
+ */
+const findCustomUniqueEntry = (
+    customUniqueSkillId: string | undefined,
+    customUniqueSkills: readonly CustomUniqueSkill[] | undefined,
+): CustomUniqueSkill | undefined => {
+    if (!customUniqueSkillId || !customUniqueSkills) return undefined;
+    return customUniqueSkills.find(c => c.id === customUniqueSkillId);
+};
+
 export const getUniqueDiceFormula = (
     type: UniqueSkillType,
     uniqueDiceConfig: UniqueDiceConfig = DEFAULT_UNIQUE_DICE_CONFIG,
+    customUniqueSkillId?: string,
+    customUniqueSkills?: readonly CustomUniqueSkill[],
 ): string => {
-    // CR-SA-21+22-E1 / 2026-07-06: uniqueDiceConfig は組み込み 7 タイプ専用 Record のためキャスト。
-    // 'None' / 'Custom' が渡った場合 entry は undefined となり、下段の `if (!entry) return ''` /
-    // `if (!entry) return 0` で安全に空・0 を返す（E1 未配線・E3 で計算経路拡張予定）。
-    const entry = uniqueDiceConfig[type as BuiltInUniqueSkillType];
+    // CR-SA-21+22-E3 / 2026-07-06: 'None' / 'Custom' を明示分岐化（E1 のキャスト防御を撤去）。
+    // 'None' = 空文字（固有ダイスセクションから自然除外）
+    // 'Custom' = customUniqueSkills[id] から §5.3 生成ルール適用（参照切れは空文字防御）
+    if (type === 'None') return '';
+    if (type === 'Custom') {
+        const custom = findCustomUniqueEntry(customUniqueSkillId, customUniqueSkills);
+        if (!custom) return '';
+        const { fixValue, diceStr } = custom;
+        if (fixValue === 0) return `dice${diceStr}=`;
+        return `${fixValue}+dice${diceStr}=`;
+    }
+    const entry = uniqueDiceConfig[type];
     if (!entry) return '';
     const { fixValue, diceStr } = entry;
     if (fixValue === 0) return `dice${diceStr}=`;
@@ -157,11 +180,16 @@ export const getUniqueDiceFormula = (
 export const getExpectedUniqueDiceStr = (
     type: UniqueSkillType,
     uniqueDiceConfig: UniqueDiceConfig = DEFAULT_UNIQUE_DICE_CONFIG,
+    customUniqueSkillId?: string,
+    customUniqueSkills?: readonly CustomUniqueSkill[],
 ): string => {
-    // CR-SA-21+22-E1 / 2026-07-06: uniqueDiceConfig は組み込み 7 タイプ専用 Record のためキャスト。
-    // 'None' / 'Custom' が渡った場合 entry は undefined となり、下段の `if (!entry) return ''` /
-    // `if (!entry) return 0` で安全に空・0 を返す（E1 未配線・E3 で計算経路拡張予定）。
-    const entry = uniqueDiceConfig[type as BuiltInUniqueSkillType];
+    // CR-SA-21+22-E3 / 2026-07-06: 'None' = 空文字 / 'Custom' = カスタム定義の diceStr / 参照切れ = 空文字。
+    if (type === 'None') return '';
+    if (type === 'Custom') {
+        const custom = findCustomUniqueEntry(customUniqueSkillId, customUniqueSkills);
+        return custom?.diceStr ?? '';
+    }
+    const entry = uniqueDiceConfig[type];
     if (!entry) return '';
     return entry.diceStr;
 };
@@ -175,11 +203,16 @@ export const getExpectedUniqueDiceStr = (
 export const getExpectedUniqueFixValue = (
     type: UniqueSkillType,
     uniqueDiceConfig: UniqueDiceConfig = DEFAULT_UNIQUE_DICE_CONFIG,
+    customUniqueSkillId?: string,
+    customUniqueSkills?: readonly CustomUniqueSkill[],
 ): number => {
-    // CR-SA-21+22-E1 / 2026-07-06: uniqueDiceConfig は組み込み 7 タイプ専用 Record のためキャスト。
-    // 'None' / 'Custom' が渡った場合 entry は undefined となり、下段の `if (!entry) return ''` /
-    // `if (!entry) return 0` で安全に空・0 を返す（E1 未配線・E3 で計算経路拡張予定）。
-    const entry = uniqueDiceConfig[type as BuiltInUniqueSkillType];
+    // CR-SA-21+22-E3 / 2026-07-06: 'None' = 0 / 'Custom' = カスタム定義の fixValue / 参照切れ = 0。
+    if (type === 'None') return 0;
+    if (type === 'Custom') {
+        const custom = findCustomUniqueEntry(customUniqueSkillId, customUniqueSkills);
+        return custom?.fixValue ?? 0;
+    }
+    const entry = uniqueDiceConfig[type];
     if (!entry) return 0;
     return entry.fixValue;
 };

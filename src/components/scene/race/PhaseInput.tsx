@@ -194,6 +194,8 @@ export const PhaseInput: React.FC<PhaseInputProps> = ({ onErrors }) => {
                     // 旧 isUniqueDice 単独判定（diceStr ヒューリスティック）を置換。
                     const prevHistory = p.history[currentPhaseId] || {};
                     // CR-SA-15-E2 / 2026-05-15: R-3 判定の固有期待値入力源を houseRules.uniqueDiceConfig 参照化
+                    // CR-SA-21+22-E3 / 2026-07-06: カスタム固有スキル対応（R-3 入力源拡張、
+                    // scene3-race.md §2 L218）。'None' 選択者は expectedDiceStr = '' で R-1 自然収束。
                     const classification = classifyDiceResultsForParticipant(
                         p.uniqueSkill.type,
                         p.uniqueSkill.phases,
@@ -201,6 +203,8 @@ export const PhaseInput: React.FC<PhaseInputProps> = ({ onErrors }) => {
                         currentPhaseId,
                         prevHistory.baseDice,
                         config.houseRules.uniqueDiceConfig,
+                        p.uniqueSkill.customUniqueSkillId,
+                        config.houseRules.customUniqueSkills,
                     );
 
                     const newHistoryEntry = {
@@ -219,13 +223,15 @@ export const PhaseInput: React.FC<PhaseInputProps> = ({ onErrors }) => {
                     // CR-SA-20-E4 / 2026-06-11: 隊列補正の伝播（ON かつ出目確定時のみ）。履歴全再構築の
                     // ため、隊列直後フェーズ以降のダイス取り込みで隊列補正が脱落しない（§6.5 永続性）。
                     const updatedPForCalc = { ...p, history: newTotalHistory };
+                    // CR-SA-21+22-E3 / 2026-07-06: カスタム固有スキルの固定値加算に customUniqueSkills を伝播。
                     const totalScore = Calculator.calculateTotalScore(
                         updatedPForCalc,
                         strategies,
                         paceResult.face,
                         activePhaseIds,
                         config.houseRules.uniqueDiceConfig,
-                        config.houseRules.enableFormationDice ? formationResult.face : null
+                        config.houseRules.enableFormationDice ? formationResult.face : null,
+                        config.houseRules.customUniqueSkills,
                     );
 
                     // Store updated state in map

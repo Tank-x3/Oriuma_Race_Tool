@@ -1,4 +1,4 @@
-import type { BuiltInUniqueSkillType, Umamusume, Strategy, UniqueDiceConfig, RaceState } from '../types';
+import type { Umamusume, Strategy, UniqueDiceConfig, RaceState, CustomUniqueSkill } from '../types';
 import { getPaceModifier, getStrategy, DEFAULT_UNIQUE_DICE_CONFIG } from './strategies';
 import { getNonPacePhaseIds } from './phaseSequence';
 // CR-SA-20-E4 / 2026-06-11: 隊列〔バ群〕ダイス補正の取得（E2 完成品の配線、houserule-features.md §6.3 / §6.5）。
@@ -73,7 +73,10 @@ export class Calculator {
         uniqueDiceConfig: UniqueDiceConfig = DEFAULT_UNIQUE_DICE_CONFIG,
         // CR-SA-20-E4 / 2026-06-11: 確定済み隊列出目（1-9）。null = 未確定 / 隊列ハウスルール OFF。
         // 省略時 null = 既存呼び出しは完全に従来挙動（OFF 透過）。
-        formationRoll: number | null = null
+        formationRoll: number | null = null,
+        // CR-SA-21+22-E3 / 2026-07-06: カスタム固有スキル対応（houserule-features.md §8.5）。
+        // 'Custom' 選択者の固定値 lookup 用。省略時は空配列相当（Custom 参照時は 0 加算防御）。
+        customUniqueSkills: readonly CustomUniqueSkill[] = []
     ): number {
         const activeSet = activePhaseIds ? new Set(activePhaseIds) : null;
         let total = 0;
@@ -114,13 +117,28 @@ export class Calculator {
             if (data.uniqueDice && participant.uniqueSkill.phases.includes(phaseId)) {
                 const skillType = participant.uniqueSkill.type;
                 // CR-SA-15-E2 / 2026-05-15: 固有固定値を uniqueDiceConfig 参照化（houserule-features.md §5.4）。
-                // Start phase と同じ「全 5 タイプ一律 fixValue 加算」に統一（既存挙動と完全一致）。
-                // CR-SA-21+22-E1 / 2026-07-06: skillType は組み込み 7 タイプ以外に 'None' / 'Custom' も
-                // 取りうるが、E1 未配線段階では実行時に届かない（UI がその値を設定しない）。
-                // uniqueDiceConfig は組み込み 7 タイプ専用 Record のため、キャストで型のみ narrow する
-                // （§1.2 分岐追加禁止のため。'None' / 'Custom' の計算経路は E3 スコープ）。
-                total += uniqueDiceConfig[skillType as BuiltInUniqueSkillType].fixValue;
-                total += data.uniqueDice.sum;
+                // Start phase と同じ「全タイプ一律 fixValue 加算」に統一（既存挙動と完全一致）。
+                // CR-SA-21+22-E3 / 2026-07-06: 'None' / 'Custom' を明示分岐化（E1 のキャスト防御を撤去）。
+                //  - 'None' = 通常 uniqueSkill.phases=[] のため本ブロック不到達（防御的にも 0 加算）
+                //  - 'Custom' = customUniqueSkills[id] から fixValue lookup（参照切れは 0 加算防御）
+                //  - 組み込み 7 タイプ = 従来どおり uniqueDiceConfig[type].fixValue
+                if (skillType === 'None') {
+                    // 到達しない想定（phases=[] 前提）。防御的に固定値加算はスキップし、
+                    // uniqueDice.sum は Parser 由来（本来発生しない）でも安全側に加算しない。
+                } else if (skillType === 'Custom') {
+                    const customId = participant.uniqueSkill.customUniqueSkillId;
+                    const custom = customId
+                        ? customUniqueSkills.find(c => c.id === customId)
+                        : undefined;
+                    if (custom) {
+                        total += custom.fixValue;
+                        total += data.uniqueDice.sum;
+                    }
+                    // 参照切れは 0 加算（Scene 2 / phaseOutput.helpers の空返却と対称）
+                } else {
+                    total += uniqueDiceConfig[skillType].fixValue;
+                    total += data.uniqueDice.sum;
+                }
             }
             // Add Manual Modifier
             // Bundle-5 / P4-2, P4-3, CR-22 / 2026-05-10: manualModifier 構造体化（{ value, reason }）。

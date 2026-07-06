@@ -5,8 +5,10 @@ import {
     getSpecialStrategyAnnotation,
     getBondSkillAnnotation,
     getEntryListAnnotations,
+    // CR-SA-21+22-E3 / 2026-07-06: エントリー確認リストの固有スキル表示ラベル解決
+    getEntryListUniqueTypeLabel,
 } from './gateScene.helpers';
-import type { Umamusume, RaceState } from '../../types';
+import type { Umamusume, RaceState, CustomUniqueSkill } from '../../types';
 // CR-SA-15-E1 / 2026-05-14: DEFAULT_UNIQUE_DICE_CONFIG = houseRules 型厳密化（uniqueDiceConfig 必須）に追従するため import
 import { DEFAULT_UNIQUE_DICE_CONFIG } from '../../core/strategies';
 
@@ -216,6 +218,51 @@ describe('gateScene.helpers - Bundle-8-T3 / CR-SA-4 / 2026-05-10', () => {
             // 両 HR OFF だが Scene 1 入力値は残っている状態
             const result = getEntryListAnnotations(participant, baseHouseRules, getPhaseLabel);
             expect(result).toBe('');
+        });
+    });
+
+    // CR-SA-21+22-E3 / 2026-07-06: エントリー確認リスト固有スキルラベル解決（Custom/None 含む）
+    // SSoT: scene2-gate.md §2 L82-83 + houserule-features.md §8.8
+    describe('getEntryListUniqueTypeLabel - CR-SA-21+22-E3 / 2026-07-06', () => {
+        const customs: CustomUniqueSkill[] = [
+            { id: 'cust-a', name: '先行特化', fixValue: -5, diceStr: '1d30' },
+            { id: 'cust-b', name: '安定Ⅲ', fixValue: 3, diceStr: '2d6' },
+        ];
+
+        it('(U1) 組み込み Stability → "安定"', () => {
+            expect(getEntryListUniqueTypeLabel('Stability', undefined, [])).toBe('安定');
+        });
+
+        it('(U2) 組み込み GambleII → "ギャンブルⅡ"', () => {
+            expect(getEntryListUniqueTypeLabel('GambleII', undefined, [])).toBe('ギャンブルⅡ');
+        });
+
+        it('(U3) 組み込み StabilityII → "安定Ⅱ"', () => {
+            expect(getEntryListUniqueTypeLabel('StabilityII', undefined, [])).toBe('安定Ⅱ');
+        });
+
+        it('(U4) None → "なし"（§2 [v] 固有スキルなし出走者）', () => {
+            expect(getEntryListUniqueTypeLabel('None', undefined, [])).toBe('なし');
+        });
+
+        it('(U5) Custom + 有効 id → ユーザー命名 "先行特化"', () => {
+            expect(getEntryListUniqueTypeLabel('Custom', 'cust-a', customs)).toBe('先行特化');
+        });
+
+        it('(U6) Custom + 別 id → ユーザー命名 "安定Ⅲ"', () => {
+            expect(getEntryListUniqueTypeLabel('Custom', 'cust-b', customs)).toBe('安定Ⅲ');
+        });
+
+        it('(U7) Custom + 参照切れ（id 不在）→ フォールバック "Custom" 文字列', () => {
+            expect(getEntryListUniqueTypeLabel('Custom', 'cust-x', customs)).toBe('Custom');
+        });
+
+        it('(U8) Custom + customUniqueSkillId undefined → フォールバック "Custom"', () => {
+            expect(getEntryListUniqueTypeLabel('Custom', undefined, customs)).toBe('Custom');
+        });
+
+        it('(U9) 組み込みタイプは customUniqueSkills 内容に依存しない', () => {
+            expect(getEntryListUniqueTypeLabel('Stability', 'cust-a', customs)).toBe('安定');
         });
     });
 });

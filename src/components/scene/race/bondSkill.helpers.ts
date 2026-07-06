@@ -174,7 +174,11 @@ export const calculateScoreWithBondSkill = (
     // useRaceStore の呼び出しは houseRules オブジェクト全体を渡しているため透過的に有効化される。
     // optional にする理由 = 既存テスト・呼び出しの部分オブジェクト（旧 Pick 4 キー）を無改修で通す
     //（省略 = undefined = OFF 扱いで従来挙動と完全同一）。
-    houseRules: Pick<HouseRules, 'effectValue' | 'enableSpecialStrategy' | 'enableBondSkill' | 'uniqueDiceConfig'> & { enableFormationDice?: boolean },
+    // CR-SA-21+22-E3 / 2026-07-06: customUniqueSkills を Pick に追加（houserule-features.md §8.5）。
+    // useRaceStore の 13 呼び出しは houseRules オブジェクト全体を渡すため、Pick 拡張のみで
+    // 透過的に伝播する（E1 で houseRules に customUniqueSkills 追加済）。optional で
+    // 既存テスト（部分オブジェクト渡し）は無改修 Pass（省略 = [] 扱いで OFF 透過）。
+    houseRules: Pick<HouseRules, 'effectValue' | 'enableSpecialStrategy' | 'enableBondSkill' | 'uniqueDiceConfig'> & { enableFormationDice?: boolean; customUniqueSkills?: HouseRules['customUniqueSkills'] },
     // CR-SA-20-E4 / 2026-06-11: 確定済み隊列出目（store の formationResult.face）。省略時 null =
     // 既存呼び出し・テストは従来挙動。enableFormationDice OFF なら値が残っていても反映しない
     //（OFF 透過、scene1-setup.md L211 の既存 enableXxxx 群と同方針）。
@@ -190,6 +194,7 @@ export const calculateScoreWithBondSkill = (
         houseRules.enableSpecialStrategy,
         houseRules.uniqueDiceConfig,
         effectiveFormationFace,
+        houseRules.customUniqueSkills ?? [],
     );
     // CR-SA-17-E4 / 2026-06-08: 最後の終盤フェーズ ID を非ペース列（activePhaseIds）の末尾から導出し、
     // 絆スキル最終加算へ伝播する（OFF / 終盤 1 = 'End'、終盤 ≥2 = 'End{n}'）。

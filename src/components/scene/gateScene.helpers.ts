@@ -1,9 +1,48 @@
 // Bundle-8-T3 / CR-SA-4 / 2026-05-10: GateScene 確認リスト併記 helpers（scene2-gate.md §2）。
 // Scene 1 で事前申告した「特殊戦法 (発動位置 + 種別)」「絆スキル種別」を
 // 確認用リストの基本形式末尾に併記するための純粋関数群。
-import type { RaceState, Umamusume } from '../../types';
+// CR-SA-21+22-E3 / 2026-07-06: エントリー確認リストの固有スキル表示ラベル解決
+// （scene2-gate.md §2 L82-83 SSoT、houserule-features.md §8.8）を helpers へ抽出。
+import type { RaceState, Umamusume, UniqueSkillType, CustomUniqueSkill } from '../../types';
 
 type HouseRules = RaceState['config']['houseRules'];
+
+/**
+ * CR-SA-21+22-E3 / 2026-07-06: エントリー確認リストの固有スキル表示ラベルを解決する。
+ *
+ * SSoT: scene2-gate.md §2 L82-83（「なし」= `(脚質 / なし / ---)` / カスタム = ユーザー命名そのまま）
+ * + houserule-features.md §8.8「Scene 2 / Scene 4 への反映」。
+ *
+ * 判定:
+ *  - 組み込み 7 タイプ: 日本語ラベル（'安定' / 'ギャンブル' / 'ギャンブルⅡ' 等）
+ *  - 'None': 'なし'（§2 [v] 固有スキルなし出走者、phases=[] 経由で phaseStr='---' も自然出力）
+ *  - 'Custom': `customUniqueSkills` から id 経由で `name` を lookup
+ *  - Custom 参照切れ（当該 id 不在）: 現行フォールバック `'Custom'` 文字列（Scene 1 の
+ *    自動リセット useEffect で本来防ぐが、防御的に視認性を優先）
+ */
+export const getEntryListUniqueTypeLabel = (
+    type: UniqueSkillType,
+    customUniqueSkillId: string | undefined,
+    customUniqueSkills: readonly CustomUniqueSkill[],
+): string => {
+    const typeMap: Record<string, string> = {
+        'Stability': '安定',
+        'Gamble': 'ギャンブル',
+        'Persistent': '持続',
+        'SuperGamble': '超ギャンブル',
+        'SuperStability': '超安定',
+        'GambleII': 'ギャンブルⅡ',
+        'StabilityII': '安定Ⅱ',
+        'None': 'なし',
+    };
+    if (type === 'Custom') {
+        const custom = customUniqueSkillId
+            ? customUniqueSkills.find(c => c.id === customUniqueSkillId)
+            : undefined;
+        return custom?.name || type;
+    }
+    return typeMap[type] || type;
+};
 
 /**
  * 特殊戦法併記文字列を返す。

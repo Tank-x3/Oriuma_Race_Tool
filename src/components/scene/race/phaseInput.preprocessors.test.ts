@@ -8,7 +8,7 @@ import {
     // CR-SA-20-E4 / 2026-06-11: 隊列専用解析（dice1d9 全文抽出）
     parseFormationDiceText,
 } from './phaseInput.preprocessors';
-import type { UniqueSkillType, UniqueDiceConfig } from '../../../types';
+import type { UniqueSkillType, UniqueDiceConfig, CustomUniqueSkill } from '../../../types';
 import { DEFAULT_UNIQUE_DICE_CONFIG } from '../../../core/strategies';
 
 describe('CR-SA-11-Sub-B-E1: phaseInput preprocessors', () => {
@@ -534,5 +534,152 @@ describe('parseFormationDiceText - CR-SA-20-E4 / 隊列専用解析', () => {
         expect(r.errors).toEqual([
             '・複数の隊列ダイスが検出されました。内容を確認してください',
         ]);
+    });
+});
+
+// CR-SA-21+22-E3 / 2026-07-06: R-3 入力源のカスタム対応 + 「なし」の R-1 自然収束
+// SSoT: scene3-race.md §2 R-3 L218（カスタム固有スキル選択者の入力源）+ L126（「なし」= R-1 自然収束）
+describe('CR-SA-21+22-E3: Custom / None 対応（R-3 入力源拡張）', () => {
+    const makeLine = (diceStr: string, diceResult: number, fixValue: number) => ({
+        diceStr,
+        diceResult,
+        fixValue,
+    });
+
+    const customs: CustomUniqueSkill[] = [
+        { id: 'cust-a', name: '先行特化', fixValue: -5, diceStr: '1d30' },
+        { id: 'cust-b', name: '安定Ⅲ', fixValue: 3, diceStr: '2d6' },
+    ];
+
+    describe('Custom 選択者の R-3 振り分け', () => {
+        it('(C-1) Custom fixValue=-5 diceStr=1d30 × 完全一致 (-5, 1d30) → uniqueDice へ振り分け', () => {
+            const result = classifyDiceResultsForParticipant(
+                'Custom',
+                ['Mid1'],
+                [makeLine('3d8', 12, 0), makeLine('1d30', 22, -5)],
+                'Mid1',
+                undefined,
+                DEFAULT_UNIQUE_DICE_CONFIG,
+                'cust-a',
+                customs,
+            );
+            expect(result.baseDice).toEqual({ diceStr: '3d8', values: [], sum: 12 });
+            expect(result.uniqueDice).toEqual({ diceStr: '1d30', values: [], sum: 22 });
+        });
+
+        it('(C-2) Custom fixValue=3 diceStr=2d6 × 完全一致 (3, 2d6) → uniqueDice へ振り分け', () => {
+            const result = classifyDiceResultsForParticipant(
+                'Custom',
+                ['End'],
+                [makeLine('3d8', 15, 0), makeLine('2d6', 9, 3)],
+                'End',
+                undefined,
+                DEFAULT_UNIQUE_DICE_CONFIG,
+                'cust-b',
+                customs,
+            );
+            expect(result.baseDice).toEqual({ diceStr: '3d8', values: [], sum: 15 });
+            expect(result.uniqueDice).toEqual({ diceStr: '2d6', values: [], sum: 9 });
+        });
+
+        it('(C-3) Custom + diceStr 一致 × fixValue 不一致 → baseDice 上書き（uniqueDice なし）', () => {
+            // 期待 (-5, 1d30) に対し diceStr のみ一致で fixValue=0 は不一致
+            const result = classifyDiceResultsForParticipant(
+                'Custom',
+                ['Mid1'],
+                [makeLine('3d8', 12, 0), makeLine('1d30', 22, 0)],
+                'Mid1',
+                undefined,
+                DEFAULT_UNIQUE_DICE_CONFIG,
+                'cust-a',
+                customs,
+            );
+            expect(result.baseDice).toEqual({ diceStr: '1d30', values: [], sum: 22 });
+            expect(result.uniqueDice).toBeUndefined();
+        });
+
+        it('(C-4) Custom + 参照切れ（id 不在）→ expectedDiceStr = "" で isUniqueMatch=false = baseDice 上書き', () => {
+            const result = classifyDiceResultsForParticipant(
+                'Custom',
+                ['Mid1'],
+                [makeLine('3d8', 12, 0), makeLine('1d30', 22, -5)],
+                'Mid1',
+                undefined,
+                DEFAULT_UNIQUE_DICE_CONFIG,
+                'cust-x', // 参照切れ
+                customs,
+            );
+            expect(result.baseDice).toEqual({ diceStr: '1d30', values: [], sum: 22 });
+            expect(result.uniqueDice).toBeUndefined();
+        });
+
+        it('(C-5) Custom + customUniqueSkills 未渡し → 参照解決不能で R-1/R-2 の baseDice 振り分けに委譲', () => {
+            const result = classifyDiceResultsForParticipant(
+                'Custom',
+                ['Mid1'],
+                [makeLine('3d8', 12, 0), makeLine('1d30', 22, -5)],
+                'Mid1',
+                undefined,
+                DEFAULT_UNIQUE_DICE_CONFIG,
+                'cust-a',
+                // customUniqueSkills 未渡し
+            );
+            expect(result.baseDice).toEqual({ diceStr: '1d30', values: [], sum: 22 });
+            expect(result.uniqueDice).toBeUndefined();
+        });
+
+        it('(C-6) Custom × 発動フェーズ非該当 → R-1 適用（uniqueDice 不可侵、baseDice のみ）', () => {
+            const result = classifyDiceResultsForParticipant(
+                'Custom',
+                ['Mid1'],
+                [makeLine('1d30', 22, -5)],
+                'Start',
+                undefined,
+                DEFAULT_UNIQUE_DICE_CONFIG,
+                'cust-a',
+                customs,
+            );
+            expect(result.baseDice).toEqual({ diceStr: '1d30', values: [], sum: 22 });
+            expect(result.uniqueDice).toBeUndefined();
+        });
+    });
+
+    describe('None 選択者の R-1 自然収束', () => {
+        it('(N-1) None + phases=[] × 現 Mid1 で 1 件到達 → baseDice のみ格納', () => {
+            const result = classifyDiceResultsForParticipant(
+                'None',
+                [], // 発動位置なし
+                [makeLine('3d8', 12, 0)],
+                'Mid1',
+                undefined,
+            );
+            expect(result.baseDice).toEqual({ diceStr: '3d8', values: [], sum: 12 });
+            expect(result.uniqueDice).toBeUndefined();
+        });
+
+        it('(N-2) None + 2 件到達（フェーズダイス上書き）→ baseDice 最終値、uniqueDice なし', () => {
+            const result = classifyDiceResultsForParticipant(
+                'None',
+                [],
+                [makeLine('3d8', 12, 0), makeLine('3d8', 18, 0)],
+                'Mid1',
+                undefined,
+            );
+            expect(result.baseDice).toEqual({ diceStr: '3d8', values: [], sum: 18 });
+            expect(result.uniqueDice).toBeUndefined();
+        });
+
+        it('(N-3) None × たまたま組み込み固有と同 diceStr が到達しても uniqueDice 化しない（expectedDiceStr = ""）', () => {
+            // 期待 diceStr が空文字のため isUniqueMatch=false = baseDice 上書き
+            const result = classifyDiceResultsForParticipant(
+                'None',
+                [],
+                [makeLine('3d8', 12, 0), makeLine('1d10', 8, 5)],
+                'Mid1',
+                undefined,
+            );
+            expect(result.baseDice).toEqual({ diceStr: '1d10', values: [], sum: 8 });
+            expect(result.uniqueDice).toBeUndefined();
+        });
     });
 });

@@ -286,7 +286,15 @@ export const PhaseOutput: React.FC = () => {
                 if (!filterCorrection || status.unique) {
                     // Bundle-2 / D-1, D-14 / 2026-05-09: 拡張固有タイプ含む 5 種のダイス文字列を helpers から取得
                     // CR-SA-15-E2 / 2026-05-15: 固有ダイス式を houseRules.uniqueDiceConfig 参照化
-                    const uDice = getUniqueDiceFormula(p.uniqueSkill.type, config.houseRules.uniqueDiceConfig);
+                    // CR-SA-21+22-E3 / 2026-07-06: カスタム固有スキル選択者は customUniqueSkills から
+                    // §5.3 生成ルール適用（houserule-features.md §8.5）。'None' 選択者は空文字返却 =
+                    // 固有ダイスセクションから自然除外（下段の if (uDice) ガードで行スキップ）。
+                    const uDice = getUniqueDiceFormula(
+                        p.uniqueSkill.type,
+                        config.houseRules.uniqueDiceConfig,
+                        p.uniqueSkill.customUniqueSkillId,
+                        config.houseRules.customUniqueSkills,
+                    );
 
                     if (uDice) {
                         uniqueTextLines.push(`${gateSym} ${p.name}　${uDice}`);

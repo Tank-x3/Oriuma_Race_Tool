@@ -6,7 +6,8 @@ import { getUndetectedParticipantNames } from '../../core/parser/parserUtils';
 import { NotificationArea } from '../ui/NotificationArea';
 import type { GateAssignment } from '../../types';
 // Bundle-8-T3 / CR-SA-4 / 2026-05-10: HR 連動事前申告併記（scene2-gate.md §2）
-import { getEntryListAnnotations } from './gateScene.helpers';
+// CR-SA-21+22-E3 / 2026-07-06: 固有スキル表示ラベル解決を helpers へ抽出（Custom/None 対応、テスト容易化）
+import { getEntryListAnnotations, getEntryListUniqueTypeLabel } from './gateScene.helpers';
 
 // Helper for Circle Numbers (①, ②...)
 const getCircleNumber = (num: number): string => {
@@ -67,17 +68,6 @@ export const GateScene: React.FC = () => {
 
     // [1] Entry Confirmation List
     const entryListText = useMemo(() => {
-        const typeMap: Record<string, string> = {
-            'Stability': '安定',
-            'Gamble': 'ギャンブル',
-            'Persistent': '持続',
-            // Bundle-2 / D-1, D-14 / 2026-05-09: 拡張固有タイプの日本語ラベル追加
-            'SuperGamble': '超ギャンブル',
-            'SuperStability': '超安定',
-            // CR-SA-19 / 2026-06-06: ギャンブル型Ⅱ / 安定型Ⅱ の日本語ラベル追加（網羅漏れ補完）
-            'GambleII': 'ギャンブルⅡ',
-            'StabilityII': '安定Ⅱ'
-        };
         const phaseMap: Record<string, string> = {
             'Start': '序盤',
             'Mid': '中盤',
@@ -92,7 +82,12 @@ export const GateScene: React.FC = () => {
 
         return participants.map((p, i) => {
             const index = i + 1;
-            const typeLabel = typeMap[p.uniqueSkill.type] || p.uniqueSkill.type;
+            // CR-SA-21+22-E3 / 2026-07-06: 固有スキル表示ラベル解決を helpers へ移譲（Custom/None 対応）。
+            const typeLabel = getEntryListUniqueTypeLabel(
+                p.uniqueSkill.type,
+                p.uniqueSkill.customUniqueSkillId,
+                houseRules.customUniqueSkills,
+            );
             const phaseStr = p.uniqueSkill.phases.map(getPhaseLabel).join(',') || '---';
             // Bundle-8-T3 / CR-SA-4 / 2026-05-10: HR 連動事前申告併記（scene2-gate.md §2）
             const annotations = getEntryListAnnotations(p, houseRules, getPhaseLabel);

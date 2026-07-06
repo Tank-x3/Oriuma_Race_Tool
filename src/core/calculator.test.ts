@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { Calculator, getActivePhaseIdsForConfig, getLastEndPhaseId } from './calculator';
 import { DEFAULT_STRATEGIES, DEFAULT_UNIQUE_DICE_CONFIG } from './strategies';
-import type { Umamusume, UniqueDiceConfig, RaceState } from '../types';
+import type { Umamusume, UniqueDiceConfig, RaceState, CustomUniqueSkill } from '../types';
 
 describe('Calculator', () => {
     const mockUma: Umamusume = {
@@ -564,5 +564,202 @@ describe('CR-SA-20-E4: calculateTotalScore 隊列補正（formationRoll）', () 
         // pace null → fix 30 + dice 10 = 40（pace 補正もなし）
         const score = Calculator.calculateTotalScore(baseUma, DEFAULT_STRATEGIES, null, undefined, DEFAULT_UNIQUE_DICE_CONFIG, 1);
         expect(score).toBe(40);
+    });
+});
+
+// CR-SA-21+22-E3 / 2026-07-06: カスタム固有スキル + 固有スキルなし出走者のスコア加算
+// SSoT: houserule-features.md §8.5 スコア計算（Custom = fixValue + uniqueDice.sum、None = 加算なし）
+describe('CR-SA-21+22-E3: calculateTotalScore Custom / None 対応', () => {
+    const customs: CustomUniqueSkill[] = [
+        { id: 'cust-a', name: '先行特化', fixValue: -5, diceStr: '1d30' },
+        { id: 'cust-b', name: '安定Ⅲ', fixValue: 3, diceStr: '2d6' },
+    ];
+
+    it('(CE-1) Custom + fixValue=-5 + uniqueDice.sum=22 + phases=[Mid] → fixValue + sum = 17 加算', () => {
+        const startDice = { diceStr: '3d5', values: [3, 3, 3], sum: 9 };
+        const midDice = { diceStr: '2d8', values: [4, 5], sum: 9 };
+        const uniqueDice = { diceStr: '1d30', values: [22], sum: 22 };
+        const uma: Umamusume = {
+            id: 'c1', entryIndex: 1, name: 'Cust', strategy: '先行',
+            uniqueSkill: { type: 'Custom', phases: ['Mid'], customUniqueSkillId: 'cust-a' },
+            gate: 1, score: 0,
+            history: {
+                'Start': { baseDice: startDice, computedScore: 0 },
+                'Mid': { baseDice: midDice, uniqueDice, computedScore: 0 },
+            },
+        };
+        // 先行 fix 10 + Start 9 + Mid 9 + Custom(-5 + 22) = 45
+        expect(
+            Calculator.calculateTotalScore(uma, DEFAULT_STRATEGIES, null, undefined, DEFAULT_UNIQUE_DICE_CONFIG, null, customs)
+        ).toBe(45);
+    });
+
+    it('(CE-2) Custom + fixValue=3 + uniqueDice.sum=7 + phases=[End] → fixValue + sum = 10 加算', () => {
+        const startDice = { diceStr: '3d5', values: [3, 3, 3], sum: 9 };
+        const endDice = { diceStr: '1d7', values: [4], sum: 4 };
+        const uniqueDice = { diceStr: '2d6', values: [3, 4], sum: 7 };
+        const uma: Umamusume = {
+            id: 'c2', entryIndex: 2, name: 'Cust2', strategy: '先行',
+            uniqueSkill: { type: 'Custom', phases: ['End'], customUniqueSkillId: 'cust-b' },
+            gate: 2, score: 0,
+            history: {
+                'Start': { baseDice: startDice, computedScore: 0 },
+                'End': { baseDice: endDice, uniqueDice, computedScore: 0 },
+            },
+        };
+        // 先行 fix 10 + Start 9 + End 4 + Custom(3 + 7) = 33
+        expect(
+            Calculator.calculateTotalScore(uma, DEFAULT_STRATEGIES, null, undefined, DEFAULT_UNIQUE_DICE_CONFIG, null, customs)
+        ).toBe(33);
+    });
+
+    it('(CE-3) Custom + phases=[] → 固有加算なし（フェーズ制限で unique スキップ）', () => {
+        const startDice = { diceStr: '3d5', values: [3, 3, 3], sum: 9 };
+        const midDice = { diceStr: '2d8', values: [4, 5], sum: 9 };
+        const uniqueDice = { diceStr: '1d30', values: [22], sum: 22 };
+        const uma: Umamusume = {
+            id: 'c3', entryIndex: 3, name: 'Cust3', strategy: '先行',
+            uniqueSkill: { type: 'Custom', phases: [], customUniqueSkillId: 'cust-a' },
+            gate: 3, score: 0,
+            history: {
+                'Start': { baseDice: startDice, computedScore: 0 },
+                'Mid': { baseDice: midDice, uniqueDice, computedScore: 0 },
+            },
+        };
+        // 先行 fix 10 + Start 9 + Mid 9 = 28（Custom 分岐は phases 制限で不到達）
+        expect(
+            Calculator.calculateTotalScore(uma, DEFAULT_STRATEGIES, null, undefined, DEFAULT_UNIQUE_DICE_CONFIG, null, customs)
+        ).toBe(28);
+    });
+
+    it('(CE-4) Custom + 参照切れ（id 不在）→ 0 加算防御（防御的フォールバック）', () => {
+        const startDice = { diceStr: '3d5', values: [3, 3, 3], sum: 9 };
+        const midDice = { diceStr: '2d8', values: [4, 5], sum: 9 };
+        const uniqueDice = { diceStr: '1d30', values: [22], sum: 22 };
+        const uma: Umamusume = {
+            id: 'c4', entryIndex: 4, name: 'Cust4', strategy: '先行',
+            uniqueSkill: { type: 'Custom', phases: ['Mid'], customUniqueSkillId: 'cust-x' }, // 参照切れ
+            gate: 4, score: 0,
+            history: {
+                'Start': { baseDice: startDice, computedScore: 0 },
+                'Mid': { baseDice: midDice, uniqueDice, computedScore: 0 },
+            },
+        };
+        // 先行 fix 10 + Start 9 + Mid 9 + Custom(0 + 0 = スキップ) = 28
+        expect(
+            Calculator.calculateTotalScore(uma, DEFAULT_STRATEGIES, null, undefined, DEFAULT_UNIQUE_DICE_CONFIG, null, customs)
+        ).toBe(28);
+    });
+
+    it('(CE-5) Custom + customUniqueSkills 未渡し（省略 = []）→ 0 加算防御', () => {
+        const startDice = { diceStr: '3d5', values: [3, 3, 3], sum: 9 };
+        const midDice = { diceStr: '2d8', values: [4, 5], sum: 9 };
+        const uniqueDice = { diceStr: '1d30', values: [22], sum: 22 };
+        const uma: Umamusume = {
+            id: 'c5', entryIndex: 5, name: 'Cust5', strategy: '先行',
+            uniqueSkill: { type: 'Custom', phases: ['Mid'], customUniqueSkillId: 'cust-a' },
+            gate: 5, score: 0,
+            history: {
+                'Start': { baseDice: startDice, computedScore: 0 },
+                'Mid': { baseDice: midDice, uniqueDice, computedScore: 0 },
+            },
+        };
+        // customUniqueSkills 省略 = デフォルト [] → 参照切れ扱いで 0 加算
+        expect(
+            Calculator.calculateTotalScore(uma, DEFAULT_STRATEGIES, null)
+        ).toBe(28);
+    });
+
+    it('(CE-6) None + phases=[] → 固有加算完全にスキップ（uniqueDice 存在しないはずだが防御的にも 0）', () => {
+        const startDice = { diceStr: '3d5', values: [3, 3, 3], sum: 9 };
+        const midDice = { diceStr: '2d8', values: [4, 5], sum: 9 };
+        const uma: Umamusume = {
+            id: 'n1', entryIndex: 1, name: 'None1', strategy: '先行',
+            uniqueSkill: { type: 'None', phases: [] },
+            gate: 1, score: 0,
+            history: {
+                'Start': { baseDice: startDice, computedScore: 0 },
+                'Mid': { baseDice: midDice, computedScore: 0 },
+            },
+        };
+        // 先行 fix 10 + Start 9 + Mid 9 = 28（None は固有加算経路不到達）
+        expect(
+            Calculator.calculateTotalScore(uma, DEFAULT_STRATEGIES, null)
+        ).toBe(28);
+    });
+
+    it('(CE-7) None × 万一 uniqueDice が存在しても加算しない（防御的、phases 制限で不到達）', () => {
+        const startDice = { diceStr: '3d5', values: [3, 3, 3], sum: 9 };
+        const midDice = { diceStr: '2d8', values: [4, 5], sum: 9 };
+        const uniqueDice = { diceStr: '1d10', values: [8], sum: 8 };
+        const uma: Umamusume = {
+            id: 'n2', entryIndex: 2, name: 'None2', strategy: '先行',
+            uniqueSkill: { type: 'None', phases: [] }, // phases 空 = 加算経路不到達
+            gate: 2, score: 0,
+            history: {
+                'Start': { baseDice: startDice, computedScore: 0 },
+                'Mid': { baseDice: midDice, uniqueDice, computedScore: 0 },
+            },
+        };
+        // phases に 'Mid' 含まれず = 固有加算経路不到達 → 28
+        expect(
+            Calculator.calculateTotalScore(uma, DEFAULT_STRATEGIES, null)
+        ).toBe(28);
+    });
+
+    it('(CE-8) 組み込み Stability は Custom/None 追加後も従来通り 5 + sum 加算（regression）', () => {
+        const startDice = { diceStr: '3d5', values: [3, 3, 3], sum: 9 };
+        const uniqueDice = { diceStr: '1d10', values: [8], sum: 8 };
+        const uma: Umamusume = {
+            id: 's1', entryIndex: 1, name: 'Stab', strategy: '先行',
+            uniqueSkill: { type: 'Stability', phases: ['Start'] },
+            gate: 1, score: 0,
+            history: {
+                'Start': { baseDice: startDice, uniqueDice, computedScore: 0 },
+            },
+        };
+        // 先行 fix 10 + Start 9 + Stability(5 + 8) = 32
+        expect(
+            Calculator.calculateTotalScore(uma, DEFAULT_STRATEGIES, null, undefined, DEFAULT_UNIQUE_DICE_CONFIG, null, customs)
+        ).toBe(32);
+    });
+
+    it('(CE-9) 混在レース: Custom 選択者 (先行特化) + 組み込み (Stability) + None 選択者の 3 名', () => {
+        // Custom fixValue=-5 + uniqueDice.sum=22 = 17 加算（phases=['Mid'] 一致）
+        const p1: Umamusume = {
+            id: 'p1', entryIndex: 1, name: 'A', strategy: '先行',
+            uniqueSkill: { type: 'Custom', phases: ['Mid'], customUniqueSkillId: 'cust-a' },
+            gate: 1, score: 0,
+            history: {
+                'Start': { baseDice: { diceStr: '3d5', values: [], sum: 9 }, computedScore: 0 },
+                'Mid': { baseDice: { diceStr: '2d8', values: [], sum: 9 }, uniqueDice: { diceStr: '1d30', values: [], sum: 22 }, computedScore: 0 },
+            },
+        };
+        // 10 + 9 + 9 + 17 = 45
+        expect(Calculator.calculateTotalScore(p1, DEFAULT_STRATEGIES, null, undefined, DEFAULT_UNIQUE_DICE_CONFIG, null, customs)).toBe(45);
+
+        // Stability fixValue=5 + uniqueDice.sum=8 = 13 加算
+        const p2: Umamusume = {
+            id: 'p2', entryIndex: 2, name: 'B', strategy: '先行',
+            uniqueSkill: { type: 'Stability', phases: ['Start'] },
+            gate: 2, score: 0,
+            history: {
+                'Start': { baseDice: { diceStr: '3d5', values: [], sum: 9 }, uniqueDice: { diceStr: '1d10', values: [], sum: 8 }, computedScore: 0 },
+            },
+        };
+        // 10 + 9 + 13 = 32
+        expect(Calculator.calculateTotalScore(p2, DEFAULT_STRATEGIES, null, undefined, DEFAULT_UNIQUE_DICE_CONFIG, null, customs)).toBe(32);
+
+        // None: 固有加算なし
+        const p3: Umamusume = {
+            id: 'p3', entryIndex: 3, name: 'C', strategy: '先行',
+            uniqueSkill: { type: 'None', phases: [] },
+            gate: 3, score: 0,
+            history: {
+                'Start': { baseDice: { diceStr: '3d5', values: [], sum: 9 }, computedScore: 0 },
+            },
+        };
+        // 10 + 9 = 19
+        expect(Calculator.calculateTotalScore(p3, DEFAULT_STRATEGIES, null, undefined, DEFAULT_UNIQUE_DICE_CONFIG, null, customs)).toBe(19);
     });
 });

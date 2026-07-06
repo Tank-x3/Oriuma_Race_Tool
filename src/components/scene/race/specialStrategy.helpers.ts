@@ -1,4 +1,4 @@
-import type { Umamusume, Strategy, UniqueDiceConfig } from '../../../types';
+import type { Umamusume, Strategy, UniqueDiceConfig, CustomUniqueSkill } from '../../../types';
 import { Calculator } from '../../../core/calculator';
 // CR-SA-15-E2 / 2026-05-15: calculateScoreWithSpecialStrategy の uniqueDiceConfig フォールバック値。
 import { DEFAULT_UNIQUE_DICE_CONFIG } from '../../../core/strategies';
@@ -178,7 +178,10 @@ export const calculateScoreWithSpecialStrategy = (
     // CR-SA-20-E4 / 2026-06-11: 確定済み隊列出目（houserule-features.md §6.5）。
     // 省略時 null = 既存呼び出し・テストは完全に従来挙動（OFF 透過）。
     // enableFormationDice の ON/OFF ゲートは呼び出し側（calculateScoreWithBondSkill）が担う。
-    formationFace: number | null = null
+    formationFace: number | null = null,
+    // CR-SA-21+22-E3 / 2026-07-06: カスタム固有スキル設定（houserule-features.md §8.5）。
+    // 'Custom' 選択者の固定値 lookup 用。省略時は空配列 = 参照切れ扱いで 0 加算防御。
+    customUniqueSkills: readonly CustomUniqueSkill[] = []
 ): number => {
     const filtered = filterAnalyzedHistory(p);
     const baseScore = Calculator.calculateTotalScore(
@@ -187,7 +190,8 @@ export const calculateScoreWithSpecialStrategy = (
         paceFace,
         activePhaseIds,
         uniqueDiceConfig,
-        formationFace
+        formationFace,
+        customUniqueSkills,
     );
     // CR-SA-17-E4 / 2026-06-08: 終盤反動は「最後の終盤フェーズ」取り込み時に反映する。
     // 非ペース列（activePhaseIds）の末尾 = 終盤ブロックの最後（OFF / 終盤 1 = 'End'）。

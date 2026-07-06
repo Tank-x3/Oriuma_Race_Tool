@@ -12,7 +12,7 @@
 // 旧 isUniqueDice（ヒューリスティック完全一致判定）は export 維持で残置するが、
 // 新規 classifyDiceResultsForParticipant では呼び出さない（R-3 で fixValue + diceStr の
 // 組合せ完全一致を直接判定するため重複利用を避ける）。
-import type { UniqueSkillType, DiceResult, UniqueDiceConfig } from '../../../types';
+import type { UniqueSkillType, DiceResult, UniqueDiceConfig, CustomUniqueSkill } from '../../../types';
 import type { ParsedLine } from '../../../core/parser/interface';
 import { stripStrategyAnnotations } from './specialStrategy.helpers';
 // CR-SA-15-E2 / 2026-05-15: R-3 判定の固有期待値入力源（houseRules.uniqueDiceConfig）の
@@ -134,15 +134,25 @@ export const classifyDiceResultsForParticipant = (
     currentPhaseId: string,
     existingBaseDice: DiceResult | undefined,
     uniqueDiceConfig: UniqueDiceConfig = DEFAULT_UNIQUE_DICE_CONFIG,
+    // CR-SA-21+22-E3 / 2026-07-06: カスタム固有スキル対応（scene3-race.md §2 規則 R-3 L218）。
+    // 'Custom' 選択者の期待 (fixValue, diceStr) は customUniqueSkills 経由で取得する。
+    // 'None' 選択者は helpers 側で expectedDiceStr = '' 返却 = R-3 isUniqueMatch が false に収束し
+    // 既存 R-1/R-2 の baseDice 振り分けに自然委譲する（三段判定ロジック自体は不変）。
+    customUniqueSkillId?: string,
+    customUniqueSkills?: readonly CustomUniqueSkill[],
 ): DiceClassificationResult => {
     const result: DiceClassificationResult = {};
     if (parsedLines.length === 0) return result;
 
     const phaseMatches = isCurrentPhaseInUniquePhases(uniqueSkillPhases, currentPhaseId);
     const expectedDiceStr =
-        uniqueSkillType !== undefined ? getExpectedUniqueDiceStr(uniqueSkillType, uniqueDiceConfig) : '';
+        uniqueSkillType !== undefined
+            ? getExpectedUniqueDiceStr(uniqueSkillType, uniqueDiceConfig, customUniqueSkillId, customUniqueSkills)
+            : '';
     const expectedFixValue =
-        uniqueSkillType !== undefined ? getExpectedUniqueFixValue(uniqueSkillType, uniqueDiceConfig) : 0;
+        uniqueSkillType !== undefined
+            ? getExpectedUniqueFixValue(uniqueSkillType, uniqueDiceConfig, customUniqueSkillId, customUniqueSkills)
+            : 0;
 
     const toDiceResult = (
         line: Pick<ParsedLine, 'diceStr' | 'diceResult'>,

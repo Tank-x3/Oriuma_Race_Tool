@@ -7,7 +7,7 @@ import {
     isSecondaryStartPhase,
     getDiceFormulaPrefix,
 } from './phaseOutput.helpers';
-import type { Strategy, Umamusume, UniqueDiceConfig } from '../../../types';
+import type { Strategy, Umamusume, UniqueDiceConfig, CustomUniqueSkill } from '../../../types';
 import { DEFAULT_UNIQUE_DICE_CONFIG } from '../../../core/strategies';
 
 const makeParticipant = (override: Partial<Umamusume> = {}): Umamusume => ({
@@ -288,6 +288,70 @@ describe('CR-SA-15-E2: 固有ダイス 3 関数の uniqueDiceConfig 参照化', 
             expect(getExpectedUniqueFixValue('Stability', config)).toBe(7);
             // getExpectedUniqueFixValue は本ファイルに既存テストがないため引数省略時の挙動も併せて検証
             expect(getExpectedUniqueFixValue('Stability')).toBe(5);
+        });
+    });
+});
+
+// CR-SA-21+22-E3 / 2026-07-06: カスタム固有スキル + 固有スキルなし出走者対応
+// （houserule-features.md §5.3 生成ルール共用 + §8.5 Scene 3 出力・計算 + §2 [v] 固有スキルなし）。
+describe('CR-SA-21+22-E3: 固有ダイス 3 関数の Custom/None 対応', () => {
+    const customs: CustomUniqueSkill[] = [
+        { id: 'cust-a', name: '先行特化', fixValue: -5, diceStr: '1d30' },
+        { id: 'cust-b', name: '安定Ⅲ', fixValue: 3, diceStr: '2d6' },
+        { id: 'cust-c', name: 'ゼロ型', fixValue: 0, diceStr: '1d25' },
+    ];
+
+    describe('getUniqueDiceFormula — Custom / None', () => {
+        it('Custom + fixValue > 0 → "3+dice2d6="（§5.3 生成ルール、組み込み共用）', () => {
+            expect(getUniqueDiceFormula('Custom', DEFAULT_UNIQUE_DICE_CONFIG, 'cust-b', customs)).toBe('3+dice2d6=');
+        });
+        it('Custom + fixValue < 0 → "-5+dice1d30="（負号は数値に含む）', () => {
+            expect(getUniqueDiceFormula('Custom', DEFAULT_UNIQUE_DICE_CONFIG, 'cust-a', customs)).toBe('-5+dice1d30=');
+        });
+        it('Custom + fixValue === 0 → "dice1d25="（fixValue 省略）', () => {
+            expect(getUniqueDiceFormula('Custom', DEFAULT_UNIQUE_DICE_CONFIG, 'cust-c', customs)).toBe('dice1d25=');
+        });
+        it('Custom + 参照切れ（id 不在）→ 空文字（防御）', () => {
+            expect(getUniqueDiceFormula('Custom', DEFAULT_UNIQUE_DICE_CONFIG, 'cust-x', customs)).toBe('');
+        });
+        it('Custom + customUniqueSkills 未渡し → 空文字（防御）', () => {
+            expect(getUniqueDiceFormula('Custom', DEFAULT_UNIQUE_DICE_CONFIG, 'cust-a')).toBe('');
+        });
+        it('Custom + customUniqueSkillId 未指定 → 空文字（防御）', () => {
+            expect(getUniqueDiceFormula('Custom', DEFAULT_UNIQUE_DICE_CONFIG, undefined, customs)).toBe('');
+        });
+        it('None → 空文字（固有ダイスセクションから自然除外）', () => {
+            expect(getUniqueDiceFormula('None')).toBe('');
+        });
+        it('組み込み 7 タイプは Custom/None 追加で挙動不変（Stability → "5+dice1d10="）', () => {
+            expect(getUniqueDiceFormula('Stability', DEFAULT_UNIQUE_DICE_CONFIG, 'cust-a', customs)).toBe('5+dice1d10=');
+        });
+    });
+
+    describe('getExpectedUniqueDiceStr — Custom / None', () => {
+        it('Custom → カスタム定義の diceStr（"2d6"）', () => {
+            expect(getExpectedUniqueDiceStr('Custom', DEFAULT_UNIQUE_DICE_CONFIG, 'cust-b', customs)).toBe('2d6');
+        });
+        it('Custom + 参照切れ → 空文字', () => {
+            expect(getExpectedUniqueDiceStr('Custom', DEFAULT_UNIQUE_DICE_CONFIG, 'cust-x', customs)).toBe('');
+        });
+        it('None → 空文字', () => {
+            expect(getExpectedUniqueDiceStr('None')).toBe('');
+        });
+    });
+
+    describe('getExpectedUniqueFixValue — Custom / None', () => {
+        it('Custom → カスタム定義の fixValue（-5）', () => {
+            expect(getExpectedUniqueFixValue('Custom', DEFAULT_UNIQUE_DICE_CONFIG, 'cust-a', customs)).toBe(-5);
+        });
+        it('Custom + fixValue === 0 → 0', () => {
+            expect(getExpectedUniqueFixValue('Custom', DEFAULT_UNIQUE_DICE_CONFIG, 'cust-c', customs)).toBe(0);
+        });
+        it('Custom + 参照切れ → 0（防御）', () => {
+            expect(getExpectedUniqueFixValue('Custom', DEFAULT_UNIQUE_DICE_CONFIG, 'cust-x', customs)).toBe(0);
+        });
+        it('None → 0', () => {
+            expect(getExpectedUniqueFixValue('None')).toBe(0);
         });
     });
 });

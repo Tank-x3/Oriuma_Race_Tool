@@ -120,7 +120,14 @@ export const RaceScene: React.FC = () => {
                 if (shouldHave && hasUnique) {
                     // Bundle-2 / D-1, D-14 / 2026-05-09: 拡張固有タイプ含む 5 種を helpers 経由で取得
                     // CR-SA-15-E2 / 2026-05-15: 固有期待ダイス式を houseRules.uniqueDiceConfig 参照化
-                    const expU = getExpectedUniqueDiceStr(p.uniqueSkill.type, config.houseRules.uniqueDiceConfig);
+                    // CR-SA-21+22-E3 / 2026-07-06: カスタム固有選択者は customUniqueSkills 経由の
+                    // 期待 diceStr、'None' 選択者は phases=[] により shouldHave=false = 本ブロック不到達。
+                    const expU = getExpectedUniqueDiceStr(
+                        p.uniqueSkill.type,
+                        config.houseRules.uniqueDiceConfig,
+                        p.uniqueSkill.customUniqueSkillId,
+                        config.houseRules.customUniqueSkills,
+                    );
                     if (history.uniqueDice?.diceStr !== expU) return true;
                 }
 
@@ -163,13 +170,15 @@ export const RaceScene: React.FC = () => {
                     : null;
             participants.forEach(p => {
                 // CR-SA-15-E2 / 2026-05-15: 固有固定値を houseRules.uniqueDiceConfig 参照化
+                // CR-SA-21+22-E3 / 2026-07-06: カスタム固有スキルの固定値加算に customUniqueSkills を伝播。
                 const totalScore = Calculator.calculateTotalScore(
                     p,
                     strategies,
                     paceResult.face,
                     getActivePhaseIdsForConfig(config),
                     config.houseRules.uniqueDiceConfig,
-                    formationFace
+                    formationFace,
+                    config.houseRules.customUniqueSkills,
                 );
                 // Only update if changed (optimization)
                 if (totalScore !== p.score) {
