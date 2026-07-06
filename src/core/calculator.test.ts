@@ -271,12 +271,14 @@ describe('Calculator', () => {
             expect(score).toBe(24);
         });
 
-        // CR-SA-19 / 2026-06-06 ★複数ダイス合算の核心: 安定型Ⅱ（fixValue 0 + 2d7）。
-        // 固有スキル初の複数ダイス（count >= 2）。uniqueDice.sum が 2 個出目の合算（3+5=8）であることを検証。
-        it('adds StabilityII (0 + 複数ダイス sum) and sums 2 dice values correctly', () => {
-            // 先行 (Fix 10), Start dice 9, StabilityII 2d7 → [3, 5] sum 8
+        // CR-SA-19 / 2026-06-06 ★複数ダイス合算の核心: 安定型Ⅱ（fixValue 0 + 複数ダイス）。
+        // CR-SA-19-Followup / 2026-07-06: 安定型Ⅱ の diceStr を '2d7' → '7d2' に修正
+        //（振れ幅 7〜14 / 期待値 10.5、houserule-features.md §5.2 / §5.4 SSoT）。
+        // 固有スキル初の複数ダイス（count >= 2）。uniqueDice.sum が 7 個出目の合算であることを検証。
+        it('adds StabilityII (0 + 複数ダイス sum) and sums 7 dice values correctly', () => {
+            // 先行 (Fix 10), Start dice 9, StabilityII 7d2 → [1,1,1,2,2,2,2] sum 11
             const startDice = { diceStr: '3d5', values: [3, 3, 3], sum: 9 };
-            const uniqueDice = { diceStr: '2d7', values: [3, 5], sum: 8 };
+            const uniqueDice = { diceStr: '7d2', values: [1, 1, 1, 2, 2, 2, 2], sum: 11 };
 
             const uma: Umamusume = {
                 ...mockUma,
@@ -287,8 +289,8 @@ describe('Calculator', () => {
             };
 
             const score = Calculator.calculateTotalScore(uma, DEFAULT_STRATEGIES, null);
-            // Fix 10 + Start 9 + Unique (0 + 8) = 27（2 個出目 3+5 が合算されて加算される）
-            expect(score).toBe(27);
+            // Fix 10 + Start 9 + Unique (0 + 11) = 30（7 個出目 1+1+1+2+2+2+2 が合算されて加算される）
+            expect(score).toBe(30);
         });
     });
 

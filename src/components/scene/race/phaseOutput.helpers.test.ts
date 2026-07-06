@@ -75,9 +75,11 @@ describe('phaseOutput.helpers - Bundle-2 / D-1, D-14 / 2026-05-09', () => {
             expect(getUniqueDiceFormula('GambleII')).toBe('-20+dice1d45=');
         });
 
-        // CR-SA-19 / 2026-06-06: 安定型Ⅱ（fixValue 0 → ダイス式のみ、複数ダイス 2d7）の出力フォーマット
-        it('returns "dice2d7=" for StabilityII (CR-SA-19, 複数ダイス)', () => {
-            expect(getUniqueDiceFormula('StabilityII')).toBe('dice2d7=');
+        // CR-SA-19 / 2026-06-06: 安定型Ⅱ（fixValue 0 → ダイス式のみ、複数ダイス）の出力フォーマット
+        // CR-SA-19-Followup / 2026-07-06: 安定型Ⅱ の diceStr を '2d7' → '7d2' に修正
+        //（振れ幅 7〜14 / 期待値 10.5、houserule-features.md §5.2 / §5.4 SSoT）。
+        it('returns "dice7d2=" for StabilityII (CR-SA-19-Followup, 複数ダイス)', () => {
+            expect(getUniqueDiceFormula('StabilityII')).toBe('dice7d2=');
         });
     });
 

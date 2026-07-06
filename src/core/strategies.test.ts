@@ -135,8 +135,10 @@ describe('DEFAULT_UNIQUE_DICE_CONFIG - CR-SA-15-E1', () => {
         expect(DEFAULT_UNIQUE_DICE_CONFIG.Persistent).toEqual({ fixValue: 0, diceStr: '1d10' });
         expect(DEFAULT_UNIQUE_DICE_CONFIG.SuperGamble).toEqual({ fixValue: -10, diceStr: '1d35' });
         expect(DEFAULT_UNIQUE_DICE_CONFIG.SuperStability).toEqual({ fixValue: 8, diceStr: '1d3' });
-        // CR-SA-19 / 2026-06-06: ギャンブル型Ⅱ（-20/1d45）/ 安定型Ⅱ（0/2d7）
+        // CR-SA-19 / 2026-06-06: ギャンブル型Ⅱ（-20/1d45）/ 安定型Ⅱ 追加
+        // CR-SA-19-Followup / 2026-07-06: 安定型Ⅱ の diceStr を '2d7' → '7d2' に修正
+        //（振れ幅 7〜14 / 期待値 10.5、houserule-features.md §5.2 / §5.4 SSoT）。
         expect(DEFAULT_UNIQUE_DICE_CONFIG.GambleII).toEqual({ fixValue: -20, diceStr: '1d45' });
-        expect(DEFAULT_UNIQUE_DICE_CONFIG.StabilityII).toEqual({ fixValue: 0, diceStr: '2d7' });
+        expect(DEFAULT_UNIQUE_DICE_CONFIG.StabilityII).toEqual({ fixValue: 0, diceStr: '7d2' });
     });
 });

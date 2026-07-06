@@ -56,8 +56,11 @@ export const DEFAULT_STRATEGIES: Strategy[] = [
 // 永続化マイグレーションのデフォルト補完値として参照される。E2 で既存ハードコード関数が
 // 本定数 + state 参照（state 優先 + デフォルトフォールバック、getStrategy / getPaceModifier 同パターン）
 // へ切り替わる。
-// CR-SA-19 / 2026-06-06: ギャンブル型Ⅱ（-20/1d45）/ 安定型Ⅱ（0/2d7）を追加（houserule-features.md §5.2 表 SSoT）。
-// 安定型Ⅱの diceStr '2d7' は固有スキル初の複数ダイス（count >= 2）。Dice.parse / calculator の sum 合算で透過対応。
+// CR-SA-19 / 2026-06-06: ギャンブル型Ⅱ（-20/1d45）/ 安定型Ⅱ を追加（houserule-features.md §5.2 表 SSoT）。
+// 安定型Ⅱの diceStr は固有スキル初の複数ダイス（count >= 2）。Dice.parse / calculator の sum 合算で透過対応。
+// CR-SA-19-Followup / 2026-07-06: 安定型Ⅱ の diceStr を '2d7' → '7d2' に修正（houserule-features.md §5.2 / §5.4 マイグレ節 SSoT）。
+// 振れ幅 7〜14、期待値 10.5、安定型と同期待値かつ振れ幅を狭めた上位安定枠。
+// 複数ダイス扱いは不変で Dice.parse / calculator の sum 合算で透過対応。
 export const DEFAULT_UNIQUE_DICE_CONFIG: UniqueDiceConfig = {
     Stability: { fixValue: 5, diceStr: '1d10' },
     Gamble: { fixValue: 0, diceStr: '1d20' },
@@ -65,7 +68,7 @@ export const DEFAULT_UNIQUE_DICE_CONFIG: UniqueDiceConfig = {
     SuperGamble: { fixValue: -10, diceStr: '1d35' },
     SuperStability: { fixValue: 8, diceStr: '1d3' },
     GambleII: { fixValue: -20, diceStr: '1d45' },
-    StabilityII: { fixValue: 0, diceStr: '2d7' },
+    StabilityII: { fixValue: 0, diceStr: '7d2' },
 };
 
 // Bundle-10-Followup-runtime-sync / 2026-05-11: state.strategies の paceModifiers を優先参照。

@@ -92,7 +92,7 @@ describe('uniqueSkillEditor.helpers - createDefaultResetFormState', () => {
         expect(createDefaultResetFormState('SuperGamble')).toEqual({ fixValue: '-10', diceStr: '1d35' });
         expect(createDefaultResetFormState('SuperStability')).toEqual({ fixValue: '8', diceStr: '1d3' });
         expect(createDefaultResetFormState('GambleII')).toEqual({ fixValue: '-20', diceStr: '1d45' });
-        expect(createDefaultResetFormState('StabilityII')).toEqual({ fixValue: '0', diceStr: '2d7' });
+        expect(createDefaultResetFormState('StabilityII')).toEqual({ fixValue: '0', diceStr: '7d2' });
     });
 });
 

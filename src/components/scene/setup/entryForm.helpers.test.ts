@@ -43,7 +43,7 @@ describe('entryForm.helpers - Bundle-2 / D-1, D-14 / 2026-05-09', () => {
             const g2 = options.find(o => o.type === 'GambleII');
             const s2 = options.find(o => o.type === 'StabilityII');
             expect(g2?.label).toBe('ギャンブルⅡ (-20+1d45)');
-            expect(s2?.label).toBe('安定Ⅱ (2d7)');
+            expect(s2?.label).toBe('安定Ⅱ (7d2)');
             expect(options.find(o => o.type === 'Persistent')).toBeUndefined();
         });
 

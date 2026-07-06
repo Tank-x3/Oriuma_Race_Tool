@@ -201,7 +201,12 @@ export const PRESET_KEY_PREFIX = 'race-store-presets:';
 // 固有スキルなし出走者の追加前）→ version=10 への補完を persistMigrate で実施
 // （houseRulesSchema の .default([]) / .default(false) 経路で透過対応、houserule-features.md §8.7 SSoT。
 // カスタム固有 / 固有スキルなし出走者を合同で 1 回バンプすることでバージョン繰り上げの乱発を防止する）。
-export const PERSIST_VERSION = 10;
+// CR-SA-19-Followup-fix-stabilityII-dice / 2026-07-06: PERSIST_VERSION 10 → 11 にバンプ。
+// version=10 以前旧データで `houseRules.uniqueDiceConfig.StabilityII.diceStr === '2d7'` を保持している場合、
+// 無条件に `'7d2'` へ強制置換する。`fixValue`（`0`）は不変、他 6 タイプ不変。GM 意図的カスタム保存はないもの
+// として扱う（houserule-features.md §5.4 マイグレ節 SSoT）。強制置換は persistMigrate 内のみで行い、
+// JSON プリセット Import 経路（loadPreset の zod 検証）は '2d7' を引き続き受理する（GM 明示指定は尊重）。
+export const PERSIST_VERSION = 11;
 export const RESTORE_ERROR_MESSAGE = '保存データの復元に失敗しました。新規セッションを開始します。';
 
 // CR-SA-17-E1 / 2026-06-06: ペース挿入位置のデフォルト値（houserule-features.md §7.2 / §7.5）。
@@ -287,6 +292,21 @@ export const persistMigrate = (persistedState: unknown, version: number): Persis
             ...(persistedHouseRules.uniqueDiceConfig ?? {}),
         },
     };
+
+    // CR-SA-19-Followup / 2026-07-06: v10 以前データの StabilityII.diceStr === '2d7' を '7d2' へ強制置換。
+    // fixValue（0）不変、他 6 タイプ不変、他 HR フィールド不変。JSON プリセット Import 経路は対象外
+    // （loadPreset の zod は '2d7' も valid として受理）= 本置換は persistMigrate 内のみ
+    // （houserule-features.md §5.4 マイグレ節 SSoT）。version 引数分岐は不要（条件 === '2d7' そのものが
+    // v10 以前限定条件と等価。v11 以降で誤混入した場合も是正される安全側動作）。
+    if (mergedHouseRules.uniqueDiceConfig.StabilityII?.diceStr === '2d7') {
+        mergedHouseRules.uniqueDiceConfig = {
+            ...mergedHouseRules.uniqueDiceConfig,
+            StabilityII: {
+                ...mergedHouseRules.uniqueDiceConfig.StabilityII,
+                diceStr: '7d2',
+            },
+        };
+    }
 
     const validation = houseRulesSchema.safeParse(mergedHouseRules);
     if (!validation.success) {

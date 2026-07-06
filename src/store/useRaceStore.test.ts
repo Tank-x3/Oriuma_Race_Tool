@@ -778,7 +778,8 @@ describe('CR-5a: zustand persist 設定', () => {
         // CR-SA-20-E1 / 2026-06-11: 7 → 8 にバンプ（enableFormationDice 追加）
         // CR-SA-20-E4 / 2026-06-11: 8 → 9 にバンプ（formationResult 追加）
         // CR-SA-21+22-E1 / 2026-07-06: 9 → 10 にバンプ（enableNoUniqueSkill / customUniqueSkills 追加）
-        expect(PERSIST_VERSION).toBe(10);
+        // CR-SA-19-Followup / 2026-07-06: 10 → 11 にバンプ（安定型Ⅱ diceStr '2d7'→'7d2' 強制置換マイグレ）
+        expect(PERSIST_VERSION).toBe(11);
         expect(PERSIST_NAME).toBe('race-store');
     });
 
@@ -2496,6 +2497,218 @@ describe('useRaceStore.persistMigrate - Bundle-8-T1 / v2→v3 マイグレーシ
         expect(result.config.houseRules.enableNoUniqueSkill).toBe(true);
         expect(result.config.houseRules.customUniqueSkills).toEqual(entries);
     });
+
+    // CR-SA-19-Followup / 2026-07-06 ★最重要: v10 旧データ（StabilityII.diceStr === '2d7'）→
+    // persistMigrate で '7d2' へ強制置換される。fixValue（0）不変、他 6 タイプ不変、他 HR フィールド不変
+    //（houserule-features.md §5.4 マイグレ節 SSoT）。
+    it('(xi) v10 旧データ → StabilityII.diceStr が \'2d7\' → \'7d2\' へ強制置換 + fixValue / 他タイプ / 他 HR フィールド不変', () => {
+        const v10Persisted = {
+            config: {
+                midPhaseCount: 2,
+                fullGateSize: 14,
+                startPhaseCount: 2,
+                endPhaseCount: 3,
+                pacePosition: 'Mid1',
+                houseRules: {
+                    enableModifier: true,
+                    enableSpecialStrategy: false,
+                    enableCompositeUnique: false,
+                    enableExtendedUnique: true,
+                    enableBondSkill: false,
+                    effectValue: 42,
+                    uniqueDiceConfig: {
+                        Stability: { fixValue: 6, diceStr: '1d12' }, // カスタム値（保持されること）
+                        Gamble: { fixValue: 0, diceStr: '1d20' },
+                        Persistent: { fixValue: 0, diceStr: '1d10' },
+                        SuperGamble: { fixValue: -10, diceStr: '1d35' },
+                        SuperStability: { fixValue: 8, diceStr: '1d3' },
+                        GambleII: { fixValue: -20, diceStr: '1d45' },
+                        // ★ v10 以前の誤指定値（強制置換対象）
+                        StabilityII: { fixValue: 0, diceStr: '2d7' },
+                    },
+                    enablePhaseConfig: true,
+                    enableFormationDice: true,
+                    enableNoUniqueSkill: true,
+                    customUniqueSkills: [
+                        { id: 'cs-1', name: 'カスタム A', fixValue: 3, diceStr: '2d7' }, // ← カスタム側は不変
+                    ],
+                },
+            },
+            participants: [],
+            currentPhaseId: 'Mid1',
+            paceResult: { face: 7, label: 'High' },
+            formationResult: { face: 5, label: '普通' },
+            strategies: [],
+            gateAssignments: null,
+            appliedPresetName: 'マイ設定v10',
+            isPresetDirty: true,
+            uiState: { scene: 'race' },
+        } as unknown as PersistedRaceState;
+
+        const result = persistMigrate(v10Persisted, 10);
+
+        // ★ StabilityII.diceStr は '7d2' へ強制置換される
+        expect(result.config.houseRules.uniqueDiceConfig.StabilityII).toEqual({
+            fixValue: 0,
+            diceStr: '7d2',
+        });
+        // fixValue（0）不変（強制置換は diceStr のみ）
+        expect(result.config.houseRules.uniqueDiceConfig.StabilityII.fixValue).toBe(0);
+        // 他 6 タイプ不変（Stability のカスタム値含む）
+        expect(result.config.houseRules.uniqueDiceConfig.Stability).toEqual({ fixValue: 6, diceStr: '1d12' });
+        expect(result.config.houseRules.uniqueDiceConfig.Gamble).toEqual({ fixValue: 0, diceStr: '1d20' });
+        expect(result.config.houseRules.uniqueDiceConfig.Persistent).toEqual({ fixValue: 0, diceStr: '1d10' });
+        expect(result.config.houseRules.uniqueDiceConfig.SuperGamble).toEqual({ fixValue: -10, diceStr: '1d35' });
+        expect(result.config.houseRules.uniqueDiceConfig.SuperStability).toEqual({ fixValue: 8, diceStr: '1d3' });
+        expect(result.config.houseRules.uniqueDiceConfig.GambleII).toEqual({ fixValue: -20, diceStr: '1d45' });
+        // 他 HR フィールド完全不変
+        expect(result.config.houseRules.enableModifier).toBe(true);
+        expect(result.config.houseRules.enableExtendedUnique).toBe(true);
+        expect(result.config.houseRules.effectValue).toBe(42);
+        expect(result.config.houseRules.enablePhaseConfig).toBe(true);
+        expect(result.config.houseRules.enableFormationDice).toBe(true);
+        expect(result.config.houseRules.enableNoUniqueSkill).toBe(true);
+        // カスタム固有スキル側の '2d7' は強制置換対象外（HR uniqueDiceConfig.StabilityII のみが対象）
+        expect(result.config.houseRules.customUniqueSkills).toEqual([
+            { id: 'cs-1', name: 'カスタム A', fixValue: 3, diceStr: '2d7' },
+        ]);
+        // config 直下フィールド保持
+        expect(result.config.midPhaseCount).toBe(2);
+        expect(result.config.fullGateSize).toBe(14);
+        expect(result.config.startPhaseCount).toBe(2);
+        expect(result.config.endPhaseCount).toBe(3);
+        expect(result.config.pacePosition).toBe('Mid1');
+        expect(result.formationResult).toEqual({ face: 5, label: '普通' });
+        expect(result.paceResult).toEqual({ face: 7, label: 'High' });
+        expect(result.appliedPresetName).toBe('マイ設定v10');
+        expect(result.isPresetDirty).toBe(true);
+    });
+
+    // CR-SA-19-Followup / 2026-07-06: v10 旧データで StabilityII.diceStr が '2d7' 以外の
+    // カスタム値（例: '3d8'）→ 強制置換対象外 = 現状値保持（GM 明示カスタム設定の運用意思を尊重）。
+    it('(xii) v10 旧データ StabilityII.diceStr が \'2d7\' 以外のカスタム値 → 強制置換されずそのまま保持', () => {
+        const v10Persisted = {
+            config: {
+                midPhaseCount: 1,
+                fullGateSize: null,
+                startPhaseCount: 1,
+                endPhaseCount: 1,
+                pacePosition: 'Start',
+                houseRules: {
+                    enableModifier: false,
+                    enableSpecialStrategy: false,
+                    enableCompositeUnique: false,
+                    enableExtendedUnique: false,
+                    enableBondSkill: false,
+                    effectValue: 15,
+                    uniqueDiceConfig: {
+                        ...DEFAULT_UNIQUE_DICE_CONFIG,
+                        // GM の明示カスタム設定（強制置換対象外）
+                        StabilityII: { fixValue: 2, diceStr: '3d8' },
+                    },
+                    enablePhaseConfig: false,
+                    enableFormationDice: false,
+                    enableNoUniqueSkill: false,
+                    customUniqueSkills: [],
+                },
+            },
+            participants: [],
+            currentPhaseId: 'setup',
+            paceResult: { face: null, label: null },
+            formationResult: { face: null, label: null },
+            strategies: [],
+            gateAssignments: null,
+            appliedPresetName: null,
+            isPresetDirty: false,
+            uiState: { scene: 'setup' },
+        } as unknown as PersistedRaceState;
+
+        const result = persistMigrate(v10Persisted, 10);
+
+        // '3d8' はそのまま保持（強制置換の適用条件 === '2d7' に該当しない）
+        expect(result.config.houseRules.uniqueDiceConfig.StabilityII).toEqual({
+            fixValue: 2,
+            diceStr: '3d8',
+        });
+    });
+
+    // CR-SA-19-Followup / 2026-07-06: uniqueDiceConfig フィールド自体が欠落する超旧データ（v3 以前）→
+    // 既存の DEFAULT ネスト補完で StabilityII が '7d2' として復元される
+    //（DEFAULT_UNIQUE_DICE_CONFIG.StabilityII が新値 '7d2'）。
+    it('(xiii) uniqueDiceConfig 欠落の超旧データ → DEFAULT ネスト補完で StabilityII.diceStr が \'7d2\' で埋まる', () => {
+        const superLegacyPersisted = {
+            config: {
+                midPhaseCount: 1,
+                fullGateSize: null,
+                houseRules: {
+                    enableModifier: false,
+                    enableSpecialStrategy: false,
+                    enableCompositeUnique: false,
+                    // uniqueDiceConfig / enableExtendedUnique / effectValue 等の後追加フィールドは欠落
+                },
+            },
+            participants: [],
+            currentPhaseId: 'setup',
+            paceResult: { face: null, label: null },
+            strategies: [],
+            gateAssignments: null,
+            uiState: { scene: 'setup' },
+        } as unknown as PersistedRaceState;
+
+        const result = persistMigrate(superLegacyPersisted, 3);
+
+        // DEFAULT ネスト補完で全 7 タイプがデフォルト = StabilityII は '7d2'
+        expect(result.config.houseRules.uniqueDiceConfig.StabilityII).toEqual({
+            fixValue: 0,
+            diceStr: '7d2',
+        });
+        // 他 6 タイプも DEFAULT で補完される（regression 確認）
+        expect(result.config.houseRules.uniqueDiceConfig.Stability).toEqual({ fixValue: 5, diceStr: '1d10' });
+        expect(result.config.houseRules.uniqueDiceConfig.GambleII).toEqual({ fixValue: -20, diceStr: '1d45' });
+    });
+
+    // CR-SA-19-Followup / 2026-07-06: v11 相当データ透過保持テスト。
+    // StabilityII.diceStr が '7d2' の場合は強制置換条件（=== '2d7'）に該当しないため無変更で通過する。
+    it('(xiv) v11 相当データ（StabilityII.diceStr === \'7d2\'）→ 全フィールド透過保持', () => {
+        const v11Persisted = {
+            config: {
+                midPhaseCount: 1,
+                fullGateSize: null,
+                startPhaseCount: 1,
+                endPhaseCount: 1,
+                pacePosition: 'Start',
+                houseRules: {
+                    enableModifier: false,
+                    enableSpecialStrategy: false,
+                    enableCompositeUnique: false,
+                    enableExtendedUnique: false,
+                    enableBondSkill: false,
+                    effectValue: 15,
+                    uniqueDiceConfig: DEFAULT_UNIQUE_DICE_CONFIG, // 新デフォルトで StabilityII = '7d2'
+                    enablePhaseConfig: false,
+                    enableFormationDice: false,
+                    enableNoUniqueSkill: false,
+                    customUniqueSkills: [],
+                },
+            },
+            participants: [],
+            currentPhaseId: 'setup',
+            paceResult: { face: null, label: null },
+            formationResult: { face: null, label: null },
+            strategies: [],
+            gateAssignments: null,
+            appliedPresetName: null,
+            isPresetDirty: false,
+            uiState: { scene: 'setup' },
+        } as unknown as PersistedRaceState;
+
+        const result = persistMigrate(v11Persisted, 11);
+
+        expect(result.config.houseRules.uniqueDiceConfig.StabilityII).toEqual({
+            fixValue: 0,
+            diceStr: '7d2',
+        });
+    });
 });
 
 // Bundle-8-T6 / CR-SA-4 / 2026-05-10: 絆スキル スコア最終加算のストア統合テスト。
@@ -3896,14 +4109,15 @@ describe('CR-SA-16-E1 / 2026-05-15 appliedPresetName + isPresetDirty', () => {
         expect(migrated.isPresetDirty).toBe(false);
     });
 
-    // (S18) PERSIST_VERSION === 10（バンプの構造的証跡）
+    // (S18) PERSIST_VERSION === 11（バンプの構造的証跡）
     // CR-SA-19 / 2026-06-06: 5 → 6（uniqueDiceConfig 旧 5 キー → 新 7 キー補完）
     // CR-SA-17-E1 / 2026-06-06: 6 → 7（enablePhaseConfig + config 3 フィールド追加）
     // CR-SA-20-E1 / 2026-06-11: 7 → 8（enableFormationDice 追加）
     // CR-SA-20-E4 / 2026-06-11: 8 → 9（formationResult 追加）
     // CR-SA-21+22-E1 / 2026-07-06: 9 → 10（enableNoUniqueSkill / customUniqueSkills 追加）
-    it('(S18) PERSIST_VERSION === 10', () => {
-        expect(PERSIST_VERSION).toBe(10);
+    // CR-SA-19-Followup / 2026-07-06: 10 → 11（安定型Ⅱ diceStr '2d7'→'7d2' 強制置換マイグレ）
+    it('(S18) PERSIST_VERSION === 11', () => {
+        expect(PERSIST_VERSION).toBe(11);
     });
 
     // CR-SA-21+22-E1 / 2026-07-06: 初期 state / DEFAULT_HOUSE_RULES に新 2 フィールドが含まれる
