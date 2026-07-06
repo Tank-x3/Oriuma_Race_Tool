@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { UniqueDiceConfig } from '../../../types';
+import type { CustomUniqueSkill, UniqueDiceConfig } from '../../../types';
 import { DEFAULT_UNIQUE_DICE_CONFIG } from '../../../core/strategies';
 import {
     formatUniqueDiceLabel,
@@ -9,6 +9,10 @@ import {
     getSpecialStrategyPhaseOptions,
     getBondSkillTypeOptions,
     getSpecialStrategyTypeOptions,
+    encodeCustomUniqueValue,
+    encodeUniqueSkillSelectValue,
+    decodeUniqueSkillValue,
+    CUSTOM_UNIQUE_VALUE_PREFIX,
 } from './entryForm.helpers';
 
 describe('entryForm.helpers - Bundle-2 / D-1, D-14 / 2026-05-09', () => {
@@ -233,6 +237,118 @@ describe('entryForm.helpers - Bundle-8-T2 / 2 行レイアウト判定', () => {
             const options = getSpecialStrategyTypeOptions();
             expect(options.map(o => o.type)).toEqual(['Makuri', 'Tame']);
             expect(options.map(o => o.label)).toEqual(['捲り', '溜め']);
+        });
+    });
+});
+
+// CR-SA-22 / CR-SA-21 / CR-SA-21+22-E2 / 2026-07-06:
+// 「なし」+ カスタム連動 + select value エンコード規則の SSoT テスト
+// （scene1-setup.md §2 L181-194 SSoT）。
+describe('entryForm.helpers - CR-SA-21+22-E2 / 「なし」+ カスタム対応', () => {
+    describe('getUniqueSkillTypeOptions - 「なし」+ カスタム連動', () => {
+        it('enableNoUniqueSkill=false + カスタムなし → 既存挙動と完全同一（後方互換）', () => {
+            const options = getUniqueSkillTypeOptions(false, false, DEFAULT_UNIQUE_DICE_CONFIG, false, []);
+            expect(options.map(o => o.type)).toEqual(['Stability', 'Gamble']);
+        });
+
+        it('enableNoUniqueSkill=true → 「なし」が先頭（`---` 直後）に追加、ラベル固定 = `なし`', () => {
+            const options = getUniqueSkillTypeOptions(false, false, DEFAULT_UNIQUE_DICE_CONFIG, true, []);
+            expect(options).toHaveLength(3);
+            expect(options[0]).toEqual({ type: 'None', value: 'None', label: 'なし' });
+            expect(options.slice(1).map(o => o.type)).toEqual(['Stability', 'Gamble']);
+        });
+
+        it('カスタム 2 件登録あり → 末尾に登録順で追加、ラベルは fixValue 符号別で動的生成', () => {
+            const customs: CustomUniqueSkill[] = [
+                { id: 'id-a', name: '先行特化', fixValue: 0, diceStr: '1d25' },
+                { id: 'id-b', name: '逃げ加速', fixValue: -5, diceStr: '1d30' },
+            ];
+            const options = getUniqueSkillTypeOptions(false, false, DEFAULT_UNIQUE_DICE_CONFIG, false, customs);
+            expect(options).toHaveLength(4);
+            expect(options[2]).toEqual({
+                type: 'Custom',
+                value: 'Custom:id-a',
+                label: '先行特化 (1d25)',
+                customUniqueSkillId: 'id-a',
+            });
+            expect(options[3]).toEqual({
+                type: 'Custom',
+                value: 'Custom:id-b',
+                label: '逃げ加速 (-5+1d30)',
+                customUniqueSkillId: 'id-b',
+            });
+        });
+
+        it('全表示（Extended ON + Composite ON + NoUnique ON + カスタム 1 件）の並び順は SSoT L186 と一致', () => {
+            const customs: CustomUniqueSkill[] = [
+                { id: 'x', name: 'A', fixValue: 0, diceStr: '1d10' },
+            ];
+            const options = getUniqueSkillTypeOptions(true, true, DEFAULT_UNIQUE_DICE_CONFIG, true, customs);
+            expect(options.map(o => o.type)).toEqual([
+                'None',
+                'Stability',
+                'Gamble',
+                'Persistent',
+                'SuperGamble',
+                'SuperStability',
+                'GambleII',
+                'StabilityII',
+                'Custom',
+            ]);
+        });
+
+        it('カスタムは HR 非依存 = 両 OFF でも末尾に表示される（§8.1 完全独立）', () => {
+            const customs: CustomUniqueSkill[] = [
+                { id: 'x', name: 'A', fixValue: 0, diceStr: '1d10' },
+            ];
+            const options = getUniqueSkillTypeOptions(false, false, DEFAULT_UNIQUE_DICE_CONFIG, false, customs);
+            expect(options.map(o => o.type)).toEqual(['Stability', 'Gamble', 'Custom']);
+        });
+    });
+
+    describe('encode/decode - select value エンコード規則（Custom:<id> / None / 組み込み）', () => {
+        it('encodeCustomUniqueValue は `Custom:<id>` を生成する', () => {
+            expect(encodeCustomUniqueValue('abc-123')).toBe('Custom:abc-123');
+            expect(CUSTOM_UNIQUE_VALUE_PREFIX).toBe('Custom:');
+        });
+
+        it('decodeUniqueSkillValue: 空文字は未選択（type=""）', () => {
+            expect(decodeUniqueSkillValue('')).toEqual({ type: '', customUniqueSkillId: undefined });
+        });
+
+        it('decodeUniqueSkillValue: "None" は type=None（id なし）', () => {
+            expect(decodeUniqueSkillValue('None')).toEqual({ type: 'None', customUniqueSkillId: undefined });
+        });
+
+        it('decodeUniqueSkillValue: "Custom:<id>" は type=Custom + id 分離', () => {
+            expect(decodeUniqueSkillValue('Custom:xyz')).toEqual({
+                type: 'Custom',
+                customUniqueSkillId: 'xyz',
+            });
+        });
+
+        it('decodeUniqueSkillValue: 組み込み型はそのまま返す', () => {
+            expect(decodeUniqueSkillValue('Stability')).toEqual({ type: 'Stability', customUniqueSkillId: undefined });
+            expect(decodeUniqueSkillValue('SuperGamble')).toEqual({ type: 'SuperGamble', customUniqueSkillId: undefined });
+        });
+
+        it('encodeUniqueSkillSelectValue: 各 type から適切な value を生成する（decode の逆）', () => {
+            expect(encodeUniqueSkillSelectValue({ type: '' })).toBe('');
+            expect(encodeUniqueSkillSelectValue({ type: 'None' })).toBe('None');
+            expect(encodeUniqueSkillSelectValue({ type: 'Stability' })).toBe('Stability');
+            expect(encodeUniqueSkillSelectValue({ type: 'Custom', customUniqueSkillId: 'foo' })).toBe('Custom:foo');
+        });
+
+        it('encodeUniqueSkillSelectValue: type=Custom + id なし → 空文字（参照切れ相当 = 未選択扱い）', () => {
+            expect(encodeUniqueSkillSelectValue({ type: 'Custom' })).toBe('');
+        });
+
+        it('encode → decode → encode の往復（Custom）で情報が保存される', () => {
+            const original = { type: 'Custom' as const, customUniqueSkillId: 'my-id' };
+            const encoded = encodeUniqueSkillSelectValue(original);
+            const decoded = decodeUniqueSkillValue(encoded);
+            expect(decoded.type).toBe('Custom');
+            expect(decoded.customUniqueSkillId).toBe('my-id');
         });
     });
 });

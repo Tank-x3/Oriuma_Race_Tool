@@ -1,5 +1,6 @@
 import { Dice } from './dice';
 import { getNonPacePhaseIds } from './phaseSequence';
+import type { Umamusume } from '../types';
 
 // Bundle-3 / D-4 / 2026-05-09: 持続型「連続 2 フェーズ」検証 SA 確定仕様
 // （architecture/validation-responsibilities.md §4 SSoT 準拠）
@@ -159,6 +160,30 @@ export const validateFormationPacePosition = (
     if (!enableFormationDice || !enablePhaseConfig) return [];
     if (pacePosition !== null) return [];
     return ['・隊列(バ群)ダイスを使用する場合はペースが必要です。ペース位置を「なし」以外にするか、隊列ダイスをオフにしてください'];
+};
+
+// CR-SA-22 / CR-SA-21+22-E2 / 2026-07-06: 「固有スキルなしの出走者を許可」OFF ×「なし」選択者の
+// データブロック（scene1-setup.md §Error Handling L312-315 + houserule-features.md §2 [v] Validation SSoT）。
+// UI 経由の OFF 切替は store 副作用（updateHouseRules）で先に強制リセットされるため、本検証は
+// state 復元・プリセット差し替え等の非 UI 経路で「なし」出走者が混入した場合の最終防衛線として働く。
+// エラー文言は L315 SSoT で固定（変更不可）。
+
+/**
+ * `enableNoUniqueSkill = false` かつ `type === 'None'` の出走者が存在する場合にクリティカルエラー。
+ *
+ * `enableNoUniqueSkill = true` のとき、または participants がいない場合は空配列を返す。
+ * 例示名は最初に見つかった当該出走者の `name`（scene1-setup.md L315 の「（例: ウマ娘A）」に合わせる）。
+ */
+export const validateNoUniqueSkillPresence = (
+    enableNoUniqueSkill: boolean,
+    participants: Umamusume[],
+): string[] => {
+    if (enableNoUniqueSkill) return [];
+    const offender = participants.find((p) => p.uniqueSkill.type === 'None');
+    if (!offender) return [];
+    return [
+        `・固有スキルなしが許可されていない設定で「なし」の出走者がいます（例: ${offender.name || '無名の出走者'}）。ハウスルールを見直すか、固有タイプを設定してください`,
+    ];
 };
 
 // Bundle-10-T3 / CR-SA-12 / 2026-05-11: 脚質エディタ Validation 統合

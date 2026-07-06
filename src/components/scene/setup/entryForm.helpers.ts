@@ -1,4 +1,4 @@
-import type { RaceState, UniqueSkillType, UniqueDiceConfig, UniqueDiceEntry } from '../../../types';
+import type { RaceState, UniqueSkillType, UniqueDiceConfig, UniqueDiceEntry, CustomUniqueSkill } from '../../../types';
 // CR-SA-15-E3 Round 2 / 2026-05-15: 固有タイプ選択肢ラベルを uniqueDiceConfig 連動の動的生成に切替
 // （ユーザーフィードバック「実際に計算に使用される値が不明瞭になり混乱を招く」対応）。
 // 引数省略時は DEFAULT_UNIQUE_DICE_CONFIG フォールバック = 既存ハードコードラベルと完全一致
@@ -15,9 +15,72 @@ type HouseRules = RaceState['config']['houseRules'];
 // （houserule-features.md §2 [v] 拡張固有タイプ + [v] 複合固有スキル + §5 固有スキル設定 反映）。
 
 export interface UniqueSkillTypeOption {
+    // CR-SA-21+22-E2 / 2026-07-06: `type` は値域（'Stability' 等の組み込み 7 タイプ / 'None' / 'Custom'）。
+    // `value` は select value 用エンコード済み文字列: 組み込み型・'None' はそのまま、
+    // カスタム参照は 'Custom:<id>' 形式（decode は `decodeUniqueSkillValue` 参照）。
+    // `customUniqueSkillId` はカスタム参照時のみ設定（type === 'Custom'）。
     type: UniqueSkillType;
+    value: string;
     label: string;
+    customUniqueSkillId?: string;
 }
+
+// CR-SA-21+22-E2 / 2026-07-06: select value エンコード規則の SSoT。
+// カスタム固有参照は 'Custom:<id>' で 1 つの文字列に纏め、EntryForm 側の select は
+// 単一 value 制約（string）を維持する。「なし」は 'None' 単独 = 参照 ID 不要。
+export const CUSTOM_UNIQUE_VALUE_PREFIX = 'Custom:';
+
+/**
+ * カスタム固有スキルの select value を組み立てる（'Custom:<id>' 形式）。
+ * 空文字 id は防御的に禁止（呼び出し側の型で担保される想定だが、念のため）。
+ */
+export const encodeCustomUniqueValue = (id: string): string =>
+    `${CUSTOM_UNIQUE_VALUE_PREFIX}${id}`;
+
+/**
+ * 出走者の `uniqueSkill`（`{ type, customUniqueSkillId? }`）から
+ * 対応する select value を組み立てる（decode の逆）。
+ * - `type === ''` / `type === undefined` → `''`
+ * - `type === 'Custom'` + `customUniqueSkillId` → `'Custom:<id>'`
+ * - `type === 'Custom'` + id なし → `''`（参照切れ相当 = 未選択扱い、UI 上は `---`）
+ * - `type === 'None'` → `'None'`
+ * - 組み込み型 → その名前
+ */
+export const encodeUniqueSkillSelectValue = (
+    uniqueSkill: { type: unknown; customUniqueSkillId?: string },
+): string => {
+    const t = uniqueSkill.type;
+    if (t === undefined || t === null || t === '') return '';
+    if (t === 'Custom') {
+        return uniqueSkill.customUniqueSkillId
+            ? encodeCustomUniqueValue(uniqueSkill.customUniqueSkillId)
+            : '';
+    }
+    return String(t);
+};
+
+/**
+ * select value から `{ type, customUniqueSkillId? }` へデコードする。
+ * - `''` → `{ type: '' as UniqueSkillType, customUniqueSkillId: undefined }`（未選択）
+ * - `'None'` → `{ type: 'None' }`
+ * - `'Custom:<id>'` → `{ type: 'Custom', customUniqueSkillId: '<id>' }`
+ * - 組み込み型（`'Stability'` 等）→ `{ type: <組み込み型>, customUniqueSkillId: undefined }`
+ *
+ * 未選択は既存パターン踏襲（EntryForm の onChange 経路互換のため空文字を保持）。
+ * `type` の型は `UniqueSkillType | ''` だが、呼び出し側で `as UniqueSkillType` にキャストする
+ * 既存経路と揃えるため戻り値では `string` として扱う（`updateParticipant` 側の型に委ねる）。
+ */
+export const decodeUniqueSkillValue = (
+    value: string,
+): { type: string; customUniqueSkillId?: string } => {
+    if (value.startsWith(CUSTOM_UNIQUE_VALUE_PREFIX)) {
+        return {
+            type: 'Custom',
+            customUniqueSkillId: value.slice(CUSTOM_UNIQUE_VALUE_PREFIX.length),
+        };
+    }
+    return { type: value, customUniqueSkillId: undefined };
+};
 
 /**
  * 固有タイプ選択肢ラベルの短縮表記を生成する純粋関数。
@@ -56,22 +119,47 @@ export const getUniqueSkillTypeOptions = (
     enableExtendedUnique: boolean,
     enableCompositeUnique: boolean,
     uniqueDiceConfig: UniqueDiceConfig = DEFAULT_UNIQUE_DICE_CONFIG,
+    enableNoUniqueSkill = false,
+    customUniqueSkills: CustomUniqueSkill[] = [],
 ): UniqueSkillTypeOption[] => {
-    const options: UniqueSkillTypeOption[] = [
-        { type: 'Stability', label: formatUniqueDiceLabel('安定', uniqueDiceConfig.Stability) },
-        { type: 'Gamble', label: formatUniqueDiceLabel('ギャンブル', uniqueDiceConfig.Gamble) },
-    ];
+    const options: UniqueSkillTypeOption[] = [];
+
+    // CR-SA-22 / CR-SA-21+22-E2 / 2026-07-06: 「なし」を選択肢の先頭（`---` の直後）に追加
+    // （scene1-setup.md §2 L182 SSoT）。ラベルは固定文字列 `なし`（L194、ダイス式なし）。
+    if (enableNoUniqueSkill) {
+        options.push({ type: 'None', value: 'None', label: 'なし' });
+    }
+
+    options.push(
+        { type: 'Stability', value: 'Stability', label: formatUniqueDiceLabel('安定', uniqueDiceConfig.Stability) },
+        { type: 'Gamble', value: 'Gamble', label: formatUniqueDiceLabel('ギャンブル', uniqueDiceConfig.Gamble) },
+    );
 
     if (enableCompositeUnique) {
-        options.push({ type: 'Persistent', label: formatUniqueDiceLabel('持続型', uniqueDiceConfig.Persistent) });
+        options.push({ type: 'Persistent', value: 'Persistent', label: formatUniqueDiceLabel('持続型', uniqueDiceConfig.Persistent) });
     }
 
     if (enableExtendedUnique) {
-        options.push({ type: 'SuperGamble', label: formatUniqueDiceLabel('超ギャンブル', uniqueDiceConfig.SuperGamble) });
-        options.push({ type: 'SuperStability', label: formatUniqueDiceLabel('超安定', uniqueDiceConfig.SuperStability) });
+        options.push({ type: 'SuperGamble', value: 'SuperGamble', label: formatUniqueDiceLabel('超ギャンブル', uniqueDiceConfig.SuperGamble) });
+        options.push({ type: 'SuperStability', value: 'SuperStability', label: formatUniqueDiceLabel('超安定', uniqueDiceConfig.SuperStability) });
         // CR-SA-19 / 2026-06-06: ギャンブル型Ⅱ / 安定型Ⅱ（短縮ラベルは既存パターン踏襲、modal-houserule.md §4 フル表示名と矛盾しない範囲）。
-        options.push({ type: 'GambleII', label: formatUniqueDiceLabel('ギャンブルⅡ', uniqueDiceConfig.GambleII) });
-        options.push({ type: 'StabilityII', label: formatUniqueDiceLabel('安定Ⅱ', uniqueDiceConfig.StabilityII) });
+        options.push({ type: 'GambleII', value: 'GambleII', label: formatUniqueDiceLabel('ギャンブルⅡ', uniqueDiceConfig.GambleII) });
+        options.push({ type: 'StabilityII', value: 'StabilityII', label: formatUniqueDiceLabel('安定Ⅱ', uniqueDiceConfig.StabilityII) });
+    }
+
+    // CR-SA-21 / CR-SA-21+22-E2 / 2026-07-06: カスタム固有スキルを末尾に登録順で追加
+    // （scene1-setup.md §2 L185-186 + L193 SSoT）。HR 非依存で常時（登録があれば）表示。
+    // ラベル生成規則は組み込み型と同一（formatUniqueDiceLabel 経由、fixValue 符号で 2 パターン）。
+    for (const custom of customUniqueSkills) {
+        options.push({
+            type: 'Custom',
+            value: encodeCustomUniqueValue(custom.id),
+            label: formatUniqueDiceLabel(custom.name, {
+                fixValue: custom.fixValue,
+                diceStr: custom.diceStr,
+            }),
+            customUniqueSkillId: custom.id,
+        });
     }
 
     return options;

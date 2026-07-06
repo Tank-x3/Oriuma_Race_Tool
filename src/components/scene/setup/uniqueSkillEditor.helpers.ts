@@ -6,9 +6,18 @@
 // CR-SA-21+22-E1 / 2026-07-06: 固有スキル設定モーダルは組み込み 7 タイプ専用のため
 // BuiltInUniqueSkillType を使用する（'None' / 'Custom' の編集は §5 対象外、カスタム追加は
 // §8 = E2 スコープで別 UI として提供される）。
-import type { BuiltInUniqueSkillType, UniqueDiceConfig, UniqueDiceEntry } from '../../../types';
+import type { BuiltInUniqueSkillType, CustomUniqueSkill, UniqueDiceConfig, UniqueDiceEntry, Umamusume } from '../../../types';
 import { DEFAULT_UNIQUE_DICE_CONFIG } from '../../../core/strategies';
 import { getUniqueDiceFormula } from '../race/phaseOutput.helpers';
+import { isMidRace } from '../../../core/strategy.helpers';
+import {
+    CUSTOM_UNIQUE_SKILL_NAME_MAX,
+    CUSTOM_UNIQUE_SKILL_NAME_FORBIDDEN_PATTERN,
+    CUSTOM_UNIQUE_SKILL_RESERVED_NAMES,
+} from '../../../core/schema/houseRules';
+// CR-SA-21+22-E2 / 2026-07-06: カスタム固有ラベルは EntryForm 選択肢と同一の生成規則を用いる
+// （scene1-setup.md §2 L189-193 SSoT。表示名 + fixValue 符号別 2 パターン）。
+import { formatUniqueDiceLabel } from './entryForm.helpers';
 
 // 固有スキル 7 タイプの表示名（modal-houserule.md §4 ワイヤーフレーム準拠、編集対象外）。
 // houserule-features.md §5.2「表示名は編集不可」= 固有タイプ識別子に紐づく固定値。
@@ -176,4 +185,192 @@ export function buildUpdatedUniqueDiceConfig(
 export function getUniqueDicePreview(type: BuiltInUniqueSkillType, entry: UniqueDiceEntry): string {
     const config: UniqueDiceConfig = { ...DEFAULT_UNIQUE_DICE_CONFIG, [type]: entry };
     return getUniqueDiceFormula(type, config);
+}
+
+// ===== CR-SA-21+22-E2 / 2026-07-06: カスタム固有スキル用 helpers =====
+// modal-houserule.md §4 追加・編集サブモーダル + Case A/B 削除 + houserule-features.md §8 SSoT。
+// 名称バリデーションは E1 の zod（`customUniqueSkillSchema`）と完全同ルールで UI 側先出し実装。
+
+export interface CustomUniqueFormState {
+    name: string;
+    fixValue: string;
+    diceStr: string;
+}
+
+/**
+ * 追加用の空フォーム。
+ */
+export function createNewCustomFormState(): CustomUniqueFormState {
+    return { name: '', fixValue: '0', diceStr: '' };
+}
+
+/**
+ * 既存カスタム編集時の初期フォーム。
+ */
+export function createEditCustomFormState(skill: CustomUniqueSkill): CustomUniqueFormState {
+    return {
+        name: skill.name,
+        fixValue: String(skill.fixValue),
+        diceStr: skill.diceStr,
+    };
+}
+
+/**
+ * フォーム状態 → CustomUniqueSkill 変換（id は呼び出し側で採番済みのものを渡す）。
+ * fixValue が空欄 / 非数値の場合は 0 にフォールバック（既存 formStateToEntry と同方針。
+ * 厳密検証は validateCustomUniqueSkillName / validateUniqueDiceFixValue / validateDiceFormat 側）。
+ */
+export function formStateToCustomSkill(
+    form: CustomUniqueFormState,
+    id: string,
+): CustomUniqueSkill {
+    const parsed = parseInt(form.fixValue, 10);
+    return {
+        id,
+        name: form.name.trim(),
+        fixValue: Number.isNaN(parsed) ? 0 : parsed,
+        diceStr: form.diceStr.trim(),
+    };
+}
+
+/**
+ * カスタム固有名のリアルタイムバリデーション（modal-houserule.md §Error Handling L302-307 SSoT）。
+ *
+ * 順序（先頭一致で 1 件返却）:
+ * 1. trim 後空 → `固有スキル名を入力してください。`
+ * 2. 20 文字超過 → `固有スキル名は 20 文字以内で入力してください。`
+ * 3. 禁止文字（+ / = / 改行）→ `固有スキル名に計算記号(+, =)や改行は使用できません`
+ * 4. 予約語（組み込み 7 表示名 +「なし」）→ `固有スキル名 'XXX' は既に使用されています…`
+ * 5. 他カスタムとの trim 後重複（編集時は自分自身を除外）→ `固有スキル名 'XXX' は既に使用されています…`
+ *
+ * editingId を渡した場合、同 id のカスタムは重複判定から除外する（編集時の自己重複回避、
+ * strategyEditor の validateStrategyName と同パターン）。
+ */
+export function validateCustomUniqueSkillName(
+    name: string,
+    existingCustoms: CustomUniqueSkill[],
+    editingId?: string,
+): string[] {
+    const trimmed = name.trim();
+    if (trimmed === '') {
+        return ['固有スキル名を入力してください。'];
+    }
+    if (name.length > CUSTOM_UNIQUE_SKILL_NAME_MAX) {
+        return [`固有スキル名は ${CUSTOM_UNIQUE_SKILL_NAME_MAX} 文字以内で入力してください。`];
+    }
+    if (CUSTOM_UNIQUE_SKILL_NAME_FORBIDDEN_PATTERN.test(name)) {
+        return ['固有スキル名に計算記号(+, =)や改行は使用できません'];
+    }
+    if (CUSTOM_UNIQUE_SKILL_RESERVED_NAMES.includes(trimmed)) {
+        return [`固有スキル名 '${trimmed}' は既に使用されています。別の名前を指定してください。`];
+    }
+    for (const c of existingCustoms) {
+        if (editingId !== undefined && c.id === editingId) continue;
+        if (c.name.trim() === trimmed) {
+            return [`固有スキル名 '${trimmed}' は既に使用されています。別の名前を指定してください。`];
+        }
+    }
+    return [];
+}
+
+/**
+ * カスタム編集・追加サブモーダルの出力プレビュー生成
+ * （scene1-setup.md §2 L189-193 SSoT。組み込み型の EntryForm 選択肢ラベルと同一規則）。
+ * §5.3 生成ルールは投稿用ダイス出力（`dice1d25=` / `-5+dice1d30=` 等）だが、
+ * カスタム編集モーダルのプレビューは「プルダウンラベル形式」で表示する（modal-houserule.md §4 L130
+ * 「出力プレビュー: dice1d25=」の記述は組み込み型と同じ投稿用フォーマット）。
+ *
+ * modal-houserule.md L130 のワイヤーフレーム例は `dice1d25=` のため、投稿用ダイス出力
+ * （§5.3）を生成する。fixValue 符号ルール:
+ * - `fixValue === 0` → `dice{diceStr}=`
+ * - `fixValue > 0`  → `{fixValue}+dice{diceStr}=`
+ * - `fixValue < 0`  → `{fixValue}+dice{diceStr}=`（負値は符号込みで先頭に付く = 現行 §5.3 生成規則）
+ *
+ * 引数は「入力途中の生値」であり不正値時はフォールバック（プレビュー内文字列に無効値を混ぜない）。
+ */
+export function getCustomUniqueDicePreview(entry: UniqueDiceEntry): string {
+    const { fixValue, diceStr } = entry;
+    if (fixValue === 0) return `dice${diceStr}=`;
+    if (fixValue > 0) return `${fixValue}+dice${diceStr}=`;
+    return `${fixValue}+dice${diceStr}=`;
+}
+
+/**
+ * カスタム固有スキルが出走者に使用されているか判定
+ * （scene1-setup.md §2 L188 削除時の整合性強制 + modal-houserule.md §4 SSoT）。
+ */
+export function isCustomUniqueSkillInUse(
+    id: string,
+    participants: Umamusume[],
+): boolean {
+    return participants.some((p) => p.uniqueSkill.customUniqueSkillId === id);
+}
+
+// カスタム固有削除確認の段階（脚質エディタ DeleteConfirmStep と同構造）。
+// Case A（序盤ダイス未入力 = pre-race）+ 使用者ゼロ → 確認省略で即削除（Engineer 裁量、ユーザー承認済）。
+// Case A + 使用者あり → 1 段階確認。
+// Case B（序盤ダイス入力済 = mid-race）→ 2 段階確認（modal-houserule.md §4 削除 SSoT）。
+export type CustomDeleteConfirmStep = 'pre-race' | 'mid-race-warning' | 'mid-race-final';
+
+export function getCustomInitialDeleteStep(participants: Umamusume[]): CustomDeleteConfirmStep {
+    return isMidRace(participants) ? 'mid-race-warning' : 'pre-race';
+}
+
+export function progressCustomDeleteStep(current: CustomDeleteConfirmStep): CustomDeleteConfirmStep {
+    if (current === 'mid-race-warning') return 'mid-race-final';
+    return current;
+}
+
+export interface CustomDeleteConfirmMessage {
+    title: string;
+    body: string;
+    primaryLabel: string;
+    cancelLabel: string;
+}
+
+export function getCustomDeleteConfirmMessage(
+    step: CustomDeleteConfirmStep,
+    skillName: string,
+    id: string,
+    participants: Umamusume[],
+): CustomDeleteConfirmMessage {
+    const inUse = isCustomUniqueSkillInUse(id, participants);
+    if (step === 'pre-race') {
+        return {
+            title: 'カスタム固有スキルの削除',
+            body: inUse
+                ? `カスタム固有「${skillName}」を削除しますか？該当する出走者の固有タイプがリセットされます。`
+                : `カスタム固有「${skillName}」を削除しますか？`,
+            primaryLabel: '削除',
+            cancelLabel: 'キャンセル',
+        };
+    }
+    if (step === 'mid-race-warning') {
+        return {
+            title: 'カスタム固有スキルの削除（警告）',
+            body: inUse
+                ? `この固有スキルは現在使用されています。削除すると、該当する出走者の設定がリセットされます。`
+                : `カスタム固有「${skillName}」を削除します。`,
+            primaryLabel: '次へ',
+            cancelLabel: 'キャンセル',
+        };
+    }
+    // mid-race-final
+    return {
+        title: '最終確認',
+        body: `最終確認: 本当に「${skillName}」を削除しますか？`,
+        primaryLabel: '削除',
+        cancelLabel: 'キャンセル',
+    };
+}
+
+/**
+ * カスタム固有スキルのプルダウンラベル生成（EntryForm 選択肢と同一規則）。
+ * UniqueSkillEditorModal 一覧表示・カスタム名列など、EntryForm 外で同じラベルが必要な箇所で共用する。
+ */
+export function formatCustomUniqueLabel(skill: CustomUniqueSkill): string {
+    return formatUniqueDiceLabel(skill.name, {
+        fixValue: skill.fixValue,
+        diceStr: skill.diceStr,
+    });
 }

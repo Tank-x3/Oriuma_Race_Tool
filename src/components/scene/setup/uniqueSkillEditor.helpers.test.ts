@@ -1,7 +1,7 @@
 // CR-SA-15-E3 / 2026-05-15: 固有スキル設定モーダル UI 用純粋関数群のテスト
 // (modal-houserule.md §4 + houserule-features.md §5 SSoT 準拠)
 import { describe, it, expect } from 'vitest';
-import type { UniqueDiceConfig } from '../../../types';
+import type { CustomUniqueSkill, UniqueDiceConfig, Umamusume } from '../../../types';
 import { DEFAULT_UNIQUE_DICE_CONFIG } from '../../../core/strategies';
 import {
     UNIQUE_SKILL_TYPE_LABELS,
@@ -12,6 +12,16 @@ import {
     validateUniqueDiceFixValue,
     buildUpdatedUniqueDiceConfig,
     getUniqueDicePreview,
+    createNewCustomFormState,
+    createEditCustomFormState,
+    formStateToCustomSkill,
+    validateCustomUniqueSkillName,
+    getCustomUniqueDicePreview,
+    isCustomUniqueSkillInUse,
+    getCustomInitialDeleteStep,
+    progressCustomDeleteStep,
+    getCustomDeleteConfirmMessage,
+    formatCustomUniqueLabel,
 } from './uniqueSkillEditor.helpers';
 
 describe('uniqueSkillEditor.helpers - UNIQUE_SKILL_TYPE_LABELS', () => {
@@ -160,5 +170,230 @@ describe('uniqueSkillEditor.helpers - getUniqueDicePreview', () => {
 
     it('fixValue === 0 → `dice[diceStr]=`（houserule-features.md §5.3）', () => {
         expect(getUniqueDicePreview('Gamble', { fixValue: 0, diceStr: '1d20' })).toBe('dice1d20=');
+    });
+});
+
+// CR-SA-21 / CR-SA-21+22-E2 / 2026-07-06: カスタム固有スキル helpers（modal-houserule.md §4 + houserule-features.md §8 SSoT）
+describe('uniqueSkillEditor.helpers - カスタム固有 (CR-SA-21+22-E2)', () => {
+    describe('createNewCustomFormState / createEditCustomFormState', () => {
+        it('createNewCustomFormState は空フォームを返す（fixValue=0 デフォルト）', () => {
+            expect(createNewCustomFormState()).toEqual({ name: '', fixValue: '0', diceStr: '' });
+        });
+
+        it('createEditCustomFormState は既存 CustomUniqueSkill を文字列化して初期化', () => {
+            const skill: CustomUniqueSkill = { id: 'x', name: '先行特化', fixValue: -5, diceStr: '1d30' };
+            expect(createEditCustomFormState(skill)).toEqual({
+                name: '先行特化',
+                fixValue: '-5',
+                diceStr: '1d30',
+            });
+        });
+    });
+
+    describe('formStateToCustomSkill', () => {
+        it('trim + 数値変換 + id 差し込み', () => {
+            const skill = formStateToCustomSkill(
+                { name: '  A  ', fixValue: '3', diceStr: '  1d10  ' },
+                'id-1',
+            );
+            expect(skill).toEqual({ id: 'id-1', name: 'A', fixValue: 3, diceStr: '1d10' });
+        });
+
+        it('fixValue が空欄 / 非数値 → 0 にフォールバック（formStateToEntry と同方針）', () => {
+            expect(formStateToCustomSkill({ name: 'X', fixValue: '', diceStr: '1d5' }, 'i').fixValue).toBe(0);
+            expect(formStateToCustomSkill({ name: 'X', fixValue: 'abc', diceStr: '1d5' }, 'i').fixValue).toBe(0);
+        });
+    });
+
+    describe('validateCustomUniqueSkillName - modal-houserule.md §Error Handling L302-307 SSoT 完全一致', () => {
+        it('空欄 → 「固有スキル名を入力してください。」', () => {
+            expect(validateCustomUniqueSkillName('', [])).toEqual(['固有スキル名を入力してください。']);
+            expect(validateCustomUniqueSkillName('   ', [])).toEqual(['固有スキル名を入力してください。']);
+        });
+
+        it('20 文字超過 → 「固有スキル名は 20 文字以内で入力してください。」', () => {
+            const long = 'あ'.repeat(21);
+            expect(validateCustomUniqueSkillName(long, [])).toEqual([
+                '固有スキル名は 20 文字以内で入力してください。',
+            ]);
+        });
+
+        it('20 文字ちょうどは通過', () => {
+            const exact = 'あ'.repeat(20);
+            expect(validateCustomUniqueSkillName(exact, [])).toEqual([]);
+        });
+
+        it('禁止文字 + / = / 改行 → 「固有スキル名に計算記号(+, =)や改行は使用できません」', () => {
+            expect(validateCustomUniqueSkillName('逃げ+', [])).toEqual([
+                '固有スキル名に計算記号(+, =)や改行は使用できません',
+            ]);
+            expect(validateCustomUniqueSkillName('A=B', [])).toEqual([
+                '固有スキル名に計算記号(+, =)や改行は使用できません',
+            ]);
+            expect(validateCustomUniqueSkillName('A\nB', [])).toEqual([
+                '固有スキル名に計算記号(+, =)や改行は使用できません',
+            ]);
+        });
+
+        it('予約語（組み込み 7 表示名 +「なし」）→ 重複エラー（8 パターン）', () => {
+            const reserved = ['安定型', 'ギャンブル型', '持続型', '超ギャンブル', '超安定', 'ギャンブル型Ⅱ', '安定型Ⅱ', 'なし'];
+            for (const name of reserved) {
+                expect(validateCustomUniqueSkillName(name, [])).toEqual([
+                    `固有スキル名 '${name}' は既に使用されています。別の名前を指定してください。`,
+                ]);
+            }
+        });
+
+        it('他カスタムとの trim 後重複 → 重複エラー', () => {
+            const existing: CustomUniqueSkill[] = [
+                { id: 'a', name: '先行特化', fixValue: 0, diceStr: '1d10' },
+            ];
+            expect(validateCustomUniqueSkillName('先行特化', existing)).toEqual([
+                `固有スキル名 '先行特化' は既に使用されています。別の名前を指定してください。`,
+            ]);
+            // trim 後比較
+            expect(validateCustomUniqueSkillName('  先行特化  ', existing)).toEqual([
+                `固有スキル名 '先行特化' は既に使用されています。別の名前を指定してください。`,
+            ]);
+        });
+
+        it('編集時（editingId 一致）は自分自身との重複を無視', () => {
+            const existing: CustomUniqueSkill[] = [
+                { id: 'a', name: '先行特化', fixValue: 0, diceStr: '1d10' },
+            ];
+            expect(validateCustomUniqueSkillName('先行特化', existing, 'a')).toEqual([]);
+            // 他カスタムとの重複は引き続き検出
+            const both: CustomUniqueSkill[] = [
+                { id: 'a', name: '先行特化', fixValue: 0, diceStr: '1d10' },
+                { id: 'b', name: '逃げ加速', fixValue: 0, diceStr: '1d20' },
+            ];
+            expect(validateCustomUniqueSkillName('逃げ加速', both, 'a')).toEqual([
+                `固有スキル名 '逃げ加速' は既に使用されています。別の名前を指定してください。`,
+            ]);
+        });
+
+        it('正常系: 未登録の名前 → エラーなし', () => {
+            expect(validateCustomUniqueSkillName('新しいスキル', [])).toEqual([]);
+        });
+    });
+
+    describe('getCustomUniqueDicePreview - §5.3 生成ルール', () => {
+        it('fixValue === 0 → `dice[diceStr]=`', () => {
+            expect(getCustomUniqueDicePreview({ fixValue: 0, diceStr: '1d25' })).toBe('dice1d25=');
+        });
+
+        it('fixValue > 0 → `[fixValue]+dice[diceStr]=`', () => {
+            expect(getCustomUniqueDicePreview({ fixValue: 5, diceStr: '1d10' })).toBe('5+dice1d10=');
+        });
+
+        it('fixValue < 0 → `[fixValue]+dice[diceStr]=`（負号込み）', () => {
+            expect(getCustomUniqueDicePreview({ fixValue: -5, diceStr: '1d30' })).toBe('-5+dice1d30=');
+        });
+    });
+
+    describe('isCustomUniqueSkillInUse', () => {
+        const makeP = (id: string, customId?: string): Umamusume => ({
+            id,
+            entryIndex: 1,
+            name: id,
+            strategy: '逃げ',
+            uniqueSkill: {
+                type: customId ? ('Custom' as const) : ('Stability' as const),
+                phases: [],
+                customUniqueSkillId: customId,
+            },
+            gate: null,
+            score: 0,
+            history: {},
+        });
+
+        it('該当 id を参照する出走者がいれば true', () => {
+            const parts = [makeP('a', 'target'), makeP('b')];
+            expect(isCustomUniqueSkillInUse('target', parts)).toBe(true);
+        });
+
+        it('参照者ゼロなら false', () => {
+            expect(isCustomUniqueSkillInUse('nobody', [makeP('a', 'other')])).toBe(false);
+            expect(isCustomUniqueSkillInUse('nobody', [])).toBe(false);
+        });
+    });
+
+    describe('getCustomInitialDeleteStep + progressCustomDeleteStep', () => {
+        const makeP = (hasStartDice: boolean): Umamusume => ({
+            id: 'p',
+            entryIndex: 1,
+            name: 'p',
+            strategy: '逃げ',
+            uniqueSkill: { type: 'Stability' as const, phases: [] },
+            gate: null,
+            score: 0,
+            history: hasStartDice
+                ? { Start: { computedScore: 0, baseDice: { diceStr: '3d6', values: [1, 2, 3], sum: 6 } } }
+                : {},
+        });
+
+        it('序盤ダイス未入力（isMidRace=false） → pre-race', () => {
+            expect(getCustomInitialDeleteStep([makeP(false)])).toBe('pre-race');
+            expect(getCustomInitialDeleteStep([])).toBe('pre-race');
+        });
+
+        it('序盤ダイス入力済（isMidRace=true） → mid-race-warning', () => {
+            expect(getCustomInitialDeleteStep([makeP(true)])).toBe('mid-race-warning');
+        });
+
+        it('progressCustomDeleteStep: warning → final、他は不変', () => {
+            expect(progressCustomDeleteStep('mid-race-warning')).toBe('mid-race-final');
+            expect(progressCustomDeleteStep('pre-race')).toBe('pre-race');
+            expect(progressCustomDeleteStep('mid-race-final')).toBe('mid-race-final');
+        });
+    });
+
+    describe('getCustomDeleteConfirmMessage', () => {
+        const inUseParts: Umamusume[] = [
+            {
+                id: 'p1',
+                entryIndex: 1,
+                name: 'p1',
+                strategy: '逃げ',
+                uniqueSkill: { type: 'Custom' as const, phases: ['Start'], customUniqueSkillId: 'target' },
+                gate: null,
+                score: 0,
+                history: {},
+            },
+        ];
+
+        it('pre-race + 使用中 → title「カスタム固有スキルの削除」+ 使用中文言 + primary 「削除」', () => {
+            const msg = getCustomDeleteConfirmMessage('pre-race', '先行特化', 'target', inUseParts);
+            expect(msg.title).toBe('カスタム固有スキルの削除');
+            expect(msg.body).toContain('先行特化');
+            expect(msg.body).toContain('該当する出走者');
+            expect(msg.primaryLabel).toBe('削除');
+            expect(msg.cancelLabel).toBe('キャンセル');
+        });
+
+        it('mid-race-warning + 使用中 → title「（警告）」+ 使用中文言 + primary「次へ」', () => {
+            const msg = getCustomDeleteConfirmMessage('mid-race-warning', '先行特化', 'target', inUseParts);
+            expect(msg.title).toContain('警告');
+            expect(msg.body).toContain('現在使用されています');
+            expect(msg.primaryLabel).toBe('次へ');
+        });
+
+        it('mid-race-final → 「最終確認」+ primary「削除」', () => {
+            const msg = getCustomDeleteConfirmMessage('mid-race-final', '先行特化', 'target', []);
+            expect(msg.title).toBe('最終確認');
+            expect(msg.body).toContain('先行特化');
+            expect(msg.primaryLabel).toBe('削除');
+        });
+    });
+
+    describe('formatCustomUniqueLabel', () => {
+        it('カスタム名 + fixValue 符号別 = EntryForm 選択肢と同一規則', () => {
+            expect(formatCustomUniqueLabel({ id: 'x', name: '先行特化', fixValue: 0, diceStr: '1d25' })).toBe(
+                '先行特化 (1d25)',
+            );
+            expect(formatCustomUniqueLabel({ id: 'x', name: '逃げ加速', fixValue: -5, diceStr: '1d30' })).toBe(
+                '逃げ加速 (-5+1d30)',
+            );
+        });
     });
 });

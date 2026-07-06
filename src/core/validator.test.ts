@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import type { Umamusume } from '../types';
 import {
     Validator,
     validatePersistentSkillPhases,
@@ -8,6 +9,7 @@ import {
     validateStrategyName,
     validateDiceFormat,
     validateFormationPacePosition,
+    validateNoUniqueSkillPresence,
 } from './validator';
 
 describe('Validator', () => {
@@ -376,6 +378,49 @@ describe('validateDiceFormat - Bundle-10-T3', () => {
     it('matches spec SSoT error message verbatim (不正なダイス形式)', () => {
         expect(validateDiceFormat('3d6+1')).toEqual([
             "ダイス式は '3d6' の形式で入力してください",
+        ]);
+    });
+});
+
+// CR-SA-22 / CR-SA-21+22-E2 / 2026-07-06:
+// validateNoUniqueSkillPresence の SSoT テスト（scene1-setup.md §Error Handling L312-315 SSoT）
+describe('validateNoUniqueSkillPresence (CR-SA-22 / CR-SA-21+22-E2)', () => {
+    const makeP = (name: string, type: Umamusume['uniqueSkill']['type']): Umamusume => ({
+        id: `id-${name}`,
+        entryIndex: 1,
+        name,
+        strategy: '逃げ',
+        uniqueSkill: { type, phases: [] },
+        gate: null,
+        score: 0,
+        history: {},
+    });
+
+    it('enableNoUniqueSkill=true → 常に空配列（許可されているため）', () => {
+        const parts = [makeP('A', 'None' as const)];
+        expect(validateNoUniqueSkillPresence(true, parts)).toEqual([]);
+    });
+
+    it('enableNoUniqueSkill=false + 「なし」出走者なし → 空配列', () => {
+        const parts = [makeP('A', 'Stability' as const), makeP('B', 'Gamble' as const)];
+        expect(validateNoUniqueSkillPresence(false, parts)).toEqual([]);
+    });
+
+    it('enableNoUniqueSkill=false + 「なし」出走者あり → L315 文言完全一致（例示名は最初の該当出走者）', () => {
+        const parts = [makeP('ウマ娘A', 'Stability' as const), makeP('モブ1', 'None' as const)];
+        expect(validateNoUniqueSkillPresence(false, parts)).toEqual([
+            '・固有スキルなしが許可されていない設定で「なし」の出走者がいます（例: モブ1）。ハウスルールを見直すか、固有タイプを設定してください',
+        ]);
+    });
+
+    it('participants が空配列 → 空配列', () => {
+        expect(validateNoUniqueSkillPresence(false, [])).toEqual([]);
+    });
+
+    it('無名（name=""）の「なし」出走者 → 例示名フォールバック（無名の出走者）', () => {
+        const parts = [makeP('', 'None' as const)];
+        expect(validateNoUniqueSkillPresence(false, parts)).toEqual([
+            '・固有スキルなしが許可されていない設定で「なし」の出走者がいます（例: 無名の出走者）。ハウスルールを見直すか、固有タイプを設定してください',
         ]);
     });
 });

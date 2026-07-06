@@ -4325,3 +4325,166 @@ describe('CR-SA-20-E4 / 2026-06-11 formationResult（隊列確定結果）', () 
         expect(useRaceStore.getState().participants[0].score).toBe(40);
     });
 });
+
+// CR-SA-21 / CR-SA-22 / CR-SA-21+22-E2 / 2026-07-06:
+// カスタム固有 actions + `enableNoUniqueSkill` OFF 切替リセット + 参照切れ自動リセット SSoT テスト
+describe('useRaceStore - CR-SA-21+22-E2 / カスタム固有 + 固有スキルなし', () => {
+    beforeEach(() => {
+        useRaceStore.getState().resetRace();
+        useRaceStore.getState().resetHouseRules();
+    });
+
+    describe('addCustomUniqueSkill', () => {
+        it('末尾に登録される + isPresetDirty=true', () => {
+            useRaceStore.getState().addCustomUniqueSkill({
+                id: 'a', name: '先行特化', fixValue: 0, diceStr: '1d25',
+            });
+            useRaceStore.getState().addCustomUniqueSkill({
+                id: 'b', name: '逃げ加速', fixValue: -5, diceStr: '1d30',
+            });
+            const skills = useRaceStore.getState().config.houseRules.customUniqueSkills;
+            expect(skills).toEqual([
+                { id: 'a', name: '先行特化', fixValue: 0, diceStr: '1d25' },
+                { id: 'b', name: '逃げ加速', fixValue: -5, diceStr: '1d30' },
+            ]);
+            expect(useRaceStore.getState().isPresetDirty).toBe(true);
+        });
+
+        it('id 重複時は no-op（state 不変）', () => {
+            useRaceStore.getState().addCustomUniqueSkill({ id: 'a', name: '先行特化', fixValue: 0, diceStr: '1d25' });
+            const before = useRaceStore.getState().config.houseRules.customUniqueSkills;
+            useRaceStore.getState().addCustomUniqueSkill({ id: 'a', name: '別名', fixValue: 5, diceStr: '1d10' });
+            const after = useRaceStore.getState().config.houseRules.customUniqueSkills;
+            expect(after).toEqual(before);
+        });
+    });
+
+    describe('updateCustomUniqueSkill', () => {
+        it('部分更新 + 該当参照者の score 再計算', () => {
+            useRaceStore.getState().addCustomUniqueSkill({ id: 'a', name: '先行特化', fixValue: 0, diceStr: '1d25' });
+            useRaceStore.getState().updateCustomUniqueSkill('a', { name: '別名', fixValue: -3 });
+            const s = useRaceStore.getState().config.houseRules.customUniqueSkills[0];
+            expect(s).toEqual({ id: 'a', name: '別名', fixValue: -3, diceStr: '1d25' });
+        });
+
+        it('id 不在なら no-op（state 不変）', () => {
+            const before = useRaceStore.getState().config.houseRules;
+            useRaceStore.getState().updateCustomUniqueSkill('nonexistent', { name: 'X' });
+            expect(useRaceStore.getState().config.houseRules).toBe(before);
+        });
+    });
+
+    describe('removeCustomUniqueSkill', () => {
+        it('該当 id を削除 + 参照している出走者を強制リセット（type="" + phases=[] + customUniqueSkillId=undefined）', () => {
+            useRaceStore.getState().addCustomUniqueSkill({ id: 'a', name: '先行特化', fixValue: 0, diceStr: '1d25' });
+            // 参照者を用意（type='Custom' + customUniqueSkillId='a'）
+            useRaceStore.setState({
+                participants: [
+                    setupParticipant({
+                        id: 'p1',
+                        uniqueSkill: { type: 'Custom', phases: ['Start'], customUniqueSkillId: 'a' },
+                    }),
+                    setupParticipant({
+                        id: 'p2',
+                        name: 'other',
+                        uniqueSkill: { type: 'Stability', phases: ['Mid2'] },
+                    }),
+                ],
+            });
+            useRaceStore.getState().removeCustomUniqueSkill('a');
+            const skills = useRaceStore.getState().config.houseRules.customUniqueSkills;
+            expect(skills).toEqual([]);
+            const p1 = useRaceStore.getState().participants[0];
+            expect(p1.uniqueSkill.type).toBe('');
+            expect(p1.uniqueSkill.phases).toEqual([]);
+            expect(p1.uniqueSkill.customUniqueSkillId).toBeUndefined();
+            // 他出走者は不変
+            expect(useRaceStore.getState().participants[1].uniqueSkill.type).toBe('Stability');
+        });
+
+        it('id 不在なら no-op（state 不変）', () => {
+            const before = useRaceStore.getState().config.houseRules;
+            useRaceStore.getState().removeCustomUniqueSkill('nonexistent');
+            expect(useRaceStore.getState().config.houseRules).toBe(before);
+        });
+    });
+
+    describe('updateHouseRules: enableNoUniqueSkill OFF 切替時の強制リセット', () => {
+        it('ON→OFF 切替で type="None" 出走者を強制リセット（type="" + phases=[]）', () => {
+            // まず enableNoUniqueSkill を ON にして type='None' の出走者を配置
+            useRaceStore.getState().updateHouseRules({ enableNoUniqueSkill: true });
+            useRaceStore.setState({
+                participants: [
+                    setupParticipant({
+                        id: 'p1',
+                        uniqueSkill: { type: 'None', phases: [] },
+                    }),
+                    setupParticipant({
+                        id: 'p2',
+                        name: 'other',
+                        uniqueSkill: { type: 'Stability', phases: ['Mid2'] },
+                    }),
+                ],
+            });
+            useRaceStore.getState().updateHouseRules({ enableNoUniqueSkill: false });
+            const p1 = useRaceStore.getState().participants[0];
+            expect(p1.uniqueSkill.type).toBe('');
+            expect(p1.uniqueSkill.phases).toEqual([]);
+            // 他出走者は不変
+            expect(useRaceStore.getState().participants[1].uniqueSkill.type).toBe('Stability');
+        });
+
+        it('OFF→ON 切替は participants 不変（type=None の出走者は存在しないため）', () => {
+            useRaceStore.setState({
+                participants: [setupParticipant({ id: 'p1', uniqueSkill: { type: 'Stability', phases: ['Mid2'] } })],
+            });
+            useRaceStore.getState().updateHouseRules({ enableNoUniqueSkill: true });
+            expect(useRaceStore.getState().participants[0].uniqueSkill.type).toBe('Stability');
+        });
+    });
+
+    describe('resetHouseRules: カスタム固有 + enableNoUniqueSkill 初期化対象拡張', () => {
+        it('customUniqueSkills=[] + enableNoUniqueSkill=false へ初期化される', () => {
+            useRaceStore.getState().updateHouseRules({ enableNoUniqueSkill: true });
+            useRaceStore.getState().addCustomUniqueSkill({ id: 'a', name: '先行特化', fixValue: 0, diceStr: '1d25' });
+            useRaceStore.getState().resetHouseRules();
+            expect(useRaceStore.getState().config.houseRules.customUniqueSkills).toEqual([]);
+            expect(useRaceStore.getState().config.houseRules.enableNoUniqueSkill).toBe(false);
+        });
+
+        // CR-SA-21+22-E2 Round 2 / 2026-07-06: resetHouseRules 経由で type='None' / 'Custom' の出走者が
+        // UI 表示と内部 state で乖離する不具合の再発防止（User Feedback 由来）。
+        it('resetHouseRules で type="None" 出走者を強制リセット（type=""+phases=[]）', () => {
+            useRaceStore.getState().updateHouseRules({ enableNoUniqueSkill: true });
+            useRaceStore.setState({
+                participants: [
+                    setupParticipant({ id: 'p1', uniqueSkill: { type: 'None', phases: [] } }),
+                    setupParticipant({ id: 'p2', name: 'other', uniqueSkill: { type: 'Stability', phases: ['Mid2'] } }),
+                ],
+            });
+            useRaceStore.getState().resetHouseRules();
+            const p1 = useRaceStore.getState().participants[0];
+            expect(p1.uniqueSkill.type).toBe('');
+            expect(p1.uniqueSkill.phases).toEqual([]);
+            // 他出走者は不変
+            expect(useRaceStore.getState().participants[1].uniqueSkill.type).toBe('Stability');
+        });
+
+        it('resetHouseRules で type="Custom" 出走者を強制リセット（customUniqueSkillId=undefined）', () => {
+            useRaceStore.getState().addCustomUniqueSkill({ id: 'a', name: '先行特化', fixValue: 0, diceStr: '1d25' });
+            useRaceStore.setState({
+                participants: [
+                    setupParticipant({
+                        id: 'p1',
+                        uniqueSkill: { type: 'Custom', phases: ['Start'], customUniqueSkillId: 'a' },
+                    }),
+                ],
+            });
+            useRaceStore.getState().resetHouseRules();
+            const p1 = useRaceStore.getState().participants[0];
+            expect(p1.uniqueSkill.type).toBe('');
+            expect(p1.uniqueSkill.phases).toEqual([]);
+            expect(p1.uniqueSkill.customUniqueSkillId).toBeUndefined();
+        });
+    });
+});

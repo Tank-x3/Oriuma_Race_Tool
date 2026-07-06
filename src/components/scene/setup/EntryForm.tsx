@@ -12,6 +12,8 @@ import {
     getSpecialStrategyPhaseOptions,
     getBondSkillTypeOptions,
     getSpecialStrategyTypeOptions,
+    encodeUniqueSkillSelectValue,
+    decodeUniqueSkillValue,
 } from './entryForm.helpers';
 import {
     validatePersistentSkillPhases,
@@ -19,6 +21,7 @@ import {
     validateSpecialStrategyPhase,
     validateSpecialStrategyTypeAndPhase,
     validateFormationPacePosition,
+    validateNoUniqueSkillPresence,
 } from '../../../core/validator';
 
 // Bundle-2 / D-1, D-14 / 2026-05-09: 静的配列を廃止し、`enableExtendedUnique` 連動で
@@ -92,11 +95,17 @@ export const EntryForm: React.FC = () => {
             config.houseRules.enableExtendedUnique,
             config.houseRules.enableCompositeUnique,
             config.houseRules.uniqueDiceConfig,
+            // CR-SA-22 / CR-SA-21+22-E2 / 2026-07-06: 「なし」+ カスタム連動を追加
+            // （scene1-setup.md §2 L181-186 SSoT。ON 時のみ「なし」を `---` 直後 / カスタムは末尾登録順）。
+            config.houseRules.enableNoUniqueSkill,
+            config.houseRules.customUniqueSkills,
         ),
         [
             config.houseRules.enableExtendedUnique,
             config.houseRules.enableCompositeUnique,
             config.houseRules.uniqueDiceConfig,
+            config.houseRules.enableNoUniqueSkill,
+            config.houseRules.customUniqueSkills,
         ]
     );
 
@@ -135,7 +144,14 @@ export const EntryForm: React.FC = () => {
 
             // Unique Skill Check
             if (!p.uniqueSkill.type) errors.push(`[#${rowNum}] 固有タイプが未選択です`);
-            if (!p.uniqueSkill.phases || p.uniqueSkill.phases.length === 0) errors.push(`[#${rowNum}] 発動位置が未選択です`);
+            // CR-SA-22 / CR-SA-21+22-E2 / 2026-07-06: 「なし」選択者は発動位置不要（Layer 1 免除）
+            // （validation-responsibilities.md L29 + houserule-features.md §2 [v] Validation Layer 1 免除 SSoT）。
+            if (
+                p.uniqueSkill.type !== 'None' &&
+                (!p.uniqueSkill.phases || p.uniqueSkill.phases.length === 0)
+            ) {
+                errors.push(`[#${rowNum}] 発動位置が未選択です`);
+            }
 
             // Bundle-3 / D-4 / 2026-05-09: 持続型「連続 2 フェーズ」検証（Layer 2、
             // validation-responsibilities.md §4 準拠）。
@@ -229,6 +245,14 @@ export const EntryForm: React.FC = () => {
             ),
         );
 
+        // CR-SA-22 / CR-SA-21+22-E2 / 2026-07-06: HR OFF × 固有タイプ「なし」出走者の混入検出
+        // （scene1-setup.md §Error Handling L312-315 データブロック、文言は L315 SSoT 固定）。
+        // UI 経由の OFF 切替は store 副作用（updateHouseRules）で先に強制リセットされるため、
+        // 本エラーは state 復元・プリセット差し替え等の非 UI 経路で発生した場合の最終防衛線。
+        errs.push(
+            ...validateNoUniqueSkillPresence(houseRules.enableNoUniqueSkill, participants),
+        );
+
         return errs;
     }, [
         config.startPhaseCount,
@@ -237,6 +261,8 @@ export const EntryForm: React.FC = () => {
         config.pacePosition,
         houseRules.enableFormationDice,
         houseRules.enablePhaseConfig,
+        houseRules.enableNoUniqueSkill,
+        participants,
     ]);
 
     const allErrors = useMemo(() => {
@@ -371,6 +397,29 @@ export const EntryForm: React.FC = () => {
         houseRules.enableSpecialStrategy,
     ]);
 
+    // CR-SA-21 / CR-SA-21+22-E2 / 2026-07-06: カスタム参照切れ自動リセット
+    // （scene1-setup.md §Error Handling L316-318 SSoT。state 復元・プリセット差し替え等で
+    //  出走者が参照するカスタム id が登録一覧に存在しない場合、当該出走者の固有タイプを未選択へ
+    //  強制リセットし、既存 Layer 1「固有タイプ未選択」エラーで確定ブロックへ委譲する）。
+    React.useEffect(() => {
+        const customIds = new Set(houseRules.customUniqueSkills.map(c => c.id));
+        participants.forEach(p => {
+            if (
+                p.uniqueSkill.type === 'Custom' &&
+                p.uniqueSkill.customUniqueSkillId !== undefined &&
+                !customIds.has(p.uniqueSkill.customUniqueSkillId)
+            ) {
+                updateParticipant(p.id, {
+                    uniqueSkill: {
+                        type: '' as unknown as UniqueSkillType,
+                        phases: [],
+                        customUniqueSkillId: undefined,
+                    },
+                });
+            }
+        });
+    }, [houseRules.customUniqueSkills, participants, updateParticipant]);
+
     return (
         <div className="bg-white/80 dark:bg-slate-800/50 backdrop-blur-sm border border-slate-200 dark:border-slate-700/50 rounded-xl p-6 shadow-xl space-y-6 transition-colors">
             <div className="flex items-center justify-between">
@@ -452,21 +501,43 @@ export const EntryForm: React.FC = () => {
                                         </td>
                                         <td className="px-4 py-3">
                                             <select
-                                                value={p.uniqueSkill.type || ''}
-                                                onChange={(e) => updateParticipant(p.id, { uniqueSkill: { ...p.uniqueSkill, type: e.target.value as UniqueSkillType } })}
+                                                value={encodeUniqueSkillSelectValue(p.uniqueSkill)}
+                                                onChange={(e) => {
+                                                    // CR-SA-21+22-E2 / 2026-07-06: value エンコード（'Custom:<id>' 等）を decode。
+                                                    // 型変更時 phases はリセット（既存挙動維持 = 発動位置の意味が変わるため）。
+                                                    const decoded = decodeUniqueSkillValue(e.target.value);
+                                                    updateParticipant(p.id, {
+                                                        uniqueSkill: {
+                                                            type: decoded.type as UniqueSkillType,
+                                                            phases: [],
+                                                            customUniqueSkillId: decoded.customUniqueSkillId,
+                                                        },
+                                                    });
+                                                }}
                                                 className={`w-full h-8 bg-slate-50 dark:bg-slate-900 border rounded px-2 text-sm focus:outline-none focus:ring-1 transition-colors ${invalidType
                                                     ? 'border-red-500 focus:ring-red-500'
                                                     : 'border-slate-300 dark:border-slate-700 focus:border-primary-500 focus:ring-primary-500 text-slate-900 dark:text-white'
                                                     }`}
                                             >
                                                 <option value="" disabled>---</option>
-                                                {uniqueSkillTypes.map(t => <option key={t.type} value={t.type}>{t.label}</option>)}
+                                                {uniqueSkillTypes.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                                             </select>
                                         </td>
                                         <td className="px-4 py-3">
                                             {/* Bundle-3 / D-3 / 2026-05-09: 持続型のみチェックボックス UI に切替
                                                 （houserule-features.md §2 [v] 複合固有スキル準拠、複数連続フェーズ選択用） */}
-                                            {p.uniqueSkill.type === 'Persistent' ? (
+                                            {/* CR-SA-22 / CR-SA-21+22-E2 / 2026-07-06:
+                                                「なし」選択者は発動位置 `---` 固定 + disabled（scene1-setup.md §2 L182 + L161 SSoT）。 */}
+                                            {p.uniqueSkill.type === 'None' ? (
+                                                <select
+                                                    value=""
+                                                    disabled
+                                                    aria-label="発動位置（固有スキルなしのため操作不可）"
+                                                    className="w-full h-8 bg-slate-100 dark:bg-slate-900/60 border border-slate-300 dark:border-slate-700 rounded px-2 text-sm text-slate-500 dark:text-slate-400 cursor-not-allowed"
+                                                >
+                                                    <option value="">---</option>
+                                                </select>
+                                            ) : p.uniqueSkill.type === 'Persistent' ? (
                                                 <div
                                                     className={`flex flex-wrap items-center gap-2 bg-slate-50 dark:bg-slate-900 border rounded px-2 py-1 ${invalidPhase
                                                         ? 'border-red-500'

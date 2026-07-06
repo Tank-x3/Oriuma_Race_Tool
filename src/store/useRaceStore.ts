@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { Umamusume, RaceState, GateAssignment, Strategy, PacePosition } from '../types';
+import type { Umamusume, RaceState, GateAssignment, Strategy, PacePosition, CustomUniqueSkill } from '../types';
 // CR-SA-15-E1 / 2026-05-14: DEFAULT_UNIQUE_DICE_CONFIG = 固有スキル設定の初期値 +
 // 永続化マイグレーションのデフォルト補完値（houserule-features.md §5.2 / §5.4）。
 import { DEFAULT_STRATEGIES as STRATEGIES, DEFAULT_UNIQUE_DICE_CONFIG } from '../core/strategies';
@@ -79,6 +79,13 @@ interface RaceStoreState extends RaceState {
         participantId: string,
         type: 'Makuri' | 'Tame' | null
     ) => void;
+    // CR-SA-21 / CR-SA-21+22-E2 / 2026-07-06: カスタム固有スキル actions
+    // (houserule-features.md §8 + modal-houserule.md §4 SSoT)
+    // add = 末尾追加（id 重複 no-op）/ update = name/fixValue/diceStr 部分更新（参照者 score 再計算）/
+    // remove = 参照者の固有タイプ強制リセット + score 再計算。validation は UI / zod 層に委ねる。
+    addCustomUniqueSkill: (skill: CustomUniqueSkill) => void;
+    updateCustomUniqueSkill: (id: string, updates: Partial<Omit<CustomUniqueSkill, 'id'>>) => void;
+    removeCustomUniqueSkill: (id: string) => void;
     // Bundle-10-T1 / CR-SA-12 / 2026-05-11: 脚質エディタ Insert/Edit/Delete actions
     // (houserule-features.md §1 / modal-houserule.md §2 SSoT)
     // 名前重複・値域・ダイス式 validation はすべて UI / validator 層（T2/T3 スコープ）に委ねる。
@@ -589,13 +596,21 @@ export const useRaceStore = create<RaceStoreState>()(
                         updates.enableFormationDice !== undefined &&
                         updates.enableFormationDice !==
                             state.config.houseRules.enableFormationDice;
+                    // CR-SA-22 / CR-SA-21+22-E2 / 2026-07-06: `enableNoUniqueSkill` OFF への切替検知。
+                    // ON→OFF で type='None' の出走者を強制リセット（scene1-setup.md §2 L187 + houserule-features.md §2 [v]
+                    // Validation - OFF への切替時 SSoT）。合わせて score 再計算をトリガーする（type='None' の
+                    // 防御空返却→リセット後の空型 = 実質 0→0 だが、他フィールド変更と統一するため再計算経路へ流す）。
+                    const noUniqueSkillOffChanged =
+                        updates.enableNoUniqueSkill === false &&
+                        state.config.houseRules.enableNoUniqueSkill === true;
 
                     if (
                         !effectValueChanged &&
                         !enableChanged &&
                         !bondSkillChanged &&
                         !uniqueDiceConfigChanged &&
-                        !formationDiceChanged
+                        !formationDiceChanged &&
+                        !noUniqueSkillOffChanged
                     ) {
                         // CR-SA-16-E1 / 2026-05-15: updateHouseRules は dirty フラグを ON（変更があったとみなす）。
                         // scene1-setup.md §0-4 SSoT: updateHouseRules → isPresetDirty: true セット。
@@ -607,17 +622,31 @@ export const useRaceStore = create<RaceStoreState>()(
                         config: newConfig,
                         // CR-SA-16-E1 / 2026-05-15: updateHouseRules は dirty フラグを ON（変更があったとみなす）。
                         isPresetDirty: true,
-                        participants: state.participants.map((p) => ({
-                            ...p,
-                            score: calculateScoreWithBondSkill(
-                                p,
-                                state.strategies,
-                                state.paceResult.face,
-                                activePhaseIds,
-                                newHouseRules,
-                                state.formationResult.face,
-                            ),
-                        })),
+                        participants: state.participants.map((p) => {
+                            // CR-SA-22 / CR-SA-21+22-E2 / 2026-07-06: OFF 切替時に type='None' を強制リセット
+                            // （空型 = 「必須項目未入力」で確定ブロック、scene1-setup.md §2 L187 SSoT）。
+                            const next: Umamusume =
+                                noUniqueSkillOffChanged && p.uniqueSkill.type === 'None'
+                                    ? {
+                                          ...p,
+                                          uniqueSkill: {
+                                              type: '' as unknown as Umamusume['uniqueSkill']['type'],
+                                              phases: [],
+                                          },
+                                      }
+                                    : p;
+                            return {
+                                ...next,
+                                score: calculateScoreWithBondSkill(
+                                    next,
+                                    state.strategies,
+                                    state.paceResult.face,
+                                    activePhaseIds,
+                                    newHouseRules,
+                                    state.formationResult.face,
+                                ),
+                            };
+                        }),
                     };
                 }),
 
@@ -866,6 +895,89 @@ export const useRaceStore = create<RaceStoreState>()(
                     };
                 }),
 
+            // CR-SA-21 / CR-SA-21+22-E2 / 2026-07-06: カスタム固有スキル actions
+            // (houserule-features.md §8 + modal-houserule.md §4 SSoT)。脚質エディタ actions と同パターン。
+            // Validation（名称重複・禁止文字等）は UI 層 + zod 層に委ね、本 actions は防御的判定を最小限に留める。
+            // remove では該当 id を選択中の出走者を `type: ''`（未選択）+ phases=[] + customUniqueSkillId=undefined
+            // へリセット + score 再計算（updateHouseRules と同経路）。
+            addCustomUniqueSkill: (skill) =>
+                set((state) => {
+                    const exists = state.config.houseRules.customUniqueSkills.some((c) => c.id === skill.id);
+                    if (exists) return state;
+                    const newHouseRules = {
+                        ...state.config.houseRules,
+                        customUniqueSkills: [...state.config.houseRules.customUniqueSkills, skill],
+                    };
+                    return {
+                        config: { ...state.config, houseRules: newHouseRules },
+                        isPresetDirty: true,
+                    };
+                }),
+
+            updateCustomUniqueSkill: (id, updates) =>
+                set((state) => {
+                    const idx = state.config.houseRules.customUniqueSkills.findIndex((c) => c.id === id);
+                    if (idx === -1) return state;
+                    const newCustom = [...state.config.houseRules.customUniqueSkills];
+                    newCustom[idx] = { ...newCustom[idx], ...updates };
+                    const newHouseRules = { ...state.config.houseRules, customUniqueSkills: newCustom };
+                    const activePhaseIds = getActivePhaseIdsForConfig(state.config);
+                    return {
+                        config: { ...state.config, houseRules: newHouseRules },
+                        isPresetDirty: true,
+                        participants: state.participants.map((p) => ({
+                            ...p,
+                            score: calculateScoreWithBondSkill(
+                                p,
+                                state.strategies,
+                                state.paceResult.face,
+                                activePhaseIds,
+                                newHouseRules,
+                                state.formationResult.face,
+                            ),
+                        })),
+                    };
+                }),
+
+            removeCustomUniqueSkill: (id) =>
+                set((state) => {
+                    const exists = state.config.houseRules.customUniqueSkills.some((c) => c.id === id);
+                    if (!exists) return state;
+                    const newCustom = state.config.houseRules.customUniqueSkills.filter((c) => c.id !== id);
+                    const newHouseRules = { ...state.config.houseRules, customUniqueSkills: newCustom };
+                    const activePhaseIds = getActivePhaseIdsForConfig(state.config);
+                    return {
+                        config: { ...state.config, houseRules: newHouseRules },
+                        isPresetDirty: true,
+                        participants: state.participants.map((p) => {
+                            // 削除対象を参照する出走者は type='' + phases=[] + customUniqueSkillId=undefined へ強制リセット
+                            //（scene1-setup.md §2 L188 + houserule-features.md §8.6 SSoT）。
+                            const next: Umamusume =
+                                p.uniqueSkill.customUniqueSkillId === id
+                                    ? {
+                                          ...p,
+                                          uniqueSkill: {
+                                              type: '' as unknown as Umamusume['uniqueSkill']['type'],
+                                              phases: [],
+                                              customUniqueSkillId: undefined,
+                                          },
+                                      }
+                                    : p;
+                            return {
+                                ...next,
+                                score: calculateScoreWithBondSkill(
+                                    next,
+                                    state.strategies,
+                                    state.paceResult.face,
+                                    activePhaseIds,
+                                    newHouseRules,
+                                    state.formationResult.face,
+                                ),
+                            };
+                        }),
+                    };
+                }),
+
             // Bundle-11-T1 / CR-SA-12 / 2026-05-11: プリセット管理 actions
             // (modal-houserule.md §3 設定プリセット管理 + houserule-features.md §4 Config Management)
             // LocalStorage キー = `${PRESET_KEY_PREFIX}<name>` で houseRules + strategies の組をシリアライズ保存。
@@ -1029,17 +1141,36 @@ export const useRaceStore = create<RaceStoreState>()(
                         strategies: STRATEGIES,
                         appliedPresetName: null,
                         isPresetDirty: false,
-                        participants: state.participants.map((p) => ({
-                            ...p,
-                            score: calculateScoreWithBondSkill(
-                                p,
-                                STRATEGIES,
-                                state.paceResult.face,
-                                activePhaseIds,
-                                DEFAULT_HOUSE_RULES,
-                                state.formationResult.face,
-                            ),
-                        })),
+                        // CR-SA-21+22-E2 Round 2 / 2026-07-06: reset で `enableNoUniqueSkill=false` +
+                        // `customUniqueSkills=[]` に戻るため、type='None' / type='Custom' の出走者を強制リセット
+                        // （updateHouseRules OFF 切替 + removeCustomUniqueSkill の整合性強制と同方針）。
+                        // 未実施だと select value が存在しないラベルに残り、UI 表示（見かけ上「安定」）と
+                        // 内部 state（type='None' のまま）が乖離してエラー表示と実データが噛み合わなくなる。
+                        participants: state.participants.map((p) => {
+                            const needsReset =
+                                p.uniqueSkill.type === 'None' || p.uniqueSkill.type === 'Custom';
+                            const next: Umamusume = needsReset
+                                ? {
+                                      ...p,
+                                      uniqueSkill: {
+                                          type: '' as unknown as Umamusume['uniqueSkill']['type'],
+                                          phases: [],
+                                          customUniqueSkillId: undefined,
+                                      },
+                                  }
+                                : p;
+                            return {
+                                ...next,
+                                score: calculateScoreWithBondSkill(
+                                    next,
+                                    STRATEGIES,
+                                    state.paceResult.face,
+                                    activePhaseIds,
+                                    DEFAULT_HOUSE_RULES,
+                                    state.formationResult.face,
+                                ),
+                            };
+                        }),
                     };
                 }),
 
