@@ -8,6 +8,7 @@ import {
     validateSpecialStrategyTypeAndPhase,
     validateStrategyName,
     validateDiceFormat,
+    validatePhaseConfigStructure,
     validateFormationPacePosition,
     validateNoUniqueSkillPresence,
 } from './validator';
@@ -256,6 +257,74 @@ describe('validateSpecialStrategyTypeAndPhase - Bundle-8-T2', () => {
 
     it('returns error for type=null + phase=Mid1 (種別未設定)', () => {
         expect(validateSpecialStrategyTypeAndPhase(null, 'Mid1')).toEqual([typeMissingError]);
+    });
+});
+
+// CR-SA-17-Followup-reset-houserules-phaseconfig-error / 2026-07-06:
+// 禁止フェーズ構成のデータブロック検証（enablePhaseConfig OFF 透過付き）。
+// SSoT: scene1-setup.md §Error Handling L302-304 + houserule-features.md §7.8
+// + modal-houserule.md §5 L289-290 準拠。ENG69 R1 User Feedback #1（♻️ 初期化後や
+// OFF 切替後に config.pacePosition 残存値でエラー誤検出）の再発防止。
+describe('validatePhaseConfigStructure - CR-SA-17-Followup', () => {
+    const L302_MESSAGE =
+        '・フェーズ構成が不正です（ペースの位置または序盤・終盤の回数が許可範囲外です）。設定を見直してください';
+
+    // ---- OFF 透過（本 Followup の主眼、♻️ 初期化 + OFF 切替の残存値ケース）----
+    it('enablePhaseConfig=OFF + 残存 pacePosition="Mid2" + midPhaseCount=1（禁止構成的な残存値）→ エラーなし', () => {
+        expect(
+            validatePhaseConfigStructure(false, false, 1, 1, 1, 'Mid2'),
+        ).toEqual([]);
+    });
+
+    it('enablePhaseConfig=OFF + 残存 startPhaseCount=3（値域内だが ON 時の残存値）→ エラーなし', () => {
+        expect(
+            validatePhaseConfigStructure(false, false, 3, 1, 1, 'Start'),
+        ).toEqual([]);
+    });
+
+    it('enablePhaseConfig=OFF + 隊列 ON + 残存禁止構成 → エラーなし（OFF 透過を隊列 ON でも維持）', () => {
+        expect(
+            validatePhaseConfigStructure(false, true, 1, 0, 1, 'End'),
+        ).toEqual([]);
+    });
+
+    // ---- ON 時継続ブロック（回帰なし）----
+    it('enablePhaseConfig=ON + pacePosition="End"（end 後禁止）→ L302 文言のエラー 1 件', () => {
+        expect(
+            validatePhaseConfigStructure(true, false, 1, 1, 1, 'End'),
+        ).toEqual([L302_MESSAGE]);
+    });
+
+    it('enablePhaseConfig=ON + pacePosition="Mid2" × midPhaseCount=1（存在しないアンカー）→ L302 文言のエラー 1 件', () => {
+        expect(
+            validatePhaseConfigStructure(true, false, 1, 1, 1, 'Mid2'),
+        ).toEqual([L302_MESSAGE]);
+    });
+
+    it('enablePhaseConfig=ON + startPhaseCount=5（値域外 > 4）→ L302 文言のエラー 1 件', () => {
+        expect(
+            validatePhaseConfigStructure(true, false, 5, 1, 1, 'Start'),
+        ).toEqual([L302_MESSAGE]);
+    });
+
+    it('enablePhaseConfig=ON + 有効構成（序盤2/中盤1/終盤2/pace=Mid）→ エラーなし', () => {
+        expect(
+            validatePhaseConfigStructure(true, false, 2, 1, 2, 'Mid'),
+        ).toEqual([]);
+    });
+
+    it('enablePhaseConfig=ON + pacePosition=null（ペースなし、隊列 OFF）→ エラーなし', () => {
+        expect(
+            validatePhaseConfigStructure(true, false, 1, 1, 1, null),
+        ).toEqual([]);
+    });
+
+    // ---- 隊列 ON × フェーズ構成変更 ON 時のペース位置制約（§7.6、既存 CR-SA-20-E3 挙動継続）----
+    it('enablePhaseConfig=ON + 隊列 ON + pacePosition="Mid1"（隊列スロット以降 = Mid1 が隊列直後）→ L302 文言のエラー 1 件', () => {
+        // 中盤 2 回構成では隊列スロット = Mid1 直後（§6.4）。ペースが Mid1 だと隊列より後になり禁止。
+        expect(
+            validatePhaseConfigStructure(true, true, 1, 2, 1, 'Mid2'),
+        ).toEqual([L302_MESSAGE]);
     });
 });
 

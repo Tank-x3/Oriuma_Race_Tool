@@ -1,6 +1,7 @@
 import { Dice } from './dice';
+import { isPhaseConfigValid } from './paceAnchor';
 import { getNonPacePhaseIds } from './phaseSequence';
-import type { Umamusume } from '../types';
+import type { PacePosition, Umamusume } from '../types';
 
 // Bundle-3 / D-4 / 2026-05-09: 持続型「連続 2 フェーズ」検証 SA 確定仕様
 // （architecture/validation-responsibilities.md §4 SSoT 準拠）
@@ -133,6 +134,51 @@ export const validateSpecialStrategyTypeAndPhase = (
         return ['発動位置を選択した場合、特殊戦法種別の指定が必須です'];
     }
     return [];
+};
+
+// CR-SA-17-Followup-reset-houserules-phaseconfig-error / 2026-07-06: 禁止フェーズ構成の
+// データブロック検証（scene1-setup.md §Error Handling L302-304 + houserule-features.md §7.8
+// 「OFF 時の透過」+ modal-houserule.md §5 L289-290「初期化しない」SSoT）。
+// EntryForm.tsx の configErrors から純粋関数化（CR-SA-17-E3 由来の呼び出し側 OFF ゲート漏れ修正）。
+
+/**
+ * 禁止フェーズ構成の検証（`enablePhaseConfig` OFF 透過付き）。
+ *
+ * `enablePhaseConfig = false` のときは常に空配列を返す。`config` 側に残る `pacePosition` /
+ * `startPhaseCount` 等の残存値は SSoT `modal-houserule.md §5 L289-290`「初期化しない」+
+ * `houserule-features.md §7.8`「OFF 時の透過」に従い、既定構成扱い（序盤 1 / 中盤 X / 終盤 1 /
+ * ペース序盤直後）で動作するため、残存値をここで評価するとエラー誤検出になる。
+ *
+ * `enablePhaseConfig = true` のときは従来通り `isPhaseConfigValid` で禁止構成を検出する。
+ * 隊列 ON 時の「ペースは隊列より前」ルール（§7.6）は `enableFormationDice && enablePhaseConfig`
+ * を `isPhaseConfigValid` に伝えることで従来通り評価される。
+ * エラー文言は `scene1-setup.md §Error Handling L302-304` SSoT で固定（変更不可）。
+ *
+ * @returns 妥当なら `[]`、エラーなら 1 件のエラーメッセージ配列。
+ */
+export const validatePhaseConfigStructure = (
+    enablePhaseConfig: boolean,
+    enableFormationDice: boolean,
+    startPhaseCount: number,
+    midPhaseCount: number,
+    endPhaseCount: number,
+    pacePosition: PacePosition,
+): string[] => {
+    if (!enablePhaseConfig) return [];
+    if (
+        isPhaseConfigValid(
+            startPhaseCount,
+            midPhaseCount,
+            endPhaseCount,
+            pacePosition,
+            enableFormationDice && enablePhaseConfig,
+        )
+    ) {
+        return [];
+    }
+    return [
+        '・フェーズ構成が不正です（ペースの位置または序盤・終盤の回数が許可範囲外です）。設定を見直してください',
+    ];
 };
 
 // CR-SA-20-E3 / 2026-06-11: 隊列〔バ群〕ダイス × ペースなし のエントリー確定ブロック

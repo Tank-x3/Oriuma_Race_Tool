@@ -1,7 +1,6 @@
 import React, { Fragment, useMemo } from 'react';
 import { useRaceStore } from '../../../store/useRaceStore';
 import { getNonPacePhaseSequence } from '../../../core/phaseSequence';
-import { isPhaseConfigValid } from '../../../core/paceAnchor';
 import { Trash2, AlertCircle, PlayCircle } from 'lucide-react';
 import type { StrategyName, UniqueSkillType } from '../../../types';
 import { NotificationArea } from '../../ui/NotificationArea';
@@ -20,6 +19,7 @@ import {
     validateBondSkillType,
     validateSpecialStrategyPhase,
     validateSpecialStrategyTypeAndPhase,
+    validatePhaseConfigStructure,
     validateFormationPacePosition,
     validateNoUniqueSkillPresence,
 } from '../../../core/validator';
@@ -220,20 +220,21 @@ export const EntryForm: React.FC = () => {
         // CR-SA-17-E3 / 2026-06-07: 禁止フェーズ構成のデータブロック（scene1-setup.md Error Handling L302-304 / §7.5）。
         // UI を経由しない経路（JSON プリセット取り込み・state 復元等）で「start 前 / end 後にペース」
         // 「序盤・終盤回数が値域外」等が混入した場合にエントリー確定をブロックする（二重防御のデータ側）。
-        // OFF 時は既定値（序盤1/終盤1/ペース序盤直後）= 常に valid のためエラーは出ない（OFF 透過）。
+        // CR-SA-17-Followup-reset-houserules-phaseconfig-error / 2026-07-06: OFF ゲートを純粋関数側へ移管
+        // （houserule-features.md §7.8 OFF 透過 + modal-houserule.md §5 L289-290 準拠、
+        //  ♻️ 初期化後や OFF 切替後に config.pacePosition 残存値でエラー誤検出される既存バグの修正）。
         // CR-SA-20-E3 / 2026-06-11: 隊列 ON（+ フェーズ構成変更 ON）時は隊列スロット以降のペース位置も
         // 不正と判定する（§7.6「ペースは隊列より前」のデータブロック側、L302-304 文言に包含）。
-        if (
-            !isPhaseConfigValid(
+        errs.push(
+            ...validatePhaseConfigStructure(
+                houseRules.enablePhaseConfig,
+                houseRules.enableFormationDice,
                 config.startPhaseCount,
                 config.midPhaseCount,
                 config.endPhaseCount,
                 config.pacePosition,
-                houseRules.enableFormationDice && houseRules.enablePhaseConfig,
-            )
-        ) {
-            errs.push('・フェーズ構成が不正です（ペースの位置または序盤・終盤の回数が許可範囲外です）。設定を見直してください');
-        }
+            ),
+        );
 
         // CR-SA-20-E3 / 2026-06-11: 隊列 ON × ペースなし のエントリー確定ブロック
         // （houserule-features.md §7.6 + scene1-setup.md L297-301、文言は L301 SSoT 固定）。
