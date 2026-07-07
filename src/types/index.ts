@@ -107,6 +107,11 @@ export interface Umamusume {
     // とは責務を完全分離する。Scene 3 戦法ボタンの初期値は本フィールドから供給される（T4 で実装、T2 では値の保存のみ）。
     specialStrategyType?: 'Makuri' | 'Tame' | null;
     gate: number | null;
+    // CR-SA-23-E1 / 2026-07-07: 枠順手動配置の入力段階の希望値（houserule-features.md §9.8）。
+    // `null` = 未指定（Scene 2 抽選対象）、`1..N` = GM が Scene 2 [2a] で手動指定した枠番。
+    // 既存 `gate`（Scene 2 確定後の最終枠番）とは別軸のフィールド。
+    // E1 時点では未配線（Scene 2 は本フィールドを参照せず現行同一挙動）、E2 で Scene 2 に配線予定。
+    manualGate?: number | null;
     score: number;
     // History of score/dice input
     // Keyed by Phase ID.
@@ -189,6 +194,12 @@ export interface RaceState {
             // JSON プリセット対象 = §8.7 で enableNoUniqueSkill と合同 v9→v10 マイグレ。
             // Scene 1 選択肢反映（末尾登録順）は E2、Scene 3 出力・R-3 拡張は E3 スコープ。
             customUniqueSkills: CustomUniqueSkill[];
+            // CR-SA-23-E1 / 2026-07-07: 枠順手動配置のハウスルールトグル
+            // （houserule-features.md §9 / §9.1 / §4 zod 検証範囲 γ 表）。
+            // ハウスルールトグル = JSON プリセット対象（§9.9）。デフォルト false。
+            // ON 時のみ Scene 2 [2a] 手動指定 UI + [1] `[固定枠: N]` 併記 + [2b] 抽選対象絞り込み +
+            // [4] 空き枠充当 を開放する（Scene 2 配線は E2 スコープ、本 E1 では未配線 = HR ON でも Scene 2 現行同一）。
+            enableManualGate: boolean;
         };
     };
     participants: Umamusume[];

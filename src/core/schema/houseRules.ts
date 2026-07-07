@@ -125,6 +125,13 @@ export const houseRulesSchema = z.object({
     // .default([]) により、customUniqueSkills フィールドが欠落した旧データが検証通過し、
     // 空配列で補完される（後方互換、§8.7 欠落キー補完）。
     customUniqueSkills: z.array(customUniqueSkillSchema).default([]),
+    // CR-SA-23-E1 / 2026-07-07: 枠順手動配置のハウスルールトグル
+    // （houserule-features.md §9 / §9.9 永続化・プリセット / §4 zod 検証範囲 γ 表）。
+    // .default(false) により、enableManualGate フィールドが欠落した旧データ
+    // （v11 以前 persist データ / 旧 JSON プリセット）が検証通過し、false で補完される（後方互換）。
+    // participants[*].manualGate は persist の partialize が透過保持するため zod 検証対象外
+    // （§9.9「JSON プリセットには含めない」+ persistence.md §B #2 追従保持）。
+    enableManualGate: z.boolean().default(false),
 })
 // 配列内の id / name 重複拒否（§8.3 命名重複禁止「他のカスタム固有名 trim 後比較」+ id 一意性）。
 // フィールド単体の空欄・文字数・禁止文字・予約語チェックは customUniqueSkillSchema 側で完結。

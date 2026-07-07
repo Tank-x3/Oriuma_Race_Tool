@@ -14,9 +14,11 @@ describe('Bundle-9 / 2026-05-10 getHouseRuleCheckboxes', () => {
     // scene1-setup.md ワイヤーフレーム L36 記載順。フェーズ構成変更は 7 つ目へ繰り下げ）。
     // CR-SA-22 / CR-SA-21+22-E2 / 2026-07-06: 5 番目に「固有スキルなしの出走者を許可」を追加
     // （modal-houserule.md §1 ワイヤーフレーム L38 SSoT、拡張固有直後 / 絆スキル前）。8 チェックボックス化。
-    it('8 件の項目を仕様書 §1 + scene1-setup.md §2 記載順で返す', () => {
+    // CR-SA-23-E1 / 2026-07-07: 9 番目に「枠順を手動で配置(タッグレース用)」を追加
+    // （modal-houserule.md §1 ワイヤーフレーム L39 SSoT、末尾 / フェーズ構成変更の後）。9 チェックボックス化。
+    it('9 件の項目を仕様書 §1 + scene1-setup.md §2 記載順で返す', () => {
         const items = getHouseRuleCheckboxes();
-        expect(items).toHaveLength(8);
+        expect(items).toHaveLength(9);
         expect(items.map((i) => i.key)).toEqual([
             'enableModifier',
             'enableSpecialStrategy',
@@ -26,8 +28,9 @@ describe('Bundle-9 / 2026-05-10 getHouseRuleCheckboxes', () => {
             'enableBondSkill',
             'enableFormationDice',
             'enablePhaseConfig',
+            'enableManualGate',
         ]);
-        expect(items.map((i) => i.order)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+        expect(items.map((i) => i.order)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
     });
 
     it('ラベル文言が modal-houserule.md §1 + scene1-setup.md §2 と完全一致（変更不可）', () => {
@@ -45,6 +48,8 @@ describe('Bundle-9 / 2026-05-10 getHouseRuleCheckboxes', () => {
         expect(labels.enableFormationDice).toBe('隊列(バ群)ダイスを使用');
         // CR-SA-17-E3 / 2026-06-07: フェーズ構成変更トグル文言（scene1-setup.md §2 / modal-houserule.md §1 SSoT）
         expect(labels.enablePhaseConfig).toBe('フェーズ構成(序盤・終盤の回数/ペース位置)を変更する');
+        // CR-SA-23-E1 / 2026-07-07: 枠順手動配置トグル文言（modal-houserule.md §1 ワイヤーフレーム L39 SSoT + houserule-features.md §9.1）
+        expect(labels.enableManualGate).toBe('枠順を手動で配置(タッグレース用)');
     });
 });
 

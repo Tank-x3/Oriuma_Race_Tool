@@ -206,7 +206,15 @@ export const PRESET_KEY_PREFIX = 'race-store-presets:';
 // 無条件に `'7d2'` へ強制置換する。`fixValue`（`0`）は不変、他 6 タイプ不変。GM 意図的カスタム保存はないもの
 // として扱う（houserule-features.md §5.4 マイグレ節 SSoT）。強制置換は persistMigrate 内のみで行い、
 // JSON プリセット Import 経路（loadPreset の zod 検証）は '2d7' を引き続き受理する（GM 明示指定は尊重）。
-export const PERSIST_VERSION = 11;
+// CR-SA-23-E1 / 2026-07-07: PERSIST_VERSION 11 → 12 にバンプ。
+// version=11 以前旧データ（houseRules.enableManualGate 欠落 + participants[*].manualGate 欠落 =
+// 枠順手動配置の追加前）→ version=12 への補完を persistMigrate で実施
+// （houserule-features.md §9.9 SSoT + persistence.md §D.補足）。
+// - `enableManualGate` は DEFAULT_HOUSE_RULES 拡張 + `...DEFAULT_HOUSE_RULES` 浅マージで自動補完（追加コードなし）
+// - `participants[*].manualGate` は persistPartialize が state.participants を透過保持するため
+//   追加フィールドの partialize 透過保持で自動追従（明示補完不要、§9.9 SSoT）
+// 既存 v10→v11 の StabilityII '2d7'→'7d2' 強制置換ステップは不変（安全側動作継続）。
+export const PERSIST_VERSION = 12;
 export const RESTORE_ERROR_MESSAGE = '保存データの復元に失敗しました。新規セッションを開始します。';
 
 // CR-SA-17-E1 / 2026-06-06: ペース挿入位置のデフォルト値（houserule-features.md §7.2 / §7.5）。
@@ -221,6 +229,7 @@ export const DEFAULT_PACE_POSITION = 'Start';
 // CR-SA-17-E1 / 2026-06-06: enablePhaseConfig 追加（7 → 8 フィールド）。
 // CR-SA-20-E1 / 2026-06-11: enableFormationDice 追加（8 → 9 フィールド）。
 // CR-SA-21+22-E1 / 2026-07-06: enableNoUniqueSkill / customUniqueSkills 追加（9 → 11 フィールド）。
+// CR-SA-23-E1 / 2026-07-07: enableManualGate 追加（11 → 12 フィールド）。
 export const DEFAULT_HOUSE_RULES: HouseRulesData = {
     enableModifier: false,
     enableSpecialStrategy: false,
@@ -235,6 +244,8 @@ export const DEFAULT_HOUSE_RULES: HouseRulesData = {
     enableNoUniqueSkill: false,
     // CR-SA-21+22-E1 / 2026-07-06: カスタム固有スキル一覧（デフォルト空配列 = 現行完全同一）
     customUniqueSkills: [],
+    // CR-SA-23-E1 / 2026-07-07: 枠順手動配置ハウスルール（デフォルト OFF = Scene 2 現行完全同一）
+    enableManualGate: false,
 };
 
 export const persistPartialize = (state: RaceStoreState): PersistedRaceState => ({
@@ -388,6 +399,8 @@ export const useRaceStore = create<RaceStoreState>()(
                     enableNoUniqueSkill: false,
                     // CR-SA-21+22-E1 / 2026-07-06: カスタム固有スキル一覧（デフォルト空配列 = 未登録 = OFF 相当）。
                     customUniqueSkills: [],
+                    // CR-SA-23-E1 / 2026-07-07: 枠順手動配置 ON/OFF（デフォルト false = Scene 2 現行完全同一）。
+                    enableManualGate: false,
                 },
             },
             participants: [],

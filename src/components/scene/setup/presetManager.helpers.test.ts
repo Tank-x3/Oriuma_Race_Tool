@@ -31,6 +31,8 @@ const sampleHouseRules: HouseRulesData = {
     // CR-SA-21+22-E1 / 2026-07-06: 型定義拡張に追従（11 フィールド）
     enableNoUniqueSkill: false,
     customUniqueSkills: [],
+    // CR-SA-23-E1 / 2026-07-07: 型定義拡張に追従（12 フィールド）
+    enableManualGate: false,
 };
 
 const customStrategy: Strategy = {

@@ -232,6 +232,70 @@ export const validateNoUniqueSkillPresence = (
     ];
 };
 
+// CR-SA-23-E1 / 2026-07-07: 枠順手動配置の Layer 2 検証
+// （houserule-features.md §9.10 バリデーション + validation-responsibilities.md L29「Layer 2 純粋関数集約」SSoT）。
+// 既存 Layer 2 純粋関数群（validatePhaseConfigStructure / validateNoUniqueSkillPresence / validateFormationPacePosition）
+// と同構造（enableManualGate OFF ゲート内蔵、エラー配列返却）。
+// UI プルダウン（Scene 2 [2a]、E2 スコープ）が既指定枠を構造的に除外するため通常発生しないが、
+// **Import / state 復元由来の混入時**（JSON プリセット Import 経路や旧データ復元経路）に重複・範囲外を検出する
+// 最終防衛線として働く。E1 時点で Scene 2 UI は未配線のため、実質「未来の Import 混入」への防御が中心。
+
+/**
+ * 手動指定枠 (`participants[*].manualGate`) の重複・範囲外を検出する（`enableManualGate` OFF 透過付き）。
+ *
+ * `enableManualGate = false` のときは常に空配列を返す（OFF 時に `manualGate` 値が残っていても
+ * Scene 2 は現行同一挙動 = 抽選対象は全員のため、エラー扱いしない）。
+ *
+ * `enableManualGate = true` のときは以下を検出する（`houserule-features.md §9.10` SSoT）:
+ * - **重複検出:** 複数の出走者が同じ枠番を指す場合、SA29 SSoT 文言で 1 メッセージ返却
+ *   （複数枠が重複していても最初に発見した重複枠のみ報告 = 実運用では 1 件表示で修正誘導に十分）。
+ * - **範囲外検出:** `manualGate` が `1..participants.length` の範囲外（< 1 または > N）の場合、
+ *   TASK_INSTRUCTION §1.1 必須編集 E の推奨文言（Engineer 裁量、SA29 SSoT §9.10「必須項目の欠落」既存扱いに委譲）。
+ *   最初に発見した範囲外エントリーのみ報告。
+ *
+ * `null` / `undefined` の `manualGate` は「未指定 = 抽選対象」を意味し、エラー対象外。
+ *
+ * @returns 妥当なら `[]`、エラーなら 1〜2 件のエラーメッセージ配列（重複と範囲外は独立に検出）。
+ */
+export const validateManualGateAssignments = (
+    participants: readonly Umamusume[],
+    enableManualGate: boolean,
+): string[] => {
+    if (!enableManualGate) return [];
+
+    const errs: string[] = [];
+    const N = participants.length;
+
+    // 範囲外検出（1..N の外側 = < 1 または > N。null / undefined は対象外）
+    const outOfRange = participants.find(
+        (p) =>
+            typeof p.manualGate === 'number' &&
+            (p.manualGate < 1 || p.manualGate > N),
+    );
+    if (outOfRange && typeof outOfRange.manualGate === 'number') {
+        errs.push(
+            `・枠順の手動指定に範囲外の値があります: 「${outOfRange.name || '無名の出走者'}」に ${outOfRange.manualGate} 枠が指定されていますが、出走者数は ${N} 名です。「枠順抽選」画面で修正してください`,
+        );
+    }
+
+    // 重複検出（同じ枠番が複数指定 = null / undefined と outOfRange は集計対象外）
+    const gateCounts = new Map<number, number>();
+    participants.forEach((p) => {
+        if (typeof p.manualGate !== 'number') return;
+        // 範囲外は既に別エラーで報告済のため二重報告を避ける（重複判定からも除外）
+        if (p.manualGate < 1 || p.manualGate > N) return;
+        gateCounts.set(p.manualGate, (gateCounts.get(p.manualGate) ?? 0) + 1);
+    });
+    const duplicatedGate = Array.from(gateCounts.entries()).find(([, c]) => c >= 2);
+    if (duplicatedGate) {
+        errs.push(
+            `・枠順の手動指定に重複があります: ${duplicatedGate[0]} 枠が複数の出走者に指定されています。「枠順抽選」画面で修正してください`,
+        );
+    }
+
+    return errs;
+};
+
 // Bundle-10-T3 / CR-SA-12 / 2026-05-11: 脚質エディタ Validation 統合
 // (modal-houserule.md §Critical Errors + houserule-features.md §1 Validation SSoT)
 // 既存 Layer 2 純粋関数群 (validatePersistentSkillPhases / validateBondSkillType /

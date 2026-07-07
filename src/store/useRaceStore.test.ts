@@ -67,6 +67,8 @@ const installParticipant = (uma: Umamusume) => {
                 // CR-SA-21+22-E1 / 2026-07-06: 型定義拡張に追従（11 フィールド）
                 enableNoUniqueSkill: false,
                 customUniqueSkills: [],
+                // CR-SA-23-E1 / 2026-07-07: 型定義拡張に追従（12 フィールド）
+                enableManualGate: false,
             },
         },
         participants: [uma],
@@ -217,6 +219,8 @@ describe('useRaceStore.updateParticipant - CR-38 / basic-rules §6 Case 4', () =
                     // CR-SA-21+22-E1 / 2026-07-06: 型定義拡張に追従（11 フィールド）
                     enableNoUniqueSkill: false,
                     customUniqueSkills: [],
+                    // CR-SA-23-E1 / 2026-07-07: 型定義拡張に追従（12 フィールド）
+                    enableManualGate: false,
                 },
             },
             participants: [initial],
@@ -357,6 +361,8 @@ describe('useRaceStore.setMidPhaseCount - CR-3 / scene1-setup.md §4 Soft Delete
                     // CR-SA-21+22-E1 / 2026-07-06: 型定義拡張に追従（11 フィールド）
                     enableNoUniqueSkill: false,
                     customUniqueSkills: [],
+                    // CR-SA-23-E1 / 2026-07-07: 型定義拡張に追従（12 フィールド）
+                    enableManualGate: false,
                 },
             },
             participants: [initial],
@@ -779,7 +785,8 @@ describe('CR-5a: zustand persist 設定', () => {
         // CR-SA-20-E4 / 2026-06-11: 8 → 9 にバンプ（formationResult 追加）
         // CR-SA-21+22-E1 / 2026-07-06: 9 → 10 にバンプ（enableNoUniqueSkill / customUniqueSkills 追加）
         // CR-SA-19-Followup / 2026-07-06: 10 → 11 にバンプ（安定型Ⅱ diceStr '2d7'→'7d2' 強制置換マイグレ）
-        expect(PERSIST_VERSION).toBe(11);
+        // CR-SA-23-E1 / 2026-07-07: 11 → 12 にバンプ（枠順手動配置 enableManualGate 追加マイグレ）
+        expect(PERSIST_VERSION).toBe(12);
         expect(PERSIST_NAME).toBe('race-store');
     });
 
@@ -821,6 +828,8 @@ describe('CR-5a: zustand persist 設定', () => {
             // CR-SA-21+22-E1 / 2026-07-06: 型定義拡張に追従（11 フィールド）
             enableNoUniqueSkill: false,
             customUniqueSkills: [],
+            // CR-SA-23-E1 / 2026-07-07: 型定義拡張に追従（12 フィールド）
+            enableManualGate: false,
         });
         // その他フィールドも保持される
         expect(result.config.midPhaseCount).toBe(3);
@@ -1001,6 +1010,8 @@ describe('useRaceStore - Bundle-6 / scene3-race.md §6 完全な状態復元', (
                     // CR-SA-21+22-E1 / 2026-07-06: 型定義拡張に追従（11 フィールド）
                     enableNoUniqueSkill: false,
                     customUniqueSkills: [],
+                    // CR-SA-23-E1 / 2026-07-07: 型定義拡張に追従（12 フィールド）
+                    enableManualGate: false,
                     ...houseRulesOverride,
                 },
             },
@@ -1365,6 +1376,8 @@ describe('Bundle-4 / P4-1, P4-5 / 2026-05-10 useRaceStore.setSpecialStrategy', (
                     // CR-SA-21+22-E1 / 2026-07-06: 型定義拡張に追従（11 フィールド）
                     enableNoUniqueSkill: false,
                     customUniqueSkills: [],
+                    // CR-SA-23-E1 / 2026-07-07: 型定義拡張に追従（12 フィールド）
+                    enableManualGate: false,
                 },
             },
             participants: [uma],
@@ -1534,6 +1547,8 @@ describe('Bundle-4 / P4-1, P4-5 / 2026-05-10 useRaceStore.updateHouseRules effec
                     // CR-SA-21+22-E1 / 2026-07-06: 型定義拡張に追従（11 フィールド）
                     enableNoUniqueSkill: false,
                     customUniqueSkills: [],
+                    // CR-SA-23-E1 / 2026-07-07: 型定義拡張に追従（12 フィールド）
+                    enableManualGate: false,
                 },
             },
             participants: [uma],
@@ -1632,6 +1647,7 @@ describe('Bundle-7 / P4-6 / 2026-05-10 persistMigrate (zod 検証 + デフォル
             enableFormationDice: false, // CR-SA-20-E1 デフォルト補完
             enableNoUniqueSkill: false, // CR-SA-21+22-E1 デフォルト補完
             customUniqueSkills: [], // CR-SA-21+22-E1 デフォルト補完
+            enableManualGate: false, // CR-SA-23-E1 デフォルト補完
         });
         // 既存フィールドは維持
         expect(result.config.midPhaseCount).toBe(2);
@@ -1666,6 +1682,7 @@ describe('Bundle-7 / P4-6 / 2026-05-10 persistMigrate (zod 検証 + デフォル
             enableFormationDice: false, // CR-SA-20-E1 デフォルト補完
             enableNoUniqueSkill: false, // CR-SA-21+22-E1 デフォルト補完
             customUniqueSkills: [], // CR-SA-21+22-E1 デフォルト補完
+            enableManualGate: false, // CR-SA-23-E1 デフォルト補完
         });
     });
 
@@ -1796,6 +1813,8 @@ describe('Bundle-5 / P4-2, P4-3, CR-22 / 2026-05-10 useRaceStore.setManualModifi
                     // CR-SA-21+22-E1 / 2026-07-06: 型定義拡張に追従（11 フィールド）
                     enableNoUniqueSkill: false,
                     customUniqueSkills: [],
+                    // CR-SA-23-E1 / 2026-07-07: 型定義拡張に追従（12 フィールド）
+                    enableManualGate: false,
                 },
             },
             participants: [uma],
@@ -2138,6 +2157,8 @@ describe('useRaceStore.persistMigrate - Bundle-8-T1 / v2→v3 マイグレーシ
             // CR-SA-21+22-E1 / 2026-07-06: 型定義拡張に追従（11 フィールド）
             enableNoUniqueSkill: false,
             customUniqueSkills: [],
+            // CR-SA-23-E1 / 2026-07-07: 型定義拡張に追従（12 フィールド）
+            enableManualGate: false,
         });
     });
 
@@ -2174,6 +2195,7 @@ describe('useRaceStore.persistMigrate - Bundle-8-T1 / v2→v3 マイグレーシ
             enableFormationDice: false, // CR-SA-20-E1 デフォルト補完
             enableNoUniqueSkill: false, // CR-SA-21+22-E1 デフォルト補完
             customUniqueSkills: [], // CR-SA-21+22-E1 デフォルト補完
+            enableManualGate: false, // CR-SA-23-E1 デフォルト補完
         });
     });
 
@@ -2709,6 +2731,234 @@ describe('useRaceStore.persistMigrate - Bundle-8-T1 / v2→v3 マイグレーシ
             diceStr: '7d2',
         });
     });
+
+    // CR-SA-23-E1 / 2026-07-07 ★最重要: v11 旧データ（houseRules.enableManualGate 欠落 +
+    // participants[*].manualGate 欠落）→ persistMigrate で version 12 へ補完される（既存ユーザーデータ保護）。
+    // - enableManualGate は DEFAULT_HOUSE_RULES 拡張 + zod .default(false) 二重で false 補完
+    // - participants[*].manualGate は partialize が透過保持するため何も追加せず自動追従
+    // - 他 HR フィールドのカスタム値・formationResult・paceResult・appliedPresetName は完全保持
+    it('(xv) v11 旧データ → enableManualGate=false デフォルト補完 + participants 透過保持 + 他フィールドカスタム値保持', () => {
+        const v11Persisted = {
+            config: {
+                midPhaseCount: 2, // カスタム値（保持されること）
+                fullGateSize: 14,
+                startPhaseCount: 2,
+                endPhaseCount: 3,
+                pacePosition: 'Mid1',
+                houseRules: {
+                    enableModifier: true, // カスタム値
+                    enableSpecialStrategy: false,
+                    enableCompositeUnique: false,
+                    enableExtendedUnique: true, // カスタム値
+                    enableBondSkill: false,
+                    effectValue: 42, // カスタム値
+                    uniqueDiceConfig: {
+                        ...DEFAULT_UNIQUE_DICE_CONFIG,
+                        Stability: { fixValue: 6, diceStr: '1d12' },
+                    },
+                    enablePhaseConfig: true,
+                    enableFormationDice: true,
+                    enableNoUniqueSkill: false,
+                    customUniqueSkills: [{ id: 'cs-1', name: '先行特化', fixValue: 5, diceStr: '1d10' }],
+                    // enableManualGate は v11 では存在しない（欠落 = 補完対象）
+                },
+            },
+            participants: [
+                // v11 では manualGate 欠落。partialize 透過保持を確認するため未定義のまま渡す
+                {
+                    id: 'p1', entryIndex: 1, name: '出走者A', strategy: '逃げ',
+                    uniqueSkill: { type: 'Stability', phases: [] }, gate: null, score: 0, history: {},
+                },
+                {
+                    id: 'p2', entryIndex: 2, name: '出走者B', strategy: '差し',
+                    uniqueSkill: { type: 'Gamble', phases: [] }, gate: null, score: 0, history: {},
+                },
+            ],
+            currentPhaseId: 'Mid1',
+            paceResult: { face: 7, label: 'High' },
+            formationResult: { face: 5, label: '普通' },
+            strategies: [],
+            gateAssignments: null,
+            appliedPresetName: 'マイ設定v11',
+            isPresetDirty: true,
+            uiState: { scene: 'race' },
+        } as unknown as PersistedRaceState;
+
+        const result = persistMigrate(v11Persisted, 11);
+
+        // ★ 新 1 フィールドはデフォルト補完される
+        expect(result.config.houseRules.enableManualGate).toBe(false);
+
+        // ★ 他 HR フィールドのカスタム値は完全保持
+        expect(result.config.houseRules.enableModifier).toBe(true);
+        expect(result.config.houseRules.enableExtendedUnique).toBe(true);
+        expect(result.config.houseRules.effectValue).toBe(42);
+        expect(result.config.houseRules.enablePhaseConfig).toBe(true);
+        expect(result.config.houseRules.enableFormationDice).toBe(true);
+        expect(result.config.houseRules.enableNoUniqueSkill).toBe(false);
+        expect(result.config.houseRules.customUniqueSkills).toEqual([
+            { id: 'cs-1', name: '先行特化', fixValue: 5, diceStr: '1d10' },
+        ]);
+        expect(result.config.houseRules.uniqueDiceConfig.Stability).toEqual({ fixValue: 6, diceStr: '1d12' });
+
+        // config 直下フィールド保持
+        expect(result.config.midPhaseCount).toBe(2);
+        expect(result.config.fullGateSize).toBe(14);
+        expect(result.config.startPhaseCount).toBe(2);
+        expect(result.config.endPhaseCount).toBe(3);
+        expect(result.config.pacePosition).toBe('Mid1');
+
+        // participants は透過保持（manualGate 欠落のまま = undefined）
+        expect(result.participants).toHaveLength(2);
+        expect(result.participants?.[0].id).toBe('p1');
+        expect(result.participants?.[0].manualGate).toBeUndefined();
+        expect(result.participants?.[1].id).toBe('p2');
+        expect(result.participants?.[1].manualGate).toBeUndefined();
+
+        // formationResult / paceResult / appliedPresetName / isPresetDirty 保持
+        expect(result.formationResult).toEqual({ face: 5, label: '普通' });
+        expect(result.paceResult).toEqual({ face: 7, label: 'High' });
+        expect(result.appliedPresetName).toBe('マイ設定v11');
+        expect(result.isPresetDirty).toBe(true);
+    });
+
+    // CR-SA-23-E1 / 2026-07-07: v11 データで enableManualGate=true を明示保持している場合、
+    // デフォルト補完で false に上書きされずに true を保持する（後方互換の対称性確認）。
+    it('(xvi) v11 データ + enableManualGate=true を明示保持 → true 保持（デフォルト補完で上書きされない）', () => {
+        const v11WithManualGate = {
+            config: {
+                midPhaseCount: 1,
+                fullGateSize: 12,
+                startPhaseCount: 1,
+                endPhaseCount: 1,
+                pacePosition: 'Start',
+                houseRules: {
+                    enableModifier: false,
+                    enableSpecialStrategy: false,
+                    enableCompositeUnique: false,
+                    enableExtendedUnique: false,
+                    enableBondSkill: false,
+                    effectValue: 15,
+                    uniqueDiceConfig: DEFAULT_UNIQUE_DICE_CONFIG,
+                    enablePhaseConfig: false,
+                    enableFormationDice: false,
+                    enableNoUniqueSkill: false,
+                    customUniqueSkills: [],
+                    enableManualGate: true,
+                },
+            },
+            participants: [],
+            currentPhaseId: 'setup',
+            paceResult: { face: null, label: null },
+            formationResult: { face: null, label: null },
+            strategies: [],
+            gateAssignments: null,
+            appliedPresetName: null,
+            isPresetDirty: false,
+            uiState: { scene: 'setup' },
+        } as unknown as PersistedRaceState;
+
+        const result = persistMigrate(v11WithManualGate, 11);
+        expect(result.config.houseRules.enableManualGate).toBe(true);
+    });
+
+    // CR-SA-23-E1 / 2026-07-07: v11 データで participants[*].manualGate に値を明示保持している場合、
+    // partialize が透過保持するため補完前後で値が保たれる（partialize 動作確認）。
+    it('(xvii) v11 データ + participants[*].manualGate 明示値 → 透過保持（partialize 透過確認）', () => {
+        const v11WithParticipantManualGate = {
+            config: {
+                midPhaseCount: 1,
+                fullGateSize: 12,
+                startPhaseCount: 1,
+                endPhaseCount: 1,
+                pacePosition: 'Start',
+                houseRules: {
+                    enableModifier: false,
+                    enableSpecialStrategy: false,
+                    enableCompositeUnique: false,
+                    enableExtendedUnique: false,
+                    enableBondSkill: false,
+                    effectValue: 15,
+                    uniqueDiceConfig: DEFAULT_UNIQUE_DICE_CONFIG,
+                    enablePhaseConfig: false,
+                    enableFormationDice: false,
+                    enableNoUniqueSkill: false,
+                    customUniqueSkills: [],
+                    enableManualGate: true,
+                },
+            },
+            participants: [
+                {
+                    id: 'pA', entryIndex: 1, name: 'A', strategy: '逃げ',
+                    uniqueSkill: { type: 'Stability', phases: [] }, gate: null, manualGate: 3,
+                    score: 0, history: {},
+                },
+                {
+                    id: 'pB', entryIndex: 2, name: 'B', strategy: '差し',
+                    uniqueSkill: { type: 'Gamble', phases: [] }, gate: null, manualGate: null,
+                    score: 0, history: {},
+                },
+            ],
+            currentPhaseId: 'setup',
+            paceResult: { face: null, label: null },
+            formationResult: { face: null, label: null },
+            strategies: [],
+            gateAssignments: null,
+            appliedPresetName: null,
+            isPresetDirty: false,
+            uiState: { scene: 'setup' },
+        } as unknown as PersistedRaceState;
+
+        const result = persistMigrate(v11WithParticipantManualGate, 11);
+
+        expect(result.participants?.[0].manualGate).toBe(3);
+        expect(result.participants?.[1].manualGate).toBeNull();
+    });
+
+    // CR-SA-23-E1 / 2026-07-07: v12 相当データ透過保持テスト（enableManualGate 含む正常経路）。
+    it('(xviii) v12 相当データ（enableManualGate 含む全 12 フィールド）→ 全フィールド透過保持', () => {
+        const v12Persisted = {
+            config: {
+                midPhaseCount: 1,
+                fullGateSize: null,
+                startPhaseCount: 1,
+                endPhaseCount: 1,
+                pacePosition: 'Start',
+                houseRules: {
+                    enableModifier: false,
+                    enableSpecialStrategy: false,
+                    enableCompositeUnique: false,
+                    enableExtendedUnique: false,
+                    enableBondSkill: false,
+                    effectValue: 15,
+                    uniqueDiceConfig: DEFAULT_UNIQUE_DICE_CONFIG,
+                    enablePhaseConfig: false,
+                    enableFormationDice: false,
+                    enableNoUniqueSkill: false,
+                    customUniqueSkills: [],
+                    enableManualGate: false,
+                },
+            },
+            participants: [],
+            currentPhaseId: 'setup',
+            paceResult: { face: null, label: null },
+            formationResult: { face: null, label: null },
+            strategies: [],
+            gateAssignments: null,
+            appliedPresetName: null,
+            isPresetDirty: false,
+            uiState: { scene: 'setup' },
+        } as unknown as PersistedRaceState;
+
+        const result = persistMigrate(v12Persisted, 12);
+
+        expect(result.config.houseRules.enableManualGate).toBe(false);
+        // 併せて v10→v11 のマイグレステップが v12 データにも透過的に働く（StabilityII='7d2' 保持）ことを確認
+        expect(result.config.houseRules.uniqueDiceConfig.StabilityII).toEqual({
+            fixValue: 0,
+            diceStr: '7d2',
+        });
+    });
 });
 
 // Bundle-8-T6 / CR-SA-4 / 2026-05-10: 絆スキル スコア最終加算のストア統合テスト。
@@ -2772,6 +3022,8 @@ describe('useRaceStore - Bundle-8-T6 / 絆スキル スコア最終加算', () =
                     // CR-SA-21+22-E1 / 2026-07-06: 型定義拡張に追従（11 フィールド）
                     enableNoUniqueSkill: false,
                     customUniqueSkills: [],
+                    // CR-SA-23-E1 / 2026-07-07: 型定義拡張に追従（12 フィールド）
+                    enableManualGate: false,
                 },
             },
             participants: [p],
@@ -3706,6 +3958,8 @@ describe('CR-SA-15-E4 / 2026-05-15 uniqueDiceConfig JSON I/O', () => {
                 // CR-SA-21+22-E1 / 2026-07-06: 型定義拡張に追従（11 フィールド）
                 enableNoUniqueSkill: false,
                 customUniqueSkills: [],
+                // CR-SA-23-E1 / 2026-07-07: 型定義拡張に追従（12 フィールド）
+                enableManualGate: false,
             },
             strategies: DEFAULT_STRATEGIES.map((s) => ({
                 ...s,
@@ -3747,6 +4001,8 @@ describe('CR-SA-15-E4 / 2026-05-15 uniqueDiceConfig JSON I/O', () => {
                 // CR-SA-21+22-E1 / 2026-07-06: 型定義拡張に追従（11 フィールド）
                 enableNoUniqueSkill: false,
                 customUniqueSkills: [],
+                // CR-SA-23-E1 / 2026-07-07: 型定義拡張に追従（12 フィールド）
+                enableManualGate: false,
             },
             strategies: [
                 {
@@ -3881,6 +4137,8 @@ describe('CR-SA-16-E1 / 2026-05-15 appliedPresetName + isPresetDirty', () => {
                 // CR-SA-21+22-E1 / 2026-07-06: 型定義拡張に追従（11 フィールド）
                 enableNoUniqueSkill: false,
                 customUniqueSkills: [],
+                // CR-SA-23-E1 / 2026-07-07: 型定義拡張に追従（12 フィールド）
+                enableManualGate: false,
             },
             strategies: DEFAULT_STRATEGIES.map((s) => ({
                 ...s,
@@ -3912,6 +4170,8 @@ describe('CR-SA-16-E1 / 2026-05-15 appliedPresetName + isPresetDirty', () => {
                 // CR-SA-21+22-E1 / 2026-07-06: 型定義拡張に追従（11 フィールド）
                 enableNoUniqueSkill: false,
                 customUniqueSkills: [],
+                // CR-SA-23-E1 / 2026-07-07: 型定義拡張に追従（12 フィールド）
+                enableManualGate: false,
             },
             strategies: DEFAULT_STRATEGIES.map((s) => ({
                 ...s,
@@ -3937,6 +4197,8 @@ describe('CR-SA-16-E1 / 2026-05-15 appliedPresetName + isPresetDirty', () => {
                 // CR-SA-21+22-E1 / 2026-07-06: 型定義拡張に追従（11 フィールド）
                 enableNoUniqueSkill: false,
                 customUniqueSkills: [],
+                // CR-SA-23-E1 / 2026-07-07: 型定義拡張に追従（12 フィールド）
+                enableManualGate: false,
             },
             strategies: DEFAULT_STRATEGIES.map((s) => ({
                 ...s,
@@ -4109,15 +4371,16 @@ describe('CR-SA-16-E1 / 2026-05-15 appliedPresetName + isPresetDirty', () => {
         expect(migrated.isPresetDirty).toBe(false);
     });
 
-    // (S18) PERSIST_VERSION === 11（バンプの構造的証跡）
+    // (S18) PERSIST_VERSION === 12（バンプの構造的証跡）
     // CR-SA-19 / 2026-06-06: 5 → 6（uniqueDiceConfig 旧 5 キー → 新 7 キー補完）
     // CR-SA-17-E1 / 2026-06-06: 6 → 7（enablePhaseConfig + config 3 フィールド追加）
     // CR-SA-20-E1 / 2026-06-11: 7 → 8（enableFormationDice 追加）
     // CR-SA-20-E4 / 2026-06-11: 8 → 9（formationResult 追加）
     // CR-SA-21+22-E1 / 2026-07-06: 9 → 10（enableNoUniqueSkill / customUniqueSkills 追加）
     // CR-SA-19-Followup / 2026-07-06: 10 → 11（安定型Ⅱ diceStr '2d7'→'7d2' 強制置換マイグレ）
-    it('(S18) PERSIST_VERSION === 11', () => {
-        expect(PERSIST_VERSION).toBe(11);
+    // CR-SA-23-E1 / 2026-07-07: 11 → 12（enableManualGate / participants[*].manualGate 追加マイグレ）
+    it('(S18) PERSIST_VERSION === 12', () => {
+        expect(PERSIST_VERSION).toBe(12);
     });
 
     // CR-SA-21+22-E1 / 2026-07-06: 初期 state / DEFAULT_HOUSE_RULES に新 2 フィールドが含まれる
@@ -4147,6 +4410,26 @@ describe('CR-SA-16-E1 / 2026-05-15 appliedPresetName + isPresetDirty', () => {
 
         // 既存フィールドは無影響
         expect(useRaceStore.getState().config.houseRules.enableFormationDice).toBe(false);
+    });
+
+    // CR-SA-23-E1 / 2026-07-07: 初期 state / DEFAULT_HOUSE_RULES に enableManualGate=false が含まれる。
+    // 直前テスト（S21）で updateHouseRules で houseRules が書き換わっているため、resetHouseRules で
+    // 初期化してから確認する（テスト間の state 汚染回避、既存 CR-SA-16-Followup-reset-houserules パターン）。
+    it('(S22) 初期 state: houseRules.enableManualGate=false', () => {
+        useRaceStore.getState().resetHouseRules();
+        expect(useRaceStore.getState().config.houseRules.enableManualGate).toBe(false);
+        expect(DEFAULT_HOUSE_RULES.enableManualGate).toBe(false);
+    });
+
+    // CR-SA-23-E1 / 2026-07-07: updateHouseRules で enableManualGate を上書きできる。
+    // 事前に resetHouseRules で他 HR 群を初期化してから updateHouseRules の上書き反映と他フィールド不変を確認。
+    it('(S23) updateHouseRules: enableManualGate=true への上書き反映', () => {
+        useRaceStore.getState().resetHouseRules();
+        useRaceStore.getState().updateHouseRules({ enableManualGate: true });
+        expect(useRaceStore.getState().config.houseRules.enableManualGate).toBe(true);
+        // 既存フィールドは無影響（他 HR 群の透過保持）
+        expect(useRaceStore.getState().config.houseRules.enableFormationDice).toBe(false);
+        expect(useRaceStore.getState().config.houseRules.enableNoUniqueSkill).toBe(false);
     });
 });
 

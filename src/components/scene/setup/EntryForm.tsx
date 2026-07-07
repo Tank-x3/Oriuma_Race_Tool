@@ -22,6 +22,7 @@ import {
     validatePhaseConfigStructure,
     validateFormationPacePosition,
     validateNoUniqueSkillPresence,
+    validateManualGateAssignments,
 } from '../../../core/validator';
 
 // Bundle-2 / D-1, D-14 / 2026-05-09: 静的配列を廃止し、`enableExtendedUnique` 連動で
@@ -254,6 +255,13 @@ export const EntryForm: React.FC = () => {
             ...validateNoUniqueSkillPresence(houseRules.enableNoUniqueSkill, participants),
         );
 
+        // CR-SA-23-E1 / 2026-07-07: 枠順手動配置の重複・範囲外検出（houserule-features.md §9.10 SSoT）。
+        // Scene 2 [2a] プルダウン UI は E2 スコープのため E1 時点では UI 経由の混入は発生しないが、
+        // Import / state 復元由来の混入への Layer 2 最終防衛線として敷設する（OFF 時は空配列返却）。
+        errs.push(
+            ...validateManualGateAssignments(participants, houseRules.enableManualGate),
+        );
+
         return errs;
     }, [
         config.startPhaseCount,
@@ -263,6 +271,7 @@ export const EntryForm: React.FC = () => {
         houseRules.enableFormationDice,
         houseRules.enablePhaseConfig,
         houseRules.enableNoUniqueSkill,
+        houseRules.enableManualGate,
         participants,
     ]);
 

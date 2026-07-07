@@ -55,6 +55,8 @@ const baseHouseRules: HouseRules = {
     // CR-SA-21+22-E1 / 2026-07-06: 型定義拡張に追従（11 フィールド）
     enableNoUniqueSkill: false,
     customUniqueSkills: [],
+    // CR-SA-23-E1 / 2026-07-07: 型定義拡張に追従（12 フィールド）
+    enableManualGate: false,
 };
 
 describe('gateScene.helpers - Bundle-8-T3 / CR-SA-4 / 2026-05-10', () => {

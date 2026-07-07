@@ -11,6 +11,7 @@ import {
     validatePhaseConfigStructure,
     validateFormationPacePosition,
     validateNoUniqueSkillPresence,
+    validateManualGateAssignments,
 } from './validator';
 
 describe('Validator', () => {
@@ -491,5 +492,99 @@ describe('validateNoUniqueSkillPresence (CR-SA-22 / CR-SA-21+22-E2)', () => {
         expect(validateNoUniqueSkillPresence(false, parts)).toEqual([
             '・固有スキルなしが許可されていない設定で「なし」の出走者がいます（例: 無名の出走者）。ハウスルールを見直すか、固有タイプを設定してください',
         ]);
+    });
+});
+
+// CR-SA-23-E1 / 2026-07-07:
+// validateManualGateAssignments の SSoT テスト（houserule-features.md §9.10 SSoT）
+// - enableManualGate OFF ゲート、重複検出、範囲外検出
+describe('validateManualGateAssignments (CR-SA-23-E1)', () => {
+    const makeP = (name: string, manualGate?: number | null): Umamusume => ({
+        id: `id-${name}`,
+        entryIndex: 1,
+        name,
+        strategy: '逃げ',
+        uniqueSkill: { type: 'Stability', phases: [] },
+        gate: null,
+        manualGate,
+        score: 0,
+        history: {},
+    });
+
+    // === OFF 透過（3 件）: enableManualGate=false 時は常に空配列 ===
+    it('OFF 透過: enableManualGate=false + manualGate 値が全 null → 空配列', () => {
+        const parts = [makeP('A', null), makeP('B', null)];
+        expect(validateManualGateAssignments(parts, false)).toEqual([]);
+    });
+
+    it('OFF 透過: enableManualGate=false + 重複値混入 → 空配列（OFF ゲートで検出しない）', () => {
+        const parts = [makeP('A', 2), makeP('B', 2)];
+        expect(validateManualGateAssignments(parts, false)).toEqual([]);
+    });
+
+    it('OFF 透過: enableManualGate=false + 範囲外値混入 → 空配列（OFF ゲートで検出しない）', () => {
+        const parts = [makeP('A', 99), makeP('B', null)];
+        expect(validateManualGateAssignments(parts, false)).toEqual([]);
+    });
+
+    // === ON × 正常系（2 件）===
+    it('ON × 正常系: 全員 null（未指定 = 抽選対象） → 空配列', () => {
+        const parts = [makeP('A', null), makeP('B', null), makeP('C', null)];
+        expect(validateManualGateAssignments(parts, true)).toEqual([]);
+    });
+
+    it('ON × 正常系: 一部指定 + 重複・範囲外なし → 空配列', () => {
+        const parts = [makeP('A', 3), makeP('B', null), makeP('C', 1), makeP('D', null)];
+        expect(validateManualGateAssignments(parts, true)).toEqual([]);
+    });
+
+    // === ON × 重複検出（2 件） ===
+    it('ON × 重複検出: 2 名が同じ枠（枠 2）を指す → SSoT §9.10 文言完全一致（1 メッセージ）', () => {
+        const parts = [makeP('A', 2), makeP('B', 2), makeP('C', null)];
+        expect(validateManualGateAssignments(parts, true)).toEqual([
+            '・枠順の手動指定に重複があります: 2 枠が複数の出走者に指定されています。「枠順抽選」画面で修正してください',
+        ]);
+    });
+
+    it('ON × 重複検出: 3 名が同じ枠（枠 1）を指す → SSoT §9.10 文言完全一致（1 メッセージに集約）', () => {
+        const parts = [makeP('A', 1), makeP('B', 1), makeP('C', 1)];
+        expect(validateManualGateAssignments(parts, true)).toEqual([
+            '・枠順の手動指定に重複があります: 1 枠が複数の出走者に指定されています。「枠順抽選」画面で修正してください',
+        ]);
+    });
+
+    // === ON × 範囲外検出（2 件） ===
+    it('ON × 範囲外検出: manualGate=0（< 1） → 範囲外文言', () => {
+        const parts = [makeP('ウマ娘A', 0), makeP('B', null)];
+        expect(validateManualGateAssignments(parts, true)).toEqual([
+            '・枠順の手動指定に範囲外の値があります: 「ウマ娘A」に 0 枠が指定されていますが、出走者数は 2 名です。「枠順抽選」画面で修正してください',
+        ]);
+    });
+
+    it('ON × 範囲外検出: manualGate=5（> N=3） → 範囲外文言', () => {
+        const parts = [makeP('モブ', 5), makeP('B', null), makeP('C', null)];
+        expect(validateManualGateAssignments(parts, true)).toEqual([
+            '・枠順の手動指定に範囲外の値があります: 「モブ」に 5 枠が指定されていますが、出走者数は 3 名です。「枠順抽選」画面で修正してください',
+        ]);
+    });
+
+    // === 追加: 複合ケース + 空 participants + undefined フィールド ===
+    it('participants が空配列 → 空配列（OFF ゲート後の safe 経路）', () => {
+        expect(validateManualGateAssignments([], true)).toEqual([]);
+    });
+
+    it('manualGate フィールド欠落（undefined）→ 未指定扱いで空配列', () => {
+        const p: Umamusume = {
+            id: 'id-X',
+            entryIndex: 1,
+            name: 'X',
+            strategy: '逃げ',
+            uniqueSkill: { type: 'Stability', phases: [] },
+            gate: null,
+            // manualGate 未定義
+            score: 0,
+            history: {},
+        };
+        expect(validateManualGateAssignments([p], true)).toEqual([]);
     });
 });

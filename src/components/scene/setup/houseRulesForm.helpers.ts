@@ -27,6 +27,10 @@ export interface HouseRuleCheckboxMeta {
 // CR-SA-21+22-E2 / 2026-07-06: 「固有スキルなしの出走者を許可」を拡張固有直後（order 5）に追加。
 // 並び順は modal-houserule.md §1 ワイヤーフレーム L33-41 SSoT（拡張固有 → 固有スキルなし → 絆 → 隊列 → フェーズ構成）。
 // 既存 order 5〜7 を 6〜8 へ機械的に繰り下げる（8 チェックボックス化）。
+// CR-SA-23-E1 / 2026-07-07: 「枠順を手動で配置(タッグレース用)」を末尾（order 9）に追加（9 チェックボックス化）。
+// 並び順は modal-houserule.md §1 ワイヤーフレーム L39 SSoT + houserule-features.md §9.1 準拠。
+// ラベル文字列「枠順を手動で配置(タッグレース用)」は固定（SA29 ユーザー確認済、半角丸括弧、末尾ピリオドなし）。
+// E1 時点では ON/OFF 保存 + JSON I/O 反映のみ、Scene 2 実挙動は現行完全同一（未配線保証、E2 で配線予定）。
 export const getHouseRuleCheckboxes = (): HouseRuleCheckboxMeta[] => [
     { key: 'enableModifier', label: '汎用補正(Modifier)ボタンを表示', order: 1 },
     { key: 'enableSpecialStrategy', label: '特殊戦法(ステータス変化: 捲り/溜め)を使用', order: 2 },
@@ -47,6 +51,10 @@ export const getHouseRuleCheckboxes = (): HouseRuleCheckboxMeta[] => [
     // 序盤・終盤回数 / ペース位置の設定 UI を開放する（scene1-setup.md §2 / modal-houserule.md §1 / houserule-features.md §7）。
     // ラベル文言は scene1-setup.md ワイヤーフレーム / modal-houserule.md §1 と完全一致。
     { key: 'enablePhaseConfig', label: 'フェーズ構成(序盤・終盤の回数/ペース位置)を変更する', order: 8 },
+    // CR-SA-23-E1 / 2026-07-07: 枠順手動配置トグル（9 個目）。ラベル文字列は SA29 ユーザー確認済 SSoT で固定
+    // （modal-houserule.md §1 ワイヤーフレーム L39 + scene1-setup.md §2 L237 + houserule-features.md §9.1）。
+    // E1 時点では Scene 2 未配線 = ON にしても Scene 2 は現行完全同一挙動、E2 で [2a] 手動指定 UI + 進行統合を配線予定。
+    { key: 'enableManualGate', label: '枠順を手動で配置(タッグレース用)', order: 9 },
 ];
 
 export const EFFECT_VALUE_MIN = 1;

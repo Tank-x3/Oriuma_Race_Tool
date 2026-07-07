@@ -817,3 +817,111 @@ describe('CR-SA-21+22-E1 / 2026-07-06 houseRulesSchema.customUniqueSkills / enab
         }
     });
 });
+
+// CR-SA-23-E1 / 2026-07-07: houserule-features.md §9 枠順手動配置 + §4 zod 検証範囲 γ 表
+// に基づく enableManualGate フィールドの検証。
+// - 型: boolean、.default(false)（後方互換、enableManualGate 欠落の旧 persist / 旧 JSON プリセットを補完）
+// - enableNoUniqueSkill / enableFormationDice / enablePhaseConfig と同方式。
+describe('CR-SA-23-E1 / 2026-07-07 houseRulesSchema.enableManualGate (default false)', () => {
+    // enableManualGate を含まない旧 houseRules（CR-SA-21+22 期 = v11 相当の 11 フィールド構造）
+    const validHouseRulesNoManualGate = {
+        enableModifier: false,
+        enableSpecialStrategy: false,
+        enableCompositeUnique: false,
+        enableExtendedUnique: false,
+        enableBondSkill: false,
+        effectValue: 15,
+        uniqueDiceConfig: DEFAULT_UNIQUE_DICE_CONFIG,
+        enablePhaseConfig: false,
+        enableFormationDice: false,
+        enableNoUniqueSkill: false,
+        customUniqueSkills: [],
+    };
+
+    it('(MG1) enableManualGate 欠落 → success + false 補完（後方互換の要）', () => {
+        const result = houseRulesSchema.safeParse(validHouseRulesNoManualGate);
+        expect(result.success).toBe(true);
+        if (result.success) {
+            expect(result.data.enableManualGate).toBe(false);
+        }
+    });
+
+    it('(MG2) enableManualGate = true / false 明示値保持', () => {
+        const trueResult = houseRulesSchema.safeParse({
+            ...validHouseRulesNoManualGate,
+            enableManualGate: true,
+        });
+        expect(trueResult.success).toBe(true);
+        if (trueResult.success) {
+            expect(trueResult.data.enableManualGate).toBe(true);
+        }
+        const falseResult = houseRulesSchema.safeParse({
+            ...validHouseRulesNoManualGate,
+            enableManualGate: false,
+        });
+        expect(falseResult.success).toBe(true);
+        if (falseResult.success) {
+            expect(falseResult.data.enableManualGate).toBe(false);
+        }
+    });
+
+    it('(MG3) enableManualGate が boolean 以外（string / number / null）で failure', () => {
+        expect(
+            houseRulesSchema.safeParse({
+                ...validHouseRulesNoManualGate,
+                enableManualGate: 'true' as unknown as boolean,
+            }).success,
+        ).toBe(false);
+        expect(
+            houseRulesSchema.safeParse({
+                ...validHouseRulesNoManualGate,
+                enableManualGate: 1 as unknown as boolean,
+            }).success,
+        ).toBe(false);
+        expect(
+            houseRulesSchema.safeParse({
+                ...validHouseRulesNoManualGate,
+                enableManualGate: null as unknown as boolean,
+            }).success,
+        ).toBe(false);
+    });
+
+    it('(MG4) houseRulesConfigSchema 経由で enableManualGate 欠落 JSON が false 補完されて success', () => {
+        const result = houseRulesConfigSchema.safeParse({
+            houseRules: validHouseRulesNoManualGate,
+            strategies: [],
+        });
+        expect(result.success).toBe(true);
+        if (result.success) {
+            expect(result.data.houseRules.enableManualGate).toBe(false);
+        }
+    });
+
+    it('(MG5) houseRulesConfigSchema 経由で enableManualGate=true を含む完全 JSON が往復', () => {
+        const result = houseRulesConfigSchema.safeParse({
+            houseRules: {
+                ...validHouseRulesNoManualGate,
+                enableManualGate: true,
+            },
+            strategies: [],
+        });
+        expect(result.success).toBe(true);
+        if (result.success) {
+            expect(result.data.houseRules.enableManualGate).toBe(true);
+        }
+    });
+
+    it('(MG6) validateHouseRulesConfig 経由で enableManualGate 型不整合が既定文言で拒否', () => {
+        const result = validateHouseRulesConfig({
+            houseRules: {
+                ...validHouseRulesNoManualGate,
+                enableManualGate: 'invalid' as unknown as boolean,
+            },
+            strategies: [],
+        });
+        expect(result.success).toBe(false);
+        if (!result.success) {
+            expect(result.error).toBe(VALIDATION_ERROR_MESSAGE);
+        }
+    });
+});
