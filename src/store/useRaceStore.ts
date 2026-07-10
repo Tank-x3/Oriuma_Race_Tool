@@ -636,6 +636,13 @@ export const useRaceStore = create<RaceStoreState>()(
                     const noUniqueSkillOffChanged =
                         updates.enableNoUniqueSkill === false &&
                         state.config.houseRules.enableNoUniqueSkill === true;
+                    // CR-SA-23-E2 / 2026-07-08: `enableManualGate` OFF への切替検知。
+                    // ON→OFF で participants[*].manualGate を null 強制リセット + gateAssignments = null 消去
+                    // （scene2-gate.md §3 L200 + houserule-features.md §9.10 SSoT）。
+                    // HR OFF 状態で manualGate が残ると Scene 2 の分岐判定が壊れるため、他 HR 群と同方針の整合性強制。
+                    const manualGateOffChanged =
+                        updates.enableManualGate === false &&
+                        state.config.houseRules.enableManualGate === true;
 
                     if (
                         !effectValueChanged &&
@@ -643,7 +650,8 @@ export const useRaceStore = create<RaceStoreState>()(
                         !bondSkillChanged &&
                         !uniqueDiceConfigChanged &&
                         !formationDiceChanged &&
-                        !noUniqueSkillOffChanged
+                        !noUniqueSkillOffChanged &&
+                        !manualGateOffChanged
                     ) {
                         // CR-SA-16-E1 / 2026-05-15: updateHouseRules は dirty フラグを ON（変更があったとみなす）。
                         // scene1-setup.md §0-4 SSoT: updateHouseRules → isPresetDirty: true セット。
@@ -655,10 +663,14 @@ export const useRaceStore = create<RaceStoreState>()(
                         config: newConfig,
                         // CR-SA-16-E1 / 2026-05-15: updateHouseRules は dirty フラグを ON（変更があったとみなす）。
                         isPresetDirty: true,
+                        // CR-SA-23-E2 / 2026-07-08: enableManualGate OFF 切替で gateAssignments = null 消去
+                        // （scene2-gate.md §3 L200 SSoT）。ON→OFF 以外はストア既存値を保持
+                        // （明示的な参照で undefined 化を防ぐ）。
+                        gateAssignments: manualGateOffChanged ? null : state.gateAssignments,
                         participants: state.participants.map((p) => {
                             // CR-SA-22 / CR-SA-21+22-E2 / 2026-07-06: OFF 切替時に type='None' を強制リセット
                             // （空型 = 「必須項目未入力」で確定ブロック、scene1-setup.md §2 L187 SSoT）。
-                            const next: Umamusume =
+                            let next: Umamusume =
                                 noUniqueSkillOffChanged && p.uniqueSkill.type === 'None'
                                     ? {
                                           ...p,
@@ -668,6 +680,11 @@ export const useRaceStore = create<RaceStoreState>()(
                                           },
                                       }
                                     : p;
+                            // CR-SA-23-E2 / 2026-07-08: enableManualGate OFF 切替で manualGate=null 強制リセット
+                            // （houserule-features.md §9.10 SSoT + scene2-gate.md §3 L200）。
+                            if (manualGateOffChanged && typeof next.manualGate === 'number') {
+                                next = { ...next, manualGate: null };
+                            }
                             return {
                                 ...next,
                                 score: calculateScoreWithBondSkill(
@@ -1174,15 +1191,22 @@ export const useRaceStore = create<RaceStoreState>()(
                         strategies: STRATEGIES,
                         appliedPresetName: null,
                         isPresetDirty: false,
+                        // CR-SA-23-E2 / 2026-07-08: reset で `enableManualGate=false` に戻るため、
+                        // gateAssignments 中間状態を消去（houserule-features.md §9.10 + scene2-gate.md §3 L200
+                        // + updateHouseRules OFF 切替と同方針）。Scene 2 の [4] 表示は displayAssignments
+                        // fallback（participants[].gate 再構築 or null）に委譲される。
+                        gateAssignments: null,
                         // CR-SA-21+22-E2 Round 2 / 2026-07-06: reset で `enableNoUniqueSkill=false` +
                         // `customUniqueSkills=[]` に戻るため、type='None' / type='Custom' の出走者を強制リセット
                         // （updateHouseRules OFF 切替 + removeCustomUniqueSkill の整合性強制と同方針）。
                         // 未実施だと select value が存在しないラベルに残り、UI 表示（見かけ上「安定」）と
                         // 内部 state（type='None' のまま）が乖離してエラー表示と実データが噛み合わなくなる。
+                        // CR-SA-23-E2 / 2026-07-08: participants[*].manualGate も null 強制リセット
+                        // （enableManualGate=false 化と対称、houserule-features.md §9.10 SSoT）。
                         participants: state.participants.map((p) => {
-                            const needsReset =
+                            const needsUniqueReset =
                                 p.uniqueSkill.type === 'None' || p.uniqueSkill.type === 'Custom';
-                            const next: Umamusume = needsReset
+                            let next: Umamusume = needsUniqueReset
                                 ? {
                                       ...p,
                                       uniqueSkill: {
@@ -1192,6 +1216,9 @@ export const useRaceStore = create<RaceStoreState>()(
                                       },
                                   }
                                 : p;
+                            if (typeof next.manualGate === 'number') {
+                                next = { ...next, manualGate: null };
+                            }
                             return {
                                 ...next,
                                 score: calculateScoreWithBondSkill(
@@ -1234,6 +1261,17 @@ export const useRaceStore = create<RaceStoreState>()(
                         newParticipants = current.slice(0, count);
                     }
 
+                    // CR-SA-23-E2 / 2026-07-08: 人数変更で manualGate > 新 N になった値を null 強制リセット
+                    // （houserule-features.md §9.10 SSoT）。人数増加時は既存 manualGate が範囲内に収まる
+                    // 前提のため保持（増加された新出走者は manualGate=null で初期化）。
+                    // enableManualGate OFF 時にも防御的にサニタイズする（HR OFF でも旧データに残った値を掃除）。
+                    const N = newParticipants.length;
+                    newParticipants = newParticipants.map((p) =>
+                        typeof p.manualGate === 'number' && p.manualGate > N
+                            ? { ...p, manualGate: null }
+                            : p,
+                    );
+
                     return { participants: newParticipants };
                 }),
 
@@ -1250,9 +1288,19 @@ export const useRaceStore = create<RaceStoreState>()(
                 })),
 
             removeParticipant: (id) =>
-                set((state) => ({
-                    participants: state.participants.filter((p) => p.id !== id),
-                })),
+                set((state) => {
+                    const filtered = state.participants.filter((p) => p.id !== id);
+                    // CR-SA-23-E2 / 2026-07-08: 人数減少で manualGate > 新 N を null 強制リセット
+                    // （houserule-features.md §9.10 SSoT）。generateParticipants と対称。
+                    const N = filtered.length;
+                    return {
+                        participants: filtered.map((p) =>
+                            typeof p.manualGate === 'number' && p.manualGate > N
+                                ? { ...p, manualGate: null }
+                                : p,
+                        ),
+                    };
+                }),
 
             updateParticipant: (id, updates) =>
                 set((state) => ({

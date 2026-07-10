@@ -4,10 +4,17 @@ import { Dices, ClipboardCopy, ArrowRight, CheckCircle2, ArrowLeft } from 'lucid
 import { ParserFactory } from '../../core/parser/parserFactory';
 import { getUndetectedParticipantNames } from '../../core/parser/parserUtils';
 import { NotificationArea } from '../ui/NotificationArea';
-import type { GateAssignment } from '../../types';
 // Bundle-8-T3 / CR-SA-4 / 2026-05-10: HR 連動事前申告併記（scene2-gate.md §2）
 // CR-SA-21+22-E3 / 2026-07-06: 固有スキル表示ラベル解決を helpers へ抽出（Custom/None 対応、テスト容易化）
-import { getEntryListAnnotations, getEntryListUniqueTypeLabel } from './gateScene.helpers';
+// CR-SA-23-E2 / 2026-07-08: 枠順手動配置 Scene 2 配線用純粋関数 4 個を追加取り込み
+import {
+    getEntryListAnnotations,
+    getEntryListUniqueTypeLabel,
+    getEntryListManualGateLabel,
+    getManualGateOptions,
+    getRaffleTargets,
+    assignGatesWithManualHold,
+} from './gateScene.helpers';
 
 // Helper for Circle Numbers (①, ②...)
 const getCircleNumber = (num: number): string => {
@@ -25,13 +32,26 @@ export const GateScene: React.FC = () => {
         moveToSetup,
         gateAssignments,
         setGateAssignments,
+        updateParticipant,
         config,
     } = useRaceStore();
     // Bundle-8-T3 / CR-SA-4 / 2026-05-10: HR 連動併記用（enableSpecialStrategy / enableBondSkill）
     const houseRules = config.houseRules;
+    // CR-SA-23-E2 / 2026-07-08: 枠順手動配置ハウスルールトグル（Scene 2 分岐配線の中核）
+    const enableManualGate = houseRules.enableManualGate;
     const [inputText, setInputText] = useState('');
     const [parseErrors, setParseErrors] = useState<string[]>([]);
     const [copiedSection, setCopiedSection] = useState<string | null>(null);
+
+    // CR-SA-23-E2 / 2026-07-08: 抽選対象者（HR OFF = 全員、HR ON = manualGate === null のみ）
+    // ・[2b] ダイス出力対象 / [3] バリデーション人数基準 / [6] 全員指定時分岐 の共通入力源。
+    const raffleTargets = useMemo(
+        () => getRaffleTargets(participants, enableManualGate),
+        [participants, enableManualGate],
+    );
+    // CR-SA-23-E2 / 2026-07-08: 全員指定時（抽選対象 0 名 かつ HR ON）判定。
+    // [2b][3] セクション非表示 + [4] 即時充当 + 「レース開始」直接活性化のトリガー。
+    const allManuallyAssigned = enableManualGate && raffleTargets.length === 0 && participants.length > 0;
 
     // CR-5a-2: 表示用 assignments の構築（scene2-gate.md §3 復元優先順位 3 段階）。
     //   (1) gateAssignments != null            → ストア中間状態から表示用に name を join（SA07 新挙動）
@@ -39,7 +59,23 @@ export const GateScene: React.FC = () => {
     //       participants[].gate != null       → 既存 participants から再構築
     //                                           （Scene 3 以降からの戻り経路 / 旧データ復元、roll は失われており 0 で dummy）
     //   (3) 両方 null                          → null（未解析、[4] セクション非表示）
-    const displayAssignments = useMemo<{ id: string; name: string; roll: number; gate: number }[] | null>(() => {
+    // CR-SA-23-E2 / 2026-07-08: (4) 全員手動指定時は解析実行を経由せず manualGate から即時充当。
+    //     assignGatesWithManualHold(participants, [], true) が手動指定者のみの GateAssignment 配列を返す。
+    const displayAssignments = useMemo<{ id: string; name: string; roll: number | null; gate: number }[] | null>(() => {
+        // CR-SA-23-E2 / 2026-07-08: 全員手動指定時 = 解析ステップ省略で [4] 即時再構築（houserule-features.md §9.7）。
+        // gateAssignments に前回の解析結果が残っていても、manualGate 変更に追従して最新状態を表示するため、
+        // このケースは gateAssignments の復元経路より優先する。
+        if (allManuallyAssigned) {
+            const nameMap = new Map(participants.map(p => [p.id, p.name]));
+            return assignGatesWithManualHold(participants, [], true)
+                .map(a => ({
+                    id: a.id,
+                    name: nameMap.get(a.id) ?? '',
+                    roll: a.roll,
+                    gate: a.gate,
+                }))
+                .sort((a, b) => a.gate - b.gate);
+        }
         if (gateAssignments) {
             const nameMap = new Map(participants.map(p => [p.id, p.name]));
             return gateAssignments
@@ -64,7 +100,7 @@ export const GateScene: React.FC = () => {
                 .sort((a, b) => a.gate - b.gate);
         }
         return null;
-    }, [gateAssignments, participants]);
+    }, [gateAssignments, participants, allManuallyAssigned]);
 
     // [1] Entry Confirmation List
     const entryListText = useMemo(() => {
@@ -89,17 +125,22 @@ export const GateScene: React.FC = () => {
                 houseRules.customUniqueSkills,
             );
             const phaseStr = p.uniqueSkill.phases.map(getPhaseLabel).join(',') || '---';
+            // CR-SA-23-E2 / 2026-07-08: `[固定枠: N]` 併記（HR OFF 時は空文字 = 現行同一、scene2-gate.md §2 L166 SSoT）
+            const manualGateLabel = getEntryListManualGateLabel(p, enableManualGate);
             // Bundle-8-T3 / CR-SA-4 / 2026-05-10: HR 連動事前申告併記（scene2-gate.md §2）
+            // 並び順（scene2-gate.md §2 L166 SSoT）: 基本情報 → [固定枠: N] → 特殊戦法 → 絆スキル
             const annotations = getEntryListAnnotations(p, houseRules, getPhaseLabel);
-            return `${index}. ${p.name} (${p.strategy} / ${typeLabel} / ${phaseStr})${annotations}`;
+            return `${index}. ${p.name} (${p.strategy} / ${typeLabel} / ${phaseStr})${manualGateLabel}${annotations}`;
         }).join('\n');
-    }, [participants, houseRules]);
+    }, [participants, houseRules, enableManualGate]);
 
     // [2] Main Dice Output Template
+    // CR-SA-23-E2 / 2026-07-08: HR ON \u6642\u306f\u62bd\u9078\u5bfe\u8c61\u8005\uff08\u672a\u6307\u5b9a\u8005\uff09\u306e\u307f\u3092\u51fa\u529b\uff08houserule-features.md \u00a79.4\uff09\u3002
+    // HR OFF \u6642\u306f raffleTargets = \u5168\u53c2\u52a0\u8005\u306e\u305f\u3081\u73fe\u884c\u5b8c\u5168\u540c\u4e00\u3002
     const diceOutputTemplate = useMemo(() => {
         // Updated to use Full-width space (U+3000) as separator
-        return participants.map(p => `${p.name}\u3000dice1d100=`).join('\n');
-    }, [participants]);
+        return raffleTargets.map(p => `${p.name}\u3000dice1d100=`).join('\n');
+    }, [raffleTargets]);
 
     // Copy Handlers with Feedback
     const handleCopy = (text: string, sectionId: string) => {
@@ -131,24 +172,44 @@ export const GateScene: React.FC = () => {
     const handleParse = () => {
         // CR-SA-3-E2-Followup-A: ParserFactory 経由で 88ch 形式 (🎲) を EmojiParser へ振り分け
         // 仕様根拠: parser-system.md §A 概要「Scene 別コンテキストマッピング」(L33-43)
+        // CR-SA-23-E2 / 2026-07-08: HR ON 時は解析対象を「抽選対象者のみ」に絞る（scene2-gate.md Error Handling
+        // + houserule-features.md §9.5）。Parser には全 participants を渡し（名前一致判定用）、以降のカウント
+        // 判定・空き枠充当のみ raffleTargets を基準にする。
         const { results, errors } = ParserFactory.getParser(inputText).parse(inputText, participants, 'RACE');
+        // CR-SA-23-E2 / 2026-07-08: 手動指定者のダイス行が誤って混入した場合、抽選対象者以外の
+        // parse 結果は無視する（scene2-gate.md §3「余剰は無視」方針 + houserule-features.md §9.5）。
+        const raffleTargetIds = new Set(raffleTargets.map(p => p.id));
+        const filteredResults = enableManualGate
+            ? results.filter(r => raffleTargetIds.has(r.participantId))
+            : results;
         const newErrors: string[] = [...errors];
 
         // Critical Validations
         // 1. Participant Count Match
-        // Logic refinement: If input non-empty line count equals participants count, 
+        // Logic refinement: If input non-empty line count equals participants count,
         // suppress "count mismatch" error because likely it's a "name mismatch" case (handled by StandardParser).
         const inputLineCount = inputText.split('\n').filter(l => l.trim().length > 0).length;
+        // CR-SA-23-E2 / 2026-07-08: HR ON 時は「抽選対象人数」を基準に判定文言も差し替え。
+        const expectedCount = raffleTargets.length;
 
-        if (results.length !== participants.length) {
-            // Only show count mismatch if input lines explicitly do not match participants
-            if (inputLineCount !== participants.length) {
+        if (filteredResults.length !== expectedCount) {
+            // Only show count mismatch if input lines explicitly do not match expected count
+            if (inputLineCount !== expectedCount) {
                 // CR-14: 未検出者の名前一覧をエラーメッセージに追記する。
-                const undetectedNames = getUndetectedParticipantNames(participants, results);
+                // CR-SA-23-E2 / 2026-07-08: HR ON 時は抽選対象者のみを対象に未検出判定（scene2-gate.md L228）。
+                const undetectedNames = getUndetectedParticipantNames(
+                    enableManualGate ? raffleTargets : participants,
+                    filteredResults,
+                );
                 const undetectedSuffix = undetectedNames.length > 0
                     ? ` 未検出: ${undetectedNames.join(', ')}`
                     : '';
-                newErrors.push(`人数が一致しません (登録: ${participants.length}人 / 検出: ${results.length}人)。コピー漏れがないか確認してください${undetectedSuffix}`);
+                if (enableManualGate) {
+                    // scene2-gate.md Error Handling L214 SSoT
+                    newErrors.push(`・ダイス結果が不足しています（抽選対象: ${expectedCount}人 / 検出: ${filteredResults.length}人）。コピー漏れがないか確認してください${undetectedSuffix}`);
+                } else {
+                    newErrors.push(`人数が一致しません (登録: ${expectedCount}人 / 検出: ${filteredResults.length}人)。コピー漏れがないか確認してください${undetectedSuffix}`);
+                }
             }
         }
 
@@ -163,29 +224,26 @@ export const GateScene: React.FC = () => {
             return;
         }
 
-        // 4. Sort Logic
-        // Rule: Dice Value ASC -> Entry Index ASC
-        const sorted = [...results].sort((a, b) => {
-            if (a.diceResult !== b.diceResult) {
-                return a.diceResult - b.diceResult; // ASC (Smaller is Inner Gate 1)
-            }
-            // Tie-breaker: Entry Index
-            const pA = participants.find(p => p.id === a.participantId);
-            const pB = participants.find(p => p.id === b.participantId);
-            const idxA = pA?.entryIndex ?? 0;
-            const idxB = pB?.entryIndex ?? 0;
-            return idxA - idxB; // ASC
-        });
-
-        // CR-5a-2: 最小情報原則で {id, roll, gate} のみ保存（name は participants から再構築可、SA07 §7.2）
-        const finalAssignments: GateAssignment[] = sorted.map((res, index) => ({
+        // CR-SA-23-E2 / 2026-07-08: 空き枠充当ロジック（scene2-gate.md §2 L184-186 + houserule-features.md §9.6）。
+        // HR OFF 時は既存全員抽選ロジックと同一動作（tie-breaker: エントリー順昇順）。
+        // HR ON 時は手動指定枠を先に確保し、残り枠を出目昇順で抽選者に充当する。
+        const rolls = filteredResults.map(res => ({
             id: res.participantId,
             roll: res.diceResult,
-            gate: index + 1,
         }));
+        const finalAssignments = assignGatesWithManualHold(
+            participants,
+            rolls,
+            enableManualGate,
+        );
 
         setParseErrors([]);
         setGateAssignments(finalAssignments);
+    };
+
+    // CR-SA-23-E2 / 2026-07-08: [2a] プルダウン変更ハンドラ（既存 updateParticipant 経由、Engineer 裁量）
+    const handleManualGateChange = (participantId: string, value: number | null) => {
+        updateParticipant(participantId, { manualGate: value });
     };
 
     // [4] Confirm & Navigate
@@ -240,61 +298,131 @@ export const GateScene: React.FC = () => {
                 </div>
             </section>
 
-            {/* [2] Output Dice */}
-            <section className="bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm overflow-hidden">
-                <div className="p-4 border-b border-slate-100 dark:border-slate-700/50 bg-slate-50/50 dark:bg-slate-900/50 flex justify-between items-center">
-                    <h3 className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
-                        <span className="bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 w-6 h-6 rounded-full flex items-center justify-center text-xs font-mono">2</span>
-                        枠順抽選ダイス出力 (Output Dice)
-                    </h3>
-                </div>
-                <div className="p-5 space-y-4">
-                    <p className="text-sm text-slate-600 dark:text-slate-400">
-                        確認完了後、枠順を決めるためのダイスを出力します。
-                    </p>
-                    <div className="relative group">
-                        <textarea
-                            readOnly
-                            value={diceOutputTemplate}
-                            className="w-full h-32 p-3 text-sm font-mono bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-600 dark:text-slate-400 resize-none focus:outline-none"
-                            onClick={(e) => e.currentTarget.select()}
-                        />
-                        <CopyButton text={diceOutputTemplate} sectionId="dice" label="ダイスリストをコピー" />
+            {/* [2a] Manual Gate Assignment (HR ON のみ表示、CR-SA-23-E2 / scene2-gate.md §1.2) */}
+            {enableManualGate && (
+                <section className="bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm overflow-hidden">
+                    <div className="p-4 border-b border-slate-100 dark:border-slate-700/50 bg-slate-50/50 dark:bg-slate-900/50 flex justify-between items-center">
+                        <h3 className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                            <span className="bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 w-8 h-6 rounded-full flex items-center justify-center text-xs font-mono">2a</span>
+                            枠番手動指定 (Manual Gate Assignment)
+                        </h3>
                     </div>
-                </div>
-            </section>
+                    <div className="p-5 space-y-4">
+                        <p className="text-sm text-slate-600 dark:text-slate-400">
+                            タッグ確定済の出走者に固定枠を指定します。未指定の出走者のみが下のダイスで抽選されます。
+                        </p>
+                        <div className="border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
+                            <table className="w-full text-sm text-left">
+                                <thead className="bg-slate-100 dark:bg-slate-800 text-xs text-slate-500 dark:text-slate-400">
+                                    <tr>
+                                        <th className="px-4 py-2 text-center w-16">No</th>
+                                        <th className="px-4 py-2">名前</th>
+                                        <th className="px-4 py-2 text-right w-40">固定枠</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100 dark:divide-slate-700 bg-white dark:bg-slate-900">
+                                    {participants.map((p, i) => {
+                                        const options = getManualGateOptions(participants, p.id, participants.length);
+                                        const currentValue = typeof p.manualGate === 'number' ? p.manualGate : '';
+                                        return (
+                                            <tr key={p.id}>
+                                                <td className="px-4 py-2 text-center font-mono text-slate-500 dark:text-slate-400">{i + 1}</td>
+                                                <td className="px-4 py-2 font-medium text-slate-800 dark:text-slate-200">{p.name}</td>
+                                                <td className="px-4 py-2 text-right">
+                                                    <select
+                                                        aria-label={`${p.name} の固定枠`}
+                                                        value={currentValue === '' ? '' : String(currentValue)}
+                                                        onChange={(e) => {
+                                                            const raw = e.target.value;
+                                                            handleManualGateChange(p.id, raw === '' ? null : Number(raw));
+                                                        }}
+                                                        className="px-3 py-1 border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                                                    >
+                                                        {options.map((g) => (
+                                                            <option key={g === null ? 'none' : g} value={g === null ? '' : String(g)}>
+                                                                {g === null ? '---' : `${g} 枠`}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+            )}
 
-            {/* [3] Result Paste */}
-            <section className="bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm overflow-hidden">
-                <div className="p-4 border-b border-slate-100 dark:border-slate-700/50 bg-slate-50/50 dark:bg-slate-900/50 flex justify-between items-center">
-                    <h3 className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
-                        <span className="bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 w-6 h-6 rounded-full flex items-center justify-center text-xs font-mono">3</span>
-                        結果取り込み (Paste Area)
-                    </h3>
-                </div>
-                <div className="p-5 space-y-4">
-                    <textarea
-                        value={inputText}
-                        onChange={(e) => setInputText(e.target.value)}
-                        placeholder="ここに掲示板のレスを丸ごと貼り付けてください..."
-                        className="w-full h-40 p-3 text-sm font-mono bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all placeholder:text-slate-400"
-                    />
+            {/* [2b] Output Dice — HR ON × 全員手動指定時は非表示（CR-SA-23-E2 / houserule-features.md §9.7） */}
+            {!allManuallyAssigned && (
+                <section className="bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm overflow-hidden">
+                    <div className="p-4 border-b border-slate-100 dark:border-slate-700/50 bg-slate-50/50 dark:bg-slate-900/50 flex justify-between items-center">
+                        <h3 className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                            <span className="bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 w-8 h-6 rounded-full flex items-center justify-center text-xs font-mono">{enableManualGate ? '2b' : '2'}</span>
+                            枠順抽選ダイス出力 (Output Dice)
+                        </h3>
+                    </div>
+                    <div className="p-5 space-y-4">
+                        <p className="text-sm text-slate-600 dark:text-slate-400">
+                            {enableManualGate
+                                ? '未指定の出走者のダイスを出力します。'
+                                : '確認完了後、枠順を決めるためのダイスを出力します。'}
+                        </p>
+                        <div className="relative group">
+                            <textarea
+                                readOnly
+                                value={diceOutputTemplate}
+                                className="w-full h-32 p-3 text-sm font-mono bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-600 dark:text-slate-400 resize-none focus:outline-none"
+                                onClick={(e) => e.currentTarget.select()}
+                            />
+                            <CopyButton text={diceOutputTemplate} sectionId="dice" label="ダイスリストをコピー" />
+                        </div>
+                    </div>
+                </section>
+            )}
 
-                    <button
-                        onClick={handleParse}
-                        className="w-full flex items-center justify-center gap-2 py-3 bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 text-white font-bold rounded-lg transition-colors shadow-lg shadow-indigo-500/20 border-b-4 border-indigo-700 hover:border-indigo-600 dark:border-indigo-700 active:border-b-0 active:translate-y-1"
-                    >
-                        <Dices className="w-5 h-5" />
-                        解析実行
-                    </button>
+            {/* [3] Result Paste — HR ON × 全員手動指定時は非表示 */}
+            {!allManuallyAssigned && (
+                <section className="bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm overflow-hidden">
+                    <div className="p-4 border-b border-slate-100 dark:border-slate-700/50 bg-slate-50/50 dark:bg-slate-900/50 flex justify-between items-center">
+                        <h3 className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                            <span className="bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 w-6 h-6 rounded-full flex items-center justify-center text-xs font-mono">3</span>
+                            結果取り込み (Paste Area)
+                        </h3>
+                    </div>
+                    <div className="p-5 space-y-4">
+                        <textarea
+                            value={inputText}
+                            onChange={(e) => setInputText(e.target.value)}
+                            placeholder="ここに掲示板のレスを丸ごと貼り付けてください..."
+                            className="w-full h-40 p-3 text-sm font-mono bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all placeholder:text-slate-400"
+                        />
 
-                    <NotificationArea
-                        errors={parseErrors}
-                        defaultMessage="ℹ️ ダイス結果を貼り付けて「解析実行」を押してください。"
-                        className="mt-4"
-                    />
+                        <button
+                            onClick={handleParse}
+                            className="w-full flex items-center justify-center gap-2 py-3 bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 text-white font-bold rounded-lg transition-colors shadow-lg shadow-indigo-500/20 border-b-4 border-indigo-700 hover:border-indigo-600 dark:border-indigo-700 active:border-b-0 active:translate-y-1"
+                        >
+                            <Dices className="w-5 h-5" />
+                            解析実行
+                        </button>
+
+                        <NotificationArea
+                            errors={parseErrors}
+                            defaultMessage="ℹ️ ダイス結果を貼り付けて「解析実行」を押してください。"
+                            className="mt-4"
+                        />
+                    </div>
+                </section>
+            )}
+
+            {/* 全員手動指定時の情報表示（scene2-gate.md §2 L118-121 SSoT） */}
+            {allManuallyAssigned && (
+                <div className="rounded-lg border border-indigo-200 dark:border-indigo-800/60 bg-indigo-50/60 dark:bg-indigo-900/20 px-4 py-3 text-sm text-indigo-800 dark:text-indigo-200">
+                    ℹ️ 全員に固定枠を指定したため、そのままレース開始できます。
                 </div>
-            </section>
+            )}
 
             {/* [4] Result List - Only visible after parsing */}
             {displayAssignments && (
@@ -327,7 +455,8 @@ export const GateScene: React.FC = () => {
                                                 {a.name}
                                             </td>
                                             <td className="px-4 py-2 text-right font-mono text-slate-500 dark:text-slate-500">
-                                                {a.roll === 0 ? '---' : a.roll}
+                                                {/* CR-SA-23-E2 / 2026-07-08: 手動指定者 = null → '指定枠' / 抽選 = 出目 / legacy = '---' */}
+                                                {a.roll === null ? '指定枠' : a.roll === 0 ? '---' : a.roll}
                                             </td>
                                         </tr>
                                     ))}
@@ -338,7 +467,17 @@ export const GateScene: React.FC = () => {
                         <div className="flex gap-4">
                             <button
                                 onClick={() => {
-                                    const text = displayAssignments.map(a => `${getCircleNumber(a.gate)} ${a.name} (出目: ${a.roll === 0 ? '---' : a.roll})`).join('\n');
+                                    // CR-SA-23-E2 / 2026-07-08: 手動指定者 = `(指定枠)` / 抽選者 = `(出目: N)` /
+                                    // legacy 復元経路（roll=0） = `(出目: ---)`（scene2-gate.md §2 L184-186 SSoT）
+                                    const text = displayAssignments.map(a => {
+                                        const rollLabel =
+                                            a.roll === null
+                                                ? '(指定枠)'
+                                                : a.roll === 0
+                                                    ? '(出目: ---)'
+                                                    : `(出目: ${a.roll})`;
+                                        return `${getCircleNumber(a.gate)} ${a.name} ${rollLabel}`;
+                                    }).join('\n');
                                     handleCopy(text, 'result');
                                 }}
                                 className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg font-bold transition-colors ${copiedSection === 'result'

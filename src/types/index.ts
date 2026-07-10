@@ -136,9 +136,15 @@ export interface Umamusume {
 // CR-SA-7 / SA07: Scene 2 解析実行直後の中間状態（[4] 枠順確定リスト）を
 // ストアに保持して中間リロード復元を成立させるための最小情報。
 // `name` は participants から再構築可能なため除外（最小情報原則）。
+// CR-SA-23-E2 / 2026-07-08: `roll` に `null` センチネルを許容
+// （houserule-features.md §9.8 / scene2-gate.md §3 SSoT）。
+// - 抽選者: `1..100` の値（既存挙動）
+// - 手動指定者: `null`（HR「枠順手動配置」ON 時、`manualGate` から直接充当された枠のため出目なし）
+// - `0` は「Scene 3 以降の戻り経路 / 旧データ復元」時のダミー値として displayAssignments 側で
+//   使用されるが、`GateAssignment` 型本体には `0` は入らない（Engineer 裁量、最小侵襲）。
 export interface GateAssignment {
     id: string;
-    roll: number;
+    roll: number | null;
     gate: number;
 }
 

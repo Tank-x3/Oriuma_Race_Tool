@@ -4985,3 +4985,175 @@ describe('useRaceStore - CR-SA-21+22-E2 / カスタム固有 + 固有スキル�
         });
     });
 });
+
+// CR-SA-23-E2 / 2026-07-08: 枠順手動配置ハウスルールの整合性強制
+// SSoT: scene2-gate.md §3 L196-201 + houserule-features.md §9.10
+describe('useRaceStore - CR-SA-23-E2 / 枠順手動配置 整合性強制', () => {
+    beforeEach(() => {
+        useRaceStore.getState().resetRace();
+        useRaceStore.getState().resetHouseRules();
+    });
+
+    describe('updateHouseRules: enableManualGate OFF 切替時の強制リセット', () => {
+        it('(MG-S1) ON→OFF で participants[*].manualGate を null 強制リセット + gateAssignments 消去', () => {
+            // まず enableManualGate を ON にして manualGate + gateAssignments を配置
+            useRaceStore.getState().updateHouseRules({ enableManualGate: true });
+            useRaceStore.setState({
+                participants: [
+                    setupParticipant({ id: 'p1', manualGate: 2 }),
+                    setupParticipant({ id: 'p2', name: 'B', manualGate: 1 }),
+                ],
+                gateAssignments: [
+                    { id: 'p1', roll: null, gate: 2 },
+                    { id: 'p2', roll: null, gate: 1 },
+                ],
+            });
+            useRaceStore.getState().updateHouseRules({ enableManualGate: false });
+            const state = useRaceStore.getState();
+            expect(state.config.houseRules.enableManualGate).toBe(false);
+            expect(state.participants[0].manualGate).toBeNull();
+            expect(state.participants[1].manualGate).toBeNull();
+            expect(state.gateAssignments).toBeNull();
+        });
+
+        it('(MG-S2) ON→OFF でも他 HR フィールド（他 8 群 + effectValue）は不変', () => {
+            useRaceStore.getState().updateHouseRules({
+                enableManualGate: true,
+                enableBondSkill: true,
+                effectValue: 42,
+            });
+            useRaceStore.getState().updateHouseRules({ enableManualGate: false });
+            const hr = useRaceStore.getState().config.houseRules;
+            expect(hr.enableBondSkill).toBe(true);
+            expect(hr.effectValue).toBe(42);
+        });
+
+        it('(MG-S3) OFF のまま更新（no-op ケース）は participants を触らない', () => {
+            useRaceStore.setState({
+                participants: [
+                    setupParticipant({ id: 'p1', manualGate: 2 }),
+                ],
+            });
+            // enableManualGate は初期状態で false のまま
+            useRaceStore.getState().updateHouseRules({ enableBondSkill: true });
+            // manualGate が保持されるかは HR OFF 状態のため実質不定だが、
+            // OFF→OFF 経路では manualGate の強制リセットは走らないことを確認
+            const p1 = useRaceStore.getState().participants[0];
+            expect(p1.manualGate).toBe(2);
+        });
+    });
+
+    describe('resetHouseRules: manualGate + gateAssignments リセット', () => {
+        it('(MG-S4) resetHouseRules で participants[*].manualGate を null + gateAssignments 消去', () => {
+            useRaceStore.getState().updateHouseRules({ enableManualGate: true });
+            useRaceStore.setState({
+                participants: [
+                    setupParticipant({ id: 'p1', manualGate: 3 }),
+                    setupParticipant({ id: 'p2', name: 'B', manualGate: 1 }),
+                ],
+                gateAssignments: [
+                    { id: 'p1', roll: null, gate: 3 },
+                    { id: 'p2', roll: null, gate: 1 },
+                ],
+            });
+            useRaceStore.getState().resetHouseRules();
+            const state = useRaceStore.getState();
+            expect(state.config.houseRules.enableManualGate).toBe(false);
+            expect(state.participants[0].manualGate).toBeNull();
+            expect(state.participants[1].manualGate).toBeNull();
+            expect(state.gateAssignments).toBeNull();
+        });
+
+        it('(MG-S5) resetHouseRules で他フィールド（participants 名前・脚質）は保持', () => {
+            useRaceStore.setState({
+                participants: [
+                    setupParticipant({ id: 'p1', name: 'Alice', strategy: '追込', manualGate: 2 }),
+                ],
+            });
+            useRaceStore.getState().resetHouseRules();
+            const p1 = useRaceStore.getState().participants[0];
+            expect(p1.name).toBe('Alice');
+            expect(p1.strategy).toBe('追込');
+            expect(p1.manualGate).toBeNull();
+        });
+    });
+
+    describe('removeParticipant: 人数減少で manualGate > 新 N を null リセット', () => {
+        it('(MG-S6) 4→3 名で manualGate=4 の出走者を null リセット、範囲内 (1,2,3) は保持', () => {
+            useRaceStore.setState({
+                participants: [
+                    setupParticipant({ id: 'p1', manualGate: 4 }),
+                    setupParticipant({ id: 'p2', name: 'B', manualGate: 2 }),
+                    setupParticipant({ id: 'p3', name: 'C', manualGate: 1 }),
+                    setupParticipant({ id: 'p4', name: 'D', manualGate: null }),
+                ],
+            });
+            useRaceStore.getState().removeParticipant('p4');
+            const ps = useRaceStore.getState().participants;
+            expect(ps.length).toBe(3);
+            expect(ps.find(p => p.id === 'p1')?.manualGate).toBeNull(); // 4 > 3 → リセット
+            expect(ps.find(p => p.id === 'p2')?.manualGate).toBe(2);    // 範囲内 = 保持
+            expect(ps.find(p => p.id === 'p3')?.manualGate).toBe(1);    // 範囲内 = 保持
+        });
+
+        it('(MG-S7) 対象参加者を削除して残存の manualGate が全て範囲内: 一切変化なし', () => {
+            useRaceStore.setState({
+                participants: [
+                    setupParticipant({ id: 'p1', manualGate: 1 }),
+                    setupParticipant({ id: 'p2', name: 'B', manualGate: 2 }),
+                    setupParticipant({ id: 'p3', name: 'C', manualGate: null }),
+                ],
+            });
+            useRaceStore.getState().removeParticipant('p3');
+            const ps = useRaceStore.getState().participants;
+            expect(ps.length).toBe(2);
+            expect(ps[0].manualGate).toBe(1);
+            expect(ps[1].manualGate).toBe(2);
+        });
+    });
+
+    describe('generateParticipants: 人数増減で manualGate サニタイズ', () => {
+        it('(MG-S8) 4→2 名 truncate 後、生存者の manualGate が範囲外なら null リセット', () => {
+            useRaceStore.setState({
+                participants: [
+                    setupParticipant({ id: 'p1', manualGate: 3 }), // 2 名縮小後 → null
+                    setupParticipant({ id: 'p2', name: 'B', manualGate: 1 }), // 範囲内 = 保持
+                    setupParticipant({ id: 'p3', name: 'C', manualGate: 2 }),
+                    setupParticipant({ id: 'p4', name: 'D', manualGate: 4 }),
+                ],
+            });
+            useRaceStore.getState().generateParticipants(2);
+            const ps = useRaceStore.getState().participants;
+            expect(ps.length).toBe(2);
+            expect(ps[0].manualGate).toBeNull(); // 3 > 2 → リセット
+            expect(ps[1].manualGate).toBe(1);    // 範囲内 = 保持
+        });
+
+        it('(MG-S9) 2→4 名 追加後、既存 manualGate は保持（新規は null で初期化）', () => {
+            useRaceStore.setState({
+                participants: [
+                    setupParticipant({ id: 'p1', manualGate: 2 }),
+                    setupParticipant({ id: 'p2', name: 'B', manualGate: 1 }),
+                ],
+            });
+            useRaceStore.getState().generateParticipants(4);
+            const ps = useRaceStore.getState().participants;
+            expect(ps.length).toBe(4);
+            expect(ps[0].manualGate).toBe(2); // 範囲内 = 保持
+            expect(ps[1].manualGate).toBe(1); // 範囲内 = 保持
+            expect(ps[2].manualGate ?? null).toBeNull(); // 新規 = null
+            expect(ps[3].manualGate ?? null).toBeNull();
+        });
+    });
+
+    describe('gateAssignments 型拡張 (roll: number | null)', () => {
+        it('(MG-S10) setGateAssignments に手動指定者（roll=null）を含むリストを保存できる', () => {
+            const value: GateAssignment[] = [
+                { id: 'p1', roll: null, gate: 1 }, // 手動指定
+                { id: 'p2', roll: 15, gate: 2 },   // 抽選
+            ];
+            useRaceStore.getState().setGateAssignments(value);
+            expect(useRaceStore.getState().gateAssignments).toEqual(value);
+        });
+    });
+});
