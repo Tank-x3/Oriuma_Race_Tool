@@ -9,7 +9,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:ci": "vitest run --exclude src/test_fixtures/realData.test.ts --exclude src/test_fixtures/derivedData.test.ts"
+    "test:ci": "vitest run --exclude src/test_fixtures/realData.test.ts --exclude src/test_fixtures/derivedData.test.ts",
+    "publish": "node scripts/publish.cjs"
   },
   "dependencies": {
     "clsx": "^2.1.1",
