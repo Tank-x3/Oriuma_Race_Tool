@@ -214,7 +214,14 @@ export const PRESET_KEY_PREFIX = 'race-store-presets:';
 // - `participants[*].manualGate` は persistPartialize が state.participants を透過保持するため
 //   追加フィールドの partialize 透過保持で自動追従（明示補完不要、§9.9 SSoT）
 // 既存 v10→v11 の StabilityII '2d7'→'7d2' 強制置換ステップは不変（安全側動作継続）。
-export const PERSIST_VERSION = 12;
+// CR-SA-24-E1 / 2026-08-16: PERSIST_VERSION 12 → 13 にバンプ。
+// version=12 以前旧データ（strategies[*].formationModifiers 欠落 = 隊列〔バ群〕補正の
+// 脚質ごと設定の追加前）→ version=13 は **データの書き換えを行わない**
+// （houserule-features.md §6.10.4 / persistence.md §D.補足 2 SSoT）。
+// - 欠落は §6.10.3 のフォールバック（設定値 → 効果表 → ±0）で透過的に現行挙動へ落ちるため、
+//   実値を埋めるマイグレーションは書かない（組み込み効果表が SSoT であることを維持する）
+// - `strategies` は persistPartialize が透過保持するため、追加フィールドは自動追従（明示補完不要）
+export const PERSIST_VERSION = 13;
 export const RESTORE_ERROR_MESSAGE = '保存データの復元に失敗しました。新規セッションを開始します。';
 
 // CR-SA-17-E1 / 2026-06-06: ペース挿入位置のデフォルト値（houserule-features.md §7.2 / §7.5）。

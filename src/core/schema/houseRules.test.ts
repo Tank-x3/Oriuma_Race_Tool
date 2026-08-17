@@ -925,3 +925,137 @@ describe('CR-SA-23-E1 / 2026-07-07 houseRulesSchema.enableManualGate (default fa
         }
     });
 });
+
+// CR-SA-24-E1 / 2026-08-16: customStrategySchema.formationModifiers（optional / 整数検証）
+// SSoT: houserule-features.md §6.10.4（JSON プリセット I/O）+ §6.10.2（値の制約）+ §4 zod 検証範囲。
+describe('CR-SA-24-E1 / 2026-08-16 customStrategySchema.formationModifiers (optional)', () => {
+    // formationModifiers を持たない旧プリセットの脚質構造（v12 以前相当）
+    const strategyWithoutFormation = {
+        name: 'カスタム1',
+        fixValue: 12,
+        dice: { start: '3d6', mid: '3d5', end: '1d8' },
+        paceModifiers: { '5': 0, '7': 5 },
+    };
+
+    const validHouseRules = {
+        enableModifier: false,
+        enableSpecialStrategy: false,
+        enableCompositeUnique: false,
+        enableExtendedUnique: false,
+        enableBondSkill: false,
+        effectValue: 15,
+        uniqueDiceConfig: DEFAULT_UNIQUE_DICE_CONFIG,
+        enablePhaseConfig: false,
+        enableFormationDice: false,
+        enableNoUniqueSkill: false,
+        customUniqueSkills: [],
+        enableManualGate: false,
+    };
+
+    it('(FM1) formationModifiers 欠落の旧プリセット脚質を受理（後方互換の要）', () => {
+        const result = customStrategySchema.safeParse(strategyWithoutFormation);
+        expect(result.success).toBe(true);
+        if (result.success) {
+            expect(result.data.formationModifiers).toBeUndefined();
+        }
+    });
+
+    it('(FM2) 7 行 ID すべてを持つ formationModifiers を受理し値を保持', () => {
+        const formationModifiers = {
+            '1:middleOrSlower': 10,
+            '1:highOrFaster': 0,
+            '2-3': 5,
+            '4-6': 0,
+            '7-8': -3,
+            '9:middleOrSlower': -10,
+            '9:highOrFaster': 7,
+        };
+        const result = customStrategySchema.safeParse({
+            ...strategyWithoutFormation,
+            formationModifiers,
+        });
+        expect(result.success).toBe(true);
+        if (result.success) {
+            expect(result.data.formationModifiers).toEqual(formationModifiers);
+        }
+    });
+
+    it('(FM3) 負値を受理する（§6.10.2 値の制約 = 負値許容・上下限なし）', () => {
+        const result = customStrategySchema.safeParse({
+            ...strategyWithoutFormation,
+            formationModifiers: { '2-3': -999 },
+        });
+        expect(result.success).toBe(true);
+    });
+
+    it('(FM4) 小数を拒否する（§6.10.2 値の制約 = 整数のみ）', () => {
+        const result = customStrategySchema.safeParse({
+            ...strategyWithoutFormation,
+            formationModifiers: { '2-3': 1.5 },
+        });
+        expect(result.success).toBe(false);
+    });
+
+    it('(FM5) 数値以外（string / null）を拒否する', () => {
+        expect(
+            customStrategySchema.safeParse({
+                ...strategyWithoutFormation,
+                formationModifiers: { '2-3': '5' },
+            }).success,
+        ).toBe(false);
+        expect(
+            customStrategySchema.safeParse({
+                ...strategyWithoutFormation,
+                formationModifiers: { '2-3': null },
+            }).success,
+        ).toBe(false);
+    });
+
+    it('(FM6) 一部の行 ID のみを持つ部分設定を受理（未設定キーはフォールバック対象）', () => {
+        const result = customStrategySchema.safeParse({
+            ...strategyWithoutFormation,
+            formationModifiers: { '9:highOrFaster': 4 },
+        });
+        expect(result.success).toBe(true);
+        if (result.success) {
+            expect(result.data.formationModifiers).toEqual({ '9:highOrFaster': 4 });
+        }
+    });
+
+    it('(FM7) validateHouseRulesConfig 経由で formationModifiers 入り JSON が往復', () => {
+        const result = validateHouseRulesConfig({
+            houseRules: validHouseRules,
+            strategies: [
+                { ...strategyWithoutFormation, formationModifiers: { '4-6': 2 } },
+            ],
+        });
+        expect(result.success).toBe(true);
+        if (result.success) {
+            expect(result.data.strategies[0].formationModifiers).toEqual({ '4-6': 2 });
+        }
+    });
+
+    it('(FM8) validateHouseRulesConfig 経由で formationModifiers 欠落の旧 JSON プリセットが成功する', () => {
+        const result = validateHouseRulesConfig({
+            houseRules: validHouseRules,
+            strategies: [strategyWithoutFormation],
+        });
+        expect(result.success).toBe(true);
+        if (result.success) {
+            expect(result.data.strategies[0].formationModifiers).toBeUndefined();
+        }
+    });
+
+    it('(FM9) validateHouseRulesConfig 経由で小数値が既定文言で拒否', () => {
+        const result = validateHouseRulesConfig({
+            houseRules: validHouseRules,
+            strategies: [
+                { ...strategyWithoutFormation, formationModifiers: { '2-3': 0.5 } },
+            ],
+        });
+        expect(result.success).toBe(false);
+        if (!result.success) {
+            expect(result.error).toBe(VALIDATION_ERROR_MESSAGE);
+        }
+    });
+});

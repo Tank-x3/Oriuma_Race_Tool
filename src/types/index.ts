@@ -81,7 +81,24 @@ export interface Strategy {
         // Pace dice result (1-9) -> modifier value
         [key: number]: number;
     };
+    // CR-SA-24-E1 / 2026-08-16: 隊列〔バ群〕補正の脚質ごと設定値（houserule-features.md §6.10.2 / §6.10.4）。
+    // 省略可能（未設定 = 空）。キー未設定時は §6.10.3 の解決順で
+    // 「組み込み効果表（FORMATION_EFFECT_TABLE）→ ±0」へフォールバックするため、
+    // デフォルト 5 脚質には実値を事前書き込みしない（効果表が SSoT）。
+    // 「空欄（キー未設定）」と「明示的な 0」は区別する（paceModifiers と同方針）。
+    formationModifiers?: Partial<Record<FormationRowId, number>>;
 }
+
+// CR-SA-24-E1 / 2026-08-16: 隊列補正マトリクスの行 ID（houserule-features.md §6.10.2 推奨行 ID）。
+// 隊列出目グループ + ペース条件で 7 行。超縦長（出目 1）・超団子（出目 9）のみペース依存。
+export type FormationRowId =
+    | '1:middleOrSlower'
+    | '1:highOrFaster'
+    | '2-3'
+    | '4-6'
+    | '7-8'
+    | '9:middleOrSlower'
+    | '9:highOrFaster';
 
 export interface Umamusume {
     id: string;

@@ -786,7 +786,8 @@ describe('CR-5a: zustand persist 設定', () => {
         // CR-SA-21+22-E1 / 2026-07-06: 9 → 10 にバンプ（enableNoUniqueSkill / customUniqueSkills 追加）
         // CR-SA-19-Followup / 2026-07-06: 10 → 11 にバンプ（安定型Ⅱ diceStr '2d7'→'7d2' 強制置換マイグレ）
         // CR-SA-23-E1 / 2026-07-07: 11 → 12 にバンプ（枠順手動配置 enableManualGate 追加マイグレ）
-        expect(PERSIST_VERSION).toBe(12);
+        // CR-SA-24-E1 / 2026-08-16: 12 → 13 にバンプ（strategies[*].formationModifiers 追加。データ書き換えなし）
+        expect(PERSIST_VERSION).toBe(13);
         expect(PERSIST_NAME).toBe('race-store');
     });
 
@@ -2959,6 +2960,101 @@ describe('useRaceStore.persistMigrate - Bundle-8-T1 / v2→v3 マイグレーシ
             diceStr: '7d2',
         });
     });
+
+    // CR-SA-24-E1 / 2026-08-16: v12 → v13（strategies[*].formationModifiers 追加）。
+    // データの書き換えは行わない（houserule-features.md §6.10.4 / persistence.md §D.補足 2）。
+    it('(xix) v12 相当データの strategies は書き換えられない（formationModifiers を埋めない）', () => {
+        const v12Persisted = {
+            config: {
+                midPhaseCount: 1,
+                fullGateSize: null,
+                startPhaseCount: 1,
+                endPhaseCount: 1,
+                pacePosition: 'Start',
+                houseRules: {
+                    enableModifier: false,
+                    enableSpecialStrategy: false,
+                    enableCompositeUnique: false,
+                    enableExtendedUnique: false,
+                    enableBondSkill: false,
+                    effectValue: 15,
+                    uniqueDiceConfig: DEFAULT_UNIQUE_DICE_CONFIG,
+                    enablePhaseConfig: false,
+                    enableFormationDice: true,
+                    enableNoUniqueSkill: false,
+                    customUniqueSkills: [],
+                    enableManualGate: false,
+                },
+            },
+            participants: [],
+            currentPhaseId: 'setup',
+            paceResult: { face: null, label: null },
+            formationResult: { face: null, label: null },
+            strategies: [
+                { name: '逃げ', fixValue: 15, dice: { start: '3d6', mid: '3d5', end: '1d7' }, paceModifiers: {} },
+                { name: 'カスタムA', fixValue: 8, dice: { start: '1d9', mid: '1d9', end: '1d9' }, paceModifiers: { 5: 3 } },
+            ],
+            gateAssignments: null,
+            appliedPresetName: null,
+            isPresetDirty: false,
+            uiState: { scene: 'setup' },
+        } as unknown as PersistedRaceState;
+
+        const result = persistMigrate(v12Persisted, 12);
+
+        // 欠落したままであること（フォールバック解決に委ねるため実値を埋めない）
+        expect(result.strategies[0].formationModifiers).toBeUndefined();
+        expect(result.strategies[1].formationModifiers).toBeUndefined();
+        // 既存フィールドは完全不変
+        expect(result.strategies).toEqual(v12Persisted.strategies);
+    });
+
+    it('(xx) v13 データの formationModifiers は透過保持される', () => {
+        const v13Persisted = {
+            config: {
+                midPhaseCount: 1,
+                fullGateSize: null,
+                startPhaseCount: 1,
+                endPhaseCount: 1,
+                pacePosition: 'Start',
+                houseRules: {
+                    enableModifier: false,
+                    enableSpecialStrategy: false,
+                    enableCompositeUnique: false,
+                    enableExtendedUnique: false,
+                    enableBondSkill: false,
+                    effectValue: 15,
+                    uniqueDiceConfig: DEFAULT_UNIQUE_DICE_CONFIG,
+                    enablePhaseConfig: false,
+                    enableFormationDice: true,
+                    enableNoUniqueSkill: false,
+                    customUniqueSkills: [],
+                    enableManualGate: false,
+                },
+            },
+            participants: [],
+            currentPhaseId: 'setup',
+            paceResult: { face: null, label: null },
+            formationResult: { face: null, label: null },
+            strategies: [
+                {
+                    name: 'カスタムA',
+                    fixValue: 8,
+                    dice: { start: '1d9', mid: '1d9', end: '1d9' },
+                    paceModifiers: {},
+                    formationModifiers: { '1:middleOrSlower': 6, '4-6': 0 },
+                },
+            ],
+            gateAssignments: null,
+            appliedPresetName: null,
+            isPresetDirty: false,
+            uiState: { scene: 'setup' },
+        } as unknown as PersistedRaceState;
+
+        const result = persistMigrate(v13Persisted, 13);
+
+        expect(result.strategies[0].formationModifiers).toEqual({ '1:middleOrSlower': 6, '4-6': 0 });
+    });
 });
 
 // Bundle-8-T6 / CR-SA-4 / 2026-05-10: 絆スキル スコア最終加算のストア統合テスト。
@@ -4371,7 +4467,7 @@ describe('CR-SA-16-E1 / 2026-05-15 appliedPresetName + isPresetDirty', () => {
         expect(migrated.isPresetDirty).toBe(false);
     });
 
-    // (S18) PERSIST_VERSION === 12（バンプの構造的証跡）
+    // (S18) PERSIST_VERSION === 13（バンプの構造的証跡）
     // CR-SA-19 / 2026-06-06: 5 → 6（uniqueDiceConfig 旧 5 キー → 新 7 キー補完）
     // CR-SA-17-E1 / 2026-06-06: 6 → 7（enablePhaseConfig + config 3 フィールド追加）
     // CR-SA-20-E1 / 2026-06-11: 7 → 8（enableFormationDice 追加）
@@ -4379,8 +4475,9 @@ describe('CR-SA-16-E1 / 2026-05-15 appliedPresetName + isPresetDirty', () => {
     // CR-SA-21+22-E1 / 2026-07-06: 9 → 10（enableNoUniqueSkill / customUniqueSkills 追加）
     // CR-SA-19-Followup / 2026-07-06: 10 → 11（安定型Ⅱ diceStr '2d7'→'7d2' 強制置換マイグレ）
     // CR-SA-23-E1 / 2026-07-07: 11 → 12（enableManualGate / participants[*].manualGate 追加マイグレ）
-    it('(S18) PERSIST_VERSION === 12', () => {
-        expect(PERSIST_VERSION).toBe(12);
+    // CR-SA-24-E1 / 2026-08-16: 12 → 13（strategies[*].formationModifiers 追加。データ書き換えなし）
+    it('(S18) PERSIST_VERSION === 13', () => {
+        expect(PERSIST_VERSION).toBe(13);
     });
 
     // CR-SA-21+22-E1 / 2026-07-06: 初期 state / DEFAULT_HOUSE_RULES に新 2 フィールドが含まれる

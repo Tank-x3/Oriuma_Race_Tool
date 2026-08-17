@@ -16,6 +16,12 @@ import {
 import { isDefaultStrategy } from '../../core/strategy.helpers';
 import { validateStrategyName, validateDiceFormat } from '../../core/validator';
 import { DEFAULT_STRATEGIES } from '../../core/strategies';
+import { getFormationModifier, getFormationTemplateLines } from '../../core/formation';
+import {
+    createEditFormState,
+    createInsertFormState,
+    formStateToStrategy,
+} from '../../components/scene/setup/strategyEditor.helpers';
 import type { Strategy } from '../../types';
 
 const buildCustomStrategy = (overrides: Partial<Strategy> = {}): Strategy => ({
@@ -159,5 +165,145 @@ describe('Bundle-10-T3 / 脚質エディタ Insert→Edit→Delete 統合テス�
             expect(validateDiceFormat(s.dice.mid)).toEqual([]);
             expect(validateDiceFormat(s.dice.end)).toEqual([]);
         }
+    });
+
+    // ===== CR-SA-24-E2 / 2026-08-16: 隊列〔バ群〕補正マトリクスの編集 =====
+    // 編集サブモーダルの保存経路（createEditFormState → formStateToStrategy → store）と、
+    // 保存後の計算・投稿用テンプレート出力（getFormationModifier / getFormationTemplateLines）が
+    // つながっていることを確認する。UI コンポーネントテストは本プロジェクトに存在しないため、
+    // 純粋関数 + store の結合で担保する（houserule-features.md §6.10 / modal-houserule.md §2）。
+
+    // 編集サブモーダルの「保存」を模した経路（UI の handleSubmitForm と同じ組み合わせ）。
+    const saveEdit = (
+        strategyName: string,
+        edit: (form: ReturnType<typeof createEditFormState>) => ReturnType<typeof createEditFormState>,
+    ) => {
+        const target = useRaceStore.getState().strategies.find((s) => s.name === strategyName)!;
+        const form = edit(createEditFormState(target));
+        useRaceStore.getState().updateStrategy(strategyName, formStateToStrategy(form, target));
+    };
+
+    it('(21) 編集保存: 「差し」の 7.8 団子を +5 → +9 に変更すると計算値が変わる', () => {
+        // 変更前は効果表の値（+5）で解決される
+        expect(
+            getFormationModifier(7, 5, '差し', useRaceStore.getState().strategies),
+        ).toBe(5);
+
+        saveEdit('差し', (form) => ({
+            ...form,
+            formationModifiers: { ...form.formationModifiers, '7-8': '9' },
+        }));
+
+        const strategies = useRaceStore.getState().strategies;
+        expect(strategies.find((s) => s.name === '差し')?.formationModifiers?.['7-8']).toBe(9);
+        expect(getFormationModifier(7, 5, '差し', strategies)).toBe(9);
+        // 他の行は効果表の値のまま（保存で実値化されるが値は不変）
+        expect(getFormationModifier(1, 5, '差し', strategies)).toBe(-5);
+    });
+
+    it('(22) 編集保存: 空欄にすると未設定へ戻り、組み込み効果表の値で解決される', () => {
+        saveEdit('差し', (form) => ({
+            ...form,
+            formationModifiers: { ...form.formationModifiers, '7-8': '9' },
+        }));
+        saveEdit('差し', (form) => ({
+            ...form,
+            formationModifiers: { ...form.formationModifiers, '7-8': '' },
+        }));
+
+        const strategies = useRaceStore.getState().strategies;
+        expect(strategies.find((s) => s.name === '差し')?.formationModifiers?.['7-8']).toBeUndefined();
+        expect(getFormationModifier(7, 5, '差し', strategies)).toBe(5); // 効果表へフォールバック
+    });
+
+    it('(23) 編集保存: 明示的な 0 は維持される（空欄と区別）', () => {
+        saveEdit('追込', (form) => ({
+            ...form,
+            formationModifiers: { ...form.formationModifiers, '9:middleOrSlower': '0' },
+        }));
+
+        const strategies = useRaceStore.getState().strategies;
+        expect(
+            strategies.find((s) => s.name === '追込')?.formationModifiers?.['9:middleOrSlower'],
+        ).toBe(0);
+        // 効果表の +12 ではなく明示的な 0 が採用される
+        expect(getFormationModifier(9, 5, '追込', strategies)).toBe(0);
+    });
+
+    it('(24) Insert: 直上脚質の有効値がコピーされ、カスタム脚質に隊列補正が効く', () => {
+        const prev = useRaceStore.getState().strategies.find((s) => s.name === '先行')!;
+        // 追加前: 未登録の脚質名は ±0
+        expect(getFormationModifier(1, 5, 'カスタム脚質X', useRaceStore.getState().strategies)).toBe(0);
+
+        const form = { ...createInsertFormState(prev), name: 'カスタム脚質X' };
+        useRaceStore.getState().addStrategy('先行', formStateToStrategy(form, prev));
+
+        const strategies = useRaceStore.getState().strategies;
+        const custom = strategies.find((s) => s.name === 'カスタム脚質X')!;
+        // 「先行」の効果表値（2.3 縦長 = +5、他は ±0）が実値としてコピーされる
+        expect(custom.formationModifiers?.['2-3']).toBe(5);
+        expect(custom.formationModifiers?.['1:middleOrSlower']).toBe(0);
+        expect(getFormationModifier(2, 5, 'カスタム脚質X', strategies)).toBe(5);
+    });
+
+    it('(25) Insert 後に値を編集すると、その値がテンプレート出力へ列挙される', () => {
+        const prev = useRaceStore.getState().strategies.find((s) => s.name === '先行')!;
+        const insertForm = { ...createInsertFormState(prev), name: 'カスタム脚質X' };
+        useRaceStore.getState().addStrategy('先行', formStateToStrategy(insertForm, prev));
+
+        saveEdit('カスタム脚質X', (form) => ({
+            ...form,
+            formationModifiers: { ...form.formationModifiers, '7-8': '6' },
+        }));
+
+        const strategies = useRaceStore.getState().strategies;
+        const lines = getFormationTemplateLines(5, strategies);
+        const dangoLine = lines.find((l) => l.startsWith('7.8'));
+        expect(dangoLine).toBeDefined();
+        expect(dangoLine).toContain('カスタム脚質Xに+6');
+    });
+
+    it('(26) 隊列 OFF 相当の保存（固定値のみ変更）でも隊列補正値は消えない', () => {
+        saveEdit('差し', (form) => ({
+            ...form,
+            formationModifiers: { ...form.formationModifiers, '7-8': '9' },
+        }));
+        // 隊列 OFF ではセクションが非表示になるが、フォーム状態には値が残る。
+        // その状態で固定値だけを変更して保存する操作を模す。
+        saveEdit('差し', (form) => ({ ...form, fixValue: '99' }));
+
+        const sashi = useRaceStore.getState().strategies.find((s) => s.name === '差し')!;
+        expect(sashi.fixValue).toBe(99);
+        expect(sashi.formationModifiers?.['7-8']).toBe(9);
+    });
+
+    it('(27) 永続化 regression: 隊列補正が rehydrate 後も保持される', () => {
+        saveEdit('逃げ', (form) => ({
+            ...form,
+            formationModifiers: { ...form.formationModifiers, '2-3': '11' },
+        }));
+
+        const persisted = persistPartialize(useRaceStore.getState());
+        const restored = persistMigrate(persisted, 12);
+
+        const nige = restored.strategies.find((s) => s.name === '逃げ')!;
+        expect(nige.formationModifiers?.['2-3']).toBe(11);
+        expect(getFormationModifier(2, 5, '逃げ', restored.strategies)).toBe(11);
+    });
+
+    it('(28) 「設定をデフォルトに戻す」で隊列補正も未設定へ戻る', () => {
+        saveEdit('差し', (form) => ({
+            ...form,
+            formationModifiers: { ...form.formationModifiers, '7-8': '9' },
+        }));
+        expect(
+            useRaceStore.getState().strategies.find((s) => s.name === '差し')?.formationModifiers,
+        ).toBeDefined();
+
+        useRaceStore.getState().resetHouseRules();
+
+        const strategies = useRaceStore.getState().strategies;
+        expect(strategies.find((s) => s.name === '差し')?.formationModifiers).toBeUndefined();
+        expect(getFormationModifier(7, 5, '差し', strategies)).toBe(5); // 効果表へ戻る
     });
 });

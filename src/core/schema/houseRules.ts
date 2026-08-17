@@ -174,6 +174,12 @@ export const customStrategySchema = z.object({
         end: z.string(),
     }),
     paceModifiers: z.record(z.string(), z.number()),
+    // CR-SA-24-E1 / 2026-08-16: 隊列〔バ群〕補正の脚質ごと設定値（houserule-features.md §6.10.4）。
+    // optional = 後方互換（フィールドを持たない旧 JSON プリセットもそのまま受理し、
+    // 欠落 = 未設定として §6.10.3 のフォールバックで現行挙動に落とす）。
+    // 値は整数まで検証する（§6.10.2 値の制約 = 整数・負値許容・小数不可・上下限なし）。
+    // key は paceModifiers と同じく z.string()（JSON シリアライズ後は常に文字列のため）。
+    formationModifiers: z.record(z.string(), z.number().int()).optional(),
 });
 
 export type CustomStrategyData = z.infer<typeof customStrategySchema>;

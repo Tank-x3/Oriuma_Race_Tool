@@ -8,10 +8,11 @@ import { useRaceStore } from '../../../store/useRaceStore';
 import { isDefaultStrategy } from '../../../core/strategy.helpers';
 // Bundle-10-T3 / CR-SA-12 / 2026-05-11: 脚質エディタ Validation 統合
 // (modal-houserule.md §Critical Errors + houserule-features.md §1 Validation SSoT)
-import { validateStrategyName, validateDiceFormat } from '../../../core/validator';
-import type { Strategy } from '../../../types';
+import { validateStrategyName, validateDiceFormat, validateFormationModifierValue } from '../../../core/validator';
+import type { FormationRowId, Strategy } from '../../../types';
 import {
     PACE_ROLL_RANGE,
+    FORMATION_ROW_LABELS,
     createEditFormState,
     createInsertFormState,
     createDefaultResetFormState,
@@ -39,7 +40,10 @@ interface DeletingState {
 }
 
 export const StrategyEditorModal: React.FC<StrategyEditorModalProps> = ({ isOpen, onClose }) => {
-    const { strategies, participants, addStrategy, updateStrategy, removeStrategy } = useRaceStore();
+    // CR-SA-24-E2 / 2026-08-16: 隊列補正セクションの表示条件（enableFormationDice）を
+    // 親モーダルで読み、編集サブモーダルへ props で渡す（既存の props バケツリレー構造に合わせる）。
+    const { strategies, participants, config, addStrategy, updateStrategy, removeStrategy } =
+        useRaceStore();
     const [editing, setEditing] = useState<EditingState | null>(null);
     const [deleting, setDeleting] = useState<DeletingState | null>(null);
 
@@ -77,7 +81,9 @@ export const StrategyEditorModal: React.FC<StrategyEditorModalProps> = ({ isOpen
 
     const handleSubmitForm = (form: StrategyFormState) => {
         if (!editing) return;
-        const newStrategy = formStateToStrategy(form);
+        // CR-SA-24-E1 / 2026-08-16: editing.targetStrategy（編集時 = 編集対象 / 挿入時 = 直前の脚質）を
+        // 渡し、隊列補正値を引き継ぐ（houserule-features.md §6.10 / §1 Insert。値の消失防止）。
+        const newStrategy = formStateToStrategy(form, editing.targetStrategy);
         if (editing.mode === 'edit') {
             updateStrategy(editing.targetStrategy.name, newStrategy);
         } else {
@@ -224,6 +230,7 @@ export const StrategyEditorModal: React.FC<StrategyEditorModalProps> = ({ isOpen
                     mode={editing.mode}
                     targetStrategy={editing.targetStrategy}
                     existingNames={strategies.map((s) => s.name)}
+                    enableFormationDice={config.houseRules.enableFormationDice}
                     onSubmit={handleSubmitForm}
                     onCancel={() => setEditing(null)}
                 />
@@ -249,6 +256,8 @@ interface StrategyEditSubModalProps {
     mode: 'edit' | 'insert';
     targetStrategy: Strategy;
     existingNames: string[];
+    /** CR-SA-24-E2: 隊列補正セクションの表示条件（modal-houserule.md §2 表示条件）。 */
+    enableFormationDice: boolean;
     onSubmit: (form: StrategyFormState) => void;
     onCancel: () => void;
 }
@@ -257,6 +266,7 @@ const StrategyEditSubModal: React.FC<StrategyEditSubModalProps> = ({
     mode,
     targetStrategy,
     existingNames,
+    enableFormationDice,
     onSubmit,
     onCancel,
 }) => {
@@ -276,17 +286,40 @@ const StrategyEditSubModal: React.FC<StrategyEditSubModalProps> = ({
     const diceStartErrors = validateDiceFormat(form.diceStart);
     const diceMidErrors = validateDiceFormat(form.diceMid);
     const diceEndErrors = validateDiceFormat(form.diceEnd);
+    // CR-SA-24-E2 / 2026-08-16: 隊列補正の整数検証（modal-houserule.md ⛔ Critical Errors）。
+    // セクション非表示（隊列 OFF）時は検証しない。GM が画面から直せない値で保存が
+    // ブロックされる状態を作らないため（表示中の入力に対するリアルタイム検証という既存方針も維持）。
+    const formationErrors: Partial<Record<FormationRowId, string[]>> = {};
+    if (enableFormationDice) {
+        for (const row of FORMATION_ROW_LABELS) {
+            formationErrors[row.id] = validateFormationModifierValue(
+                form.formationModifiers[row.id] ?? '',
+            );
+        }
+    }
+    const formationErrorCount = Object.values(formationErrors).reduce(
+        (total, errors) => total + errors.length,
+        0,
+    );
     const hasErrors =
         nameErrors.length +
             diceStartErrors.length +
             diceMidErrors.length +
-            diceEndErrors.length >
+            diceEndErrors.length +
+            formationErrorCount >
         0;
 
     const handlePaceChange = (roll: number, raw: string) => {
         setForm((prev) => ({
             ...prev,
             paceModifiers: { ...prev.paceModifiers, [roll]: raw },
+        }));
+    };
+
+    const handleFormationChange = (rowId: FormationRowId, raw: string) => {
+        setForm((prev) => ({
+            ...prev,
+            formationModifiers: { ...prev.formationModifiers, [rowId]: raw },
         }));
     };
 
@@ -471,6 +504,60 @@ const StrategyEditSubModal: React.FC<StrategyEditSubModalProps> = ({
                         })}
                     </div>
                 </div>
+
+                {/* CR-SA-24-E2 / 2026-08-16: 隊列〔バ群〕補正マトリクス
+                    (modal-houserule.md §2 + ワイヤーフレーム L198-214)。
+                    enableFormationDice ON のときのみ表示。OFF 時はセクションごと非表示だが、
+                    フォーム状態には値が入ったままのため保存しても設定値は消えない。
+                    行ラベル (出目・形態名・ペース条件) は効果表由来の表示専用 (§6.10.2 変更対象外)。*/}
+                {enableFormationDice && (
+                    <div className="space-y-2">
+                        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                            <p className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                                隊列(バ群)補正
+                            </p>
+                            <p className="text-xs text-slate-500 dark:text-slate-400">
+                                ※空欄 = 既定値 / 0 にしたいときは「0」と入力
+                            </p>
+                        </div>
+                        <div className="space-y-1.5">
+                            {FORMATION_ROW_LABELS.map(({ id, label }) => {
+                                // id には ':' が含まれるため DOM id では '-' に置換する。
+                                const inputId = `strategy-form-formation-${id.replace(':', '-')}`;
+                                const errors = formationErrors[id] ?? [];
+                                return (
+                                    <div key={id} className="space-y-1">
+                                        <div className="flex items-center gap-3">
+                                            <label
+                                                htmlFor={inputId}
+                                                className="flex-1 text-xs text-slate-500 dark:text-slate-400"
+                                            >
+                                                {label}
+                                            </label>
+                                            <input
+                                                id={inputId}
+                                                type="number"
+                                                step="1"
+                                                value={form.formationModifiers[id] ?? ''}
+                                                onChange={(e) => handleFormationChange(id, e.target.value)}
+                                                onWheel={(ev) => ev.currentTarget.blur()}
+                                                className="w-24 h-9 shrink-0 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg px-2 text-center text-slate-900 dark:text-white font-mono text-sm focus:outline-none focus:border-primary-500 transition-colors"
+                                            />
+                                        </div>
+                                        {errors.length > 0 && (
+                                            <p
+                                                className="text-xs text-red-500 dark:text-red-400 text-right"
+                                                role="alert"
+                                            >
+                                                {errors[0]}
+                                            </p>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
 
                 {/* Actions */}
                 <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-200 dark:border-slate-700">

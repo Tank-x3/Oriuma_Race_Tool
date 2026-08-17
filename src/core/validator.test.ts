@@ -12,6 +12,7 @@ import {
     validateFormationPacePosition,
     validateNoUniqueSkillPresence,
     validateManualGateAssignments,
+    validateFormationModifierValue,
 } from './validator';
 
 describe('Validator', () => {
@@ -586,5 +587,35 @@ describe('validateManualGateAssignments (CR-SA-23-E1)', () => {
             history: {},
         };
         expect(validateManualGateAssignments([p], true)).toEqual([]);
+    });
+});
+// CR-SA-24-E2 / 2026-08-16: 隊列〔バ群〕補正値の整数検証
+// (modal-houserule.md ⛔ Critical Errors「隊列〔バ群〕補正の不正値」SSoT)。
+describe('validateFormationModifierValue (CR-SA-24-E2)', () => {
+    const MESSAGE = '隊列補正は整数で入力してください（マイナス可）';
+    it('整数（正・負・0）は妥当', () => {
+        expect(validateFormationModifierValue('5')).toEqual([]);
+        expect(validateFormationModifierValue('-5')).toEqual([]);
+        expect(validateFormationModifierValue('0')).toEqual([]);
+        expect(validateFormationModifierValue('+7')).toEqual([]);
+        expect(validateFormationModifierValue('100')).toEqual([]);
+    });
+    it('空欄はエラーとしない（未設定として受理）', () => {
+        expect(validateFormationModifierValue('')).toEqual([]);
+        expect(validateFormationModifierValue('   ')).toEqual([]);
+    });
+    it('入力途中の符号のみはエラーとしない（ペース補正と同挙動）', () => {
+        expect(validateFormationModifierValue('-')).toEqual([]);
+        expect(validateFormationModifierValue('+')).toEqual([]);
+    });
+    it('小数は SSoT 文言でエラー', () => {
+        expect(validateFormationModifierValue('1.5')).toEqual([MESSAGE]);
+        expect(validateFormationModifierValue('-0.5')).toEqual([MESSAGE]);
+    });
+    it('記号・文字列・全角数字はエラー', () => {
+        expect(validateFormationModifierValue('abc')).toEqual([MESSAGE]);
+        expect(validateFormationModifierValue('５')).toEqual([MESSAGE]);
+        expect(validateFormationModifierValue('1e3')).toEqual([MESSAGE]);
+        expect(validateFormationModifierValue('--3')).toEqual([MESSAGE]);
     });
 });

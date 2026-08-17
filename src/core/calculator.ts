@@ -217,11 +217,13 @@ export class Calculator {
             // CR-SA-20-E4 / 2026-06-11: 隊列〔バ群〕補正の 1 回加算（houserule-features.md §6.5、
             // ペース補正と同方式 = 履歴全再構築時に確定済みなら 1 回だけ上乗せ、二重加算なし）。
             // 効果表（§6.3）は (隊列出目, ペース出目, 脚質名) で引く（超縦長/超団子のみペース依存）。
-            // カスタム脚質は getFormationModifier 側で常に 0。
+            // CR-SA-24-E1 / 2026-08-16: strategies を渡すことで、脚質ごとの隊列補正設定値
+            //（§6.10）が実機計算に反映される。設定値が未設定なら効果表 →±0 の順でフォールバック
+            //（§6.10.3）するため、設定値が空の間は改訂前と完全一致する。
             // paceRoll ブロック内に置く理由: 「隊列は必ずペースより後」（§6.1 不変ルール）のため、
             // ペース未確定で隊列のみ確定の状態は正常進行で発生しない（発生時は加算しない安全側）。
             if (formationRoll !== null) {
-                total += getFormationModifier(formationRoll, paceRoll, participant.strategy);
+                total += getFormationModifier(formationRoll, paceRoll, participant.strategy, strategies);
             }
         }
 

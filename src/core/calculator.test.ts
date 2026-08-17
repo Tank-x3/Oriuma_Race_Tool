@@ -567,6 +567,61 @@ describe('CR-SA-20-E4: calculateTotalScore 隊列補正（formationRoll）', () 
         const score = Calculator.calculateTotalScore(baseUma, DEFAULT_STRATEGIES, null, undefined, DEFAULT_UNIQUE_DICE_CONFIG, 1);
         expect(score).toBe(40);
     });
+
+    // CR-SA-24-E1 / 2026-08-16: 脚質ごとの隊列補正設定値（houserule-features.md §6.10）の実機計算反映。
+    describe('CR-SA-24-E1: 脚質ごとの隊列補正設定値（§6.10.3 解決順）', () => {
+        it('設定値ありのカスタム脚質が累積スコアへ反映される', () => {
+            const customStrategies = [
+                ...DEFAULT_STRATEGIES,
+                {
+                    name: 'カスタムX',
+                    fixValue: 30,
+                    dice: { start: '3d8', mid: '3d5', end: '1d7' },
+                    paceModifiers: {},
+                    formationModifiers: { '1:middleOrSlower': 6 },
+                },
+            ];
+            const customUma = { ...baseUma, strategy: 'カスタムX' };
+            // 30 (fix) + 10 (dice) + pace 5 補正なし + formation 設定値 +6 → 46
+            const score = Calculator.calculateTotalScore(customUma, customStrategies, 5, undefined, DEFAULT_UNIQUE_DICE_CONFIG, 1);
+            expect(score).toBe(46);
+        });
+
+        it('デフォルト脚質の設定値は効果表より優先される', () => {
+            const strategies = DEFAULT_STRATEGIES.map(s =>
+                s.name === '大逃げ' ? { ...s, formationModifiers: { '1:middleOrSlower': -20 } } : s);
+            // 効果表なら +10 → 50 のところ、設定値 -20 で 20
+            const score = Calculator.calculateTotalScore(baseUma, strategies, 5, undefined, DEFAULT_UNIQUE_DICE_CONFIG, 1);
+            expect(score).toBe(20);
+        });
+
+        it('設定値なし（フィールド欠落）の構成は改訂前と同値', () => {
+            expect(Calculator.calculateTotalScore(baseUma, DEFAULT_STRATEGIES, 5, undefined, DEFAULT_UNIQUE_DICE_CONFIG, 1)).toBe(50);
+            expect(Calculator.calculateTotalScore(baseUma, DEFAULT_STRATEGIES, 5, undefined, DEFAULT_UNIQUE_DICE_CONFIG, 9)).toBe(30);
+        });
+
+        it('明示的な 0 の設定値は効果表へフォールバックしない', () => {
+            const strategies = DEFAULT_STRATEGIES.map(s =>
+                s.name === '大逃げ' ? { ...s, formationModifiers: { '1:middleOrSlower': 0 } } : s);
+            // 効果表なら +10 → 50 のところ、明示 0 で 40
+            const score = Calculator.calculateTotalScore(baseUma, strategies, 5, undefined, DEFAULT_UNIQUE_DICE_CONFIG, 1);
+            expect(score).toBe(40);
+        });
+
+        it('隊列 OFF（formationRoll 省略）では設定値があっても加算されない', () => {
+            const strategies = DEFAULT_STRATEGIES.map(s =>
+                s.name === '大逃げ' ? { ...s, formationModifiers: { '1:middleOrSlower': 25 } } : s);
+            const score = Calculator.calculateTotalScore(baseUma, strategies, 5);
+            expect(score).toBe(40);
+        });
+
+        it('ペース未確定時は設定値があっても加算されない（既存分岐の維持）', () => {
+            const strategies = DEFAULT_STRATEGIES.map(s =>
+                s.name === '大逃げ' ? { ...s, formationModifiers: { '1:middleOrSlower': 25 } } : s);
+            const score = Calculator.calculateTotalScore(baseUma, strategies, null, undefined, DEFAULT_UNIQUE_DICE_CONFIG, 1);
+            expect(score).toBe(40);
+        });
+    });
 });
 
 // CR-SA-21+22-E3 / 2026-07-06: カスタム固有スキル + 固有スキルなし出走者のスコア加算

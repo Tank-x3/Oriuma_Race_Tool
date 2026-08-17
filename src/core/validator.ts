@@ -348,6 +348,29 @@ export const validateDiceFormat = (diceStr: string): string[] => {
     return [`ダイス式は '3d6' の形式で入力してください`];
 };
 
+/**
+ * 隊列〔バ群〕補正値の整数検証
+ * (modal-houserule.md ⛔ Critical Errors「隊列〔バ群〕補正の不正値」SSoT / CR-SA-24-E2)。
+ *
+ * - 空欄 → エラーとしない（「未設定」として受理、`modal-houserule.md §2` 空欄の扱い）
+ * - `-` のみ（入力途中）→ エラーとしない。保存時は parseInt が NaN となりキーを立てない
+ *   ＝ 空欄と同じ「未設定」に落ちるため、既存ペース補正マトリクスの挙動と揃う
+ * - 整数（負値・`+` 符号付きを含む）→ 妥当
+ * - 小数・記号・全角数字等 → エラー（保存ブロック）
+ *
+ * @returns 妥当なら `[]`、エラーなら 1 件のエラーメッセージ配列。
+ */
+export const validateFormationModifierValue = (raw: string): string[] => {
+    const trimmed = raw.trim();
+    if (trimmed === '' || trimmed === '-' || trimmed === '+') {
+        return [];
+    }
+    if (/^[+-]?\d+$/.test(trimmed)) {
+        return [];
+    }
+    return ['隊列補正は整数で入力してください（マイナス可）'];
+};
+
 export class Validator {
     /**
      * Validates if the line count matches the expected number of participants.

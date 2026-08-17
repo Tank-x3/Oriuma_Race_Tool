@@ -146,7 +146,8 @@ export const PhaseOutput: React.FC = () => {
             if (formationResult.face !== null) {
                 const paceFace = paceResult.face ?? 0;
                 const entries = strategies
-                    .map(s => ({ name: s.name, value: getFormationModifier(formationResult.face!, paceFace, s.name) }))
+                    // CR-SA-24-E1 / 2026-08-16: strategies を渡し、脚質ごとの隊列補正設定値（§6.10.3）を反映する。
+                    .map(s => ({ name: s.name, value: getFormationModifier(formationResult.face!, paceFace, s.name, strategies) }))
                     .filter(e => e.value !== 0);
                 const modText = entries.length === 0
                     ? '増減なし'
@@ -157,7 +158,9 @@ export const PhaseOutput: React.FC = () => {
             // 未解析: dice1d9= + 確定済みペースに対応する影響値テンプレート（E2 書式、1 パターンのみ）。
             // ペース未確定（禁止構成のすり抜け）は RaceScene.handleNext の最終防衛線で隊列フェーズ
             // 到達前にブロックされる。万一到達した場合は paceFace=0 → テンプレートは空（安全側）。
-            const templateLines = getFormationTemplateLines(paceResult.face ?? 0);
+            // CR-SA-24-E1 / 2026-08-16: 走査対象を現在の脚質リスト全体へ（§6.6 改訂）。
+            // デフォルト 5 脚質のみの構成では列挙順・内容とも改訂前と完全一致する。
+            const templateLines = getFormationTemplateLines(paceResult.face ?? 0, strategies);
             return `【隊列判定】\ndice1d9=\n${templateLines.join('\n')}\n`;
         }
 
